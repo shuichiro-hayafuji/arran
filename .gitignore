@@ -1,0 +1,55 @@
+.DS_Store
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.idea/
+.metadata
+.packages
+.vscode/
+!infrastructure/.vscode/
+!infrastructure/.vscode/**
+build/
+coverage/
+*.iml
+.xcodebuild/
+.xcodebuildmcp/
+
+# Local databases and secrets
+*.db
+*.db-shm
+*.db-wal
+.env
+.env.*
+*.key
+*.pem
+
+# Signing keys and local credentials
+*.p12
+*.pfx
+*.p8
+*.jks
+*.keystore
+*.mobileprovision
+*.provisionprofile
+key.properties
+.netrc
+.npmrc
+.aws/
+.ssh/
+
+# Local database variants
+*.sqlite
+*.sqlite3
+*.sqlite-shm
+*.sqlite-wal
+*.sqlite3-shm
+*.sqlite3-wal
+
+# Logs, temporary files, and editor backups
+*.log
+*.tmp
+*.swp
+*.swo
+*~
+__pycache__/
+*.pyc

@@ -1,0 +1,22 @@
+name: file_picker
+description: Minimal local CSV document picker used by Spendable Today.
+version: 1.0.0
+publish_to: 'none'
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+  flutter: '>=3.7.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+flutter:
+  plugin:
+    platforms:
+      ios:
+        pluginClass: FilePickerPlugin
+      android:
+        package: com.shuichirohayafuji.file_picker
+        pluginClass: FilePickerPlugin
+

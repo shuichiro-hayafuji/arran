@@ -1,0 +1,496 @@
+openapi: 3.0.3
+info:
+  title: Spendable Today API
+  version: 1.1.0
+  description: 家計データをもとに支出判断を支援するAPI
+servers:
+  - url: http://localhost:8080
+security:
+  - bearerAuth: []
+tags:
+  - name: health
+  - name: profile
+  - name: transactions
+  - name: consultations
+  - name: reviews
+  - name: memories
+paths:
+  /auth/login:
+    post:
+      security: []
+      summary: Login using an account provisioned in the database
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [username, password]
+              properties:
+                username: { type: string, minLength: 3, maxLength: 128 }
+                password: { type: string, format: password, writeOnly: true }
+      responses:
+        '200':
+          description: A bearer session with a seven-day absolute expiry
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [access_token, token_type, expires_at, user]
+                properties:
+                  access_token: { type: string }
+                  token_type: { type: string, enum: [Bearer] }
+                  expires_at: { type: string, format: date-time }
+                  user: { $ref: '#/components/schemas/AuthUser' }
+        '400': { description: Invalid request }
+        '401': { description: Invalid credentials }
+        '429': { description: Rate limited. Retry after 60 seconds }
+        '503': { description: Authentication database unavailable }
+  /auth/me:
+    get:
+      summary: Return the authenticated user
+      responses:
+        '200':
+          description: Authenticated user
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthUser' }
+        '401': { description: Invalid or expired session }
+        '503': { description: Authentication database unavailable }
+  /auth/logout:
+    post:
+      summary: Revoke the current session
+      responses:
+        '204': { description: Session revoked }
+        '401': { description: Invalid or expired session }
+        '503': { description: Session revocation unavailable }
+  /health:
+    get:
+      security: []
+      summary: Health check
+      responses:
+        '200': { description: Healthy }
+  /healthz:
+    get:
+      security: []
+      tags: [health]
+      summary: ヘルスチェック
+      responses:
+        '200':
+          description: 稼働中
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status: { type: string, example: ok }
+  /profile:
+    get:
+      tags: [profile]
+      summary: プロフィール取得
+      responses:
+        '401': { description: Invalid or expired bearer session }
+        '503': { description: Authentication database unavailable }
+        '200': { description: プロフィール, content: { application/json: { schema: { $ref: '#/components/schemas/Profile' } } } }
+    put:
+      tags: [profile]
+      summary: プロフィール更新
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Profile' }
+      responses:
+        '401': { description: Invalid or expired bearer session }
+        '503': { description: Authentication database unavailable }
+        '200': { description: 更新後のプロフィール, content: { application/json: { schema: { $ref: '#/components/schemas/Profile' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+  /transactions/import/preview:
+    post:
+      tags: [transactions]
+      summary: CSVインポートのプレビュー
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+                mapping: { type: string, description: JSON形式のCSVMapping }
+                source: { type: string }
+                source_account_name: { type: string }
+      responses:
+        '401': { description: Invalid or expired bearer session }
+        '503': { description: Authentication database unavailable }
+        '200': { description: プレビュー結果, content: { application/json: { schema: { $ref: '#/components/schemas/ImportPreview' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+  /transactions/import/commit:
+    post:
+      tags: [transactions]
+      summary: CSVインポートを確定
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [preview_id]
+              properties:
+                preview_id: { type: string }
+      responses:
+        '401': { description: Invalid or expired bearer session }
+        '503': { description: Authentication database unavailable }
+        '200': { description: 登録結果, content: { application/json: { schema: { $ref: '#/components/schemas/ImportCommitResult' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+  /transactions:
+    get:
+      tags: [transactions]
+      summary: 取引明細一覧
+      parameters:
+        - { name: month, in: query, schema: { type: string, pattern: '^\\d{4}-\\d{2}$' } }
+        - { name: limit, in: query, schema: { type: integer, maximum: 1000 } }
+      responses:
+        '401': { description: Invalid or expired bearer session }
+        '503': { description: Authentication database unavailable }
+        '200':
+          description: 明細一覧
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Transaction' } }
+                  categories: { type: array, items: { type: string } }
+  /transactions/{id}:
+    patch:
+      tags: [transactions]
+      summary: 取引カテゴリ更新
+      parameters:
+        - { $ref: '#/components/parameters/Id' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [category]
+              properties:
+                category: { type: string }
+                remember_merchant: { type: boolean }
+      responses:
+        '401': { description: Invalid or expired bearer session }
+        '503': { description: Authentication database unavailable }
+        '200': { description: 更新後の取引, content: { application/json: { schema: { $ref: '#/components/schemas/Transaction' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /dashboard/monthly:
+    get:
+      tags: [transactions]
+      summary: 月次ダッシュボード
+      parameters:
+        - { name: month, in: query, schema: { type: string, pattern: '^\\d{4}-\\d{2}$' } }
+      responses:
+        '401': { description: Invalid or expired bearer session }
+        '503': { description: Authentication database unavailable }
+        '200': { description: 月次集計, content: { application/json: { schema: { $ref: '#/components/schemas/Dashboard' } } } }
+  /consultations:
+    get:
+      tags: [consultations]
+      summary: 相談履歴一覧
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, maximum: 100 } }
+      responses:
+        '401': { description: Invalid or expired bearer session }
+        '503': { description: Authentication database unavailable }
+        '200': { description: 相談一覧, content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: '#/components/schemas/Consultation' } } } } } } }
+    post:
+      tags: [consultations]
+      summary: 支出相談を開始
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [message]
+              properties:
+                message: { type: string }
+                planned_amount: { type: integer, format: int64, minimum: 0, nullable: true }
+      responses:
+        '401': { description: Invalid or expired bearer session }
+        '503': { description: Authentication database unavailable }
+        '201': { description: 相談結果, content: { application/json: { schema: { $ref: '#/components/schemas/Consultation' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+  /consultations/{id}:
+    get:
+      tags: [consultations]
+      summary: 相談詳細
+      parameters:
+        - { $ref: '#/components/parameters/Id' }
+      responses:
+        '401': { description: Invalid or expired bearer session }
+        '503': { description: Authentication database unavailable }
+        '200': { description: 相談, content: { application/json: { schema: { $ref: '#/components/schemas/Consultation' } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /consultations/{id}/messages:
+    post:
+      tags: [consultations]
+      summary: 相談に追加情報を送信
+      parameters:
+        - { $ref: '#/components/parameters/Id' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [message]
+              properties:
+                message: { type: string }
+                planned_amount: { type: integer, format: int64, minimum: 0, nullable: true }
+      responses:
+        '401': { description: Invalid or expired bearer session }
+        '503': { description: Authentication database unavailable }
+        '200': { description: 更新後の相談, content: { application/json: { schema: { $ref: '#/components/schemas/Consultation' } } } }
+  /consultations/{id}/result:
+    patch:
+      tags: [consultations]
+      summary: 支出結果を記録
+      parameters:
+        - { $ref: '#/components/parameters/Id' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ConsultationResultUpdate' }
+      responses:
+        '401': { description: Invalid or expired bearer session }
+        '503': { description: Authentication database unavailable }
+        '200': { description: 更新後の相談, content: { application/json: { schema: { $ref: '#/components/schemas/Consultation' } } } }
+  /reviews/monthly:
+    post:
+      tags: [reviews]
+      summary: 月次レビュー作成
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                month: { type: string, pattern: '^\\d{4}-\\d{2}$' }
+      responses:
+        '401': { description: Invalid or expired bearer session }
+        '503': { description: Authentication database unavailable }
+        '201': { description: 月次レビュー, content: { application/json: { schema: { $ref: '#/components/schemas/MonthlyReview' } } } }
+  /reviews/latest:
+    get:
+      tags: [reviews]
+      summary: 最新レビュー取得
+      responses:
+        '401': { description: Invalid or expired bearer session }
+        '503': { description: Authentication database unavailable }
+        '200': { description: 月次レビュー, content: { application/json: { schema: { $ref: '#/components/schemas/MonthlyReview' } } } }
+  /memories:
+    get:
+      tags: [memories]
+      summary: 記憶一覧
+      responses:
+        '401': { description: Invalid or expired bearer session }
+        '503': { description: Authentication database unavailable }
+        '200': { description: 記憶一覧, content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: '#/components/schemas/MemoryItem' } } } } } } }
+    post:
+      tags: [memories]
+      summary: 記憶を追加
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MemoryItem' }
+      responses:
+        '401': { description: Invalid or expired bearer session }
+        '503': { description: Authentication database unavailable }
+        '201': { description: 保存された記憶, content: { application/json: { schema: { $ref: '#/components/schemas/MemoryItem' } } } }
+  /memories/{id}:
+    patch:
+      tags: [memories]
+      summary: 記憶を更新
+      parameters:
+        - { $ref: '#/components/parameters/Id' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MemoryItem' }
+      responses:
+        '401': { description: Invalid or expired bearer session }
+        '503': { description: Authentication database unavailable }
+        '200': { description: 更新後の記憶, content: { application/json: { schema: { $ref: '#/components/schemas/MemoryItem' } } } }
+    delete:
+      tags: [memories]
+      summary: 記憶を削除
+      parameters:
+        - { $ref: '#/components/parameters/Id' }
+      responses:
+        '401': { description: Invalid or expired bearer session }
+        '503': { description: Authentication database unavailable }
+        '204': { description: 削除完了 }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: { type: integer, format: int64, minimum: 1 }
+  responses:
+    BadRequest:
+      description: リクエスト不正
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: 対象なし
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+  schemas:
+    AuthUser:
+      type: object
+      required: [id, username]
+      properties:
+        id: { type: integer, format: int64 }
+        username: { type: string }
+    Error:
+      type: object
+      required: [error, message]
+      properties:
+        error: { type: string }
+        message: { type: string }
+    Profile:
+      type: object
+      properties:
+        monthly_income: { type: integer, format: int64 }
+        current_balance: { type: integer, format: int64 }
+        monthly_fixed_costs: { type: integer, format: int64 }
+        monthly_free_budget: { type: integer, format: int64 }
+        monthly_savings_goal: { type: integer, format: int64 }
+        reduce_categories: { type: array, items: { type: string } }
+        allowed_categories: { type: array, items: { type: string } }
+        long_term_goal: { type: string }
+        advice_strictness: { type: string }
+        updated_at: { type: string, format: date-time }
+    Transaction:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        transaction_date: { type: string, format: date }
+        description: { type: string }
+        normalized_merchant: { type: string }
+        amount: { type: integer, format: int64 }
+        transaction_type: { type: string }
+        category: { type: string }
+        source: { type: string }
+        source_account_name: { type: string }
+        imported_at: { type: string, format: date-time }
+    CSVMapping:
+      type: object
+      properties:
+        date_column: { type: string }
+        description_column: { type: string }
+        amount_column: { type: string }
+        debit_column: { type: string }
+        credit_column: { type: string }
+    ImportPreview:
+      type: object
+      properties:
+        preview_id: { type: string }
+        detected_encoding: { type: string }
+        headers: { type: array, items: { type: string } }
+        mapping: { $ref: '#/components/schemas/CSVMapping' }
+        needs_mapping: { type: boolean }
+        read_count: { type: integer }
+        period_start: { type: string, format: date }
+        period_end: { type: string, format: date }
+        expense_total: { type: integer, format: int64 }
+        rows: { type: array, items: { $ref: '#/components/schemas/Transaction' } }
+        warnings: { type: array, items: { type: string } }
+    ImportCommitResult:
+      type: object
+      properties:
+        imported_count: { type: integer }
+        duplicate_count: { type: integer }
+    Dashboard:
+      type: object
+      properties:
+        month: { type: string, pattern: '^\\d{4}-\\d{2}$' }
+        expense_total: { type: integer, format: int64 }
+        fixed_expense_estimate: { type: integer, format: int64 }
+        free_expense_total: { type: integer, format: int64 }
+        monthly_free_budget: { type: integer, format: int64 }
+        free_budget_remaining: { type: integer, format: int64 }
+        drinking_total: { type: integer, format: int64 }
+        subscription_total: { type: integer, format: int64 }
+        by_category: { type: array, items: { type: object } }
+        recent_transactions: { type: array, items: { $ref: '#/components/schemas/Transaction' } }
+    Consultation:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        created_at: { type: string, format: date-time }
+        user_message: { type: string }
+        planned_amount: { type: integer, format: int64, nullable: true }
+        inferred_category: { type: string }
+        ai_recommendation: { type: string }
+        ai_reasoning_summary: { type: string }
+        current_situation: { type: string }
+        alternative: { type: string }
+        final_question: { type: string }
+        status: { type: string }
+        response_source: { type: string }
+        needs_follow_up: { type: boolean }
+        follow_up_question: { type: string }
+    ConsultationResultUpdate:
+      type: object
+      properties:
+        status: { type: string, enum: [spent, skipped, reduced, pending] }
+        actual_amount: { type: integer, format: int64, nullable: true }
+        user_decision_reason: { type: string }
+        satisfaction_score: { type: integer, minimum: 1, maximum: 5, nullable: true }
+        regret_score: { type: integer, minimum: 1, maximum: 5, nullable: true }
+        note: { type: string }
+    ReviewCandidate:
+      type: object
+      properties:
+        label: { type: string }
+        judgement: { type: string }
+        total_amount: { type: integer, format: int64 }
+        count: { type: integer }
+        reason: { type: string }
+        annualized_amount: { type: integer, format: int64 }
+        question: { type: string }
+    MonthlyReview:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        month: { type: string }
+        created_at: { type: string, format: date-time }
+        summary: { type: string }
+        candidates: { type: array, items: { $ref: '#/components/schemas/ReviewCandidate' } }
+    MemoryItem:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        type: { type: string }
+        content: { type: string }
+        evidence: { type: string }
+        confidence: { type: number, format: double }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }

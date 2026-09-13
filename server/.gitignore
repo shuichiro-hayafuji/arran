@@ -1,0 +1,9 @@
+.env
+
+# Runtime data may contain personal financial information.
+/data/
+
+# Local Go build and test outputs
+/api
+*.test
+/coverage.out
