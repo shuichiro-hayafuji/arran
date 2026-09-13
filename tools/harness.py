@@ -9,8 +9,10 @@ import shutil
 import subprocess
 import sys
 
+from mobile_architecture import check_mobile_architecture
+
 ROOT = Path(__file__).resolve().parent.parent
-SCOPES = ("docs", "mobile", "server", "infra", "postgres", "all")
+SCOPES = ("docs", "mobile", "server", "infra", "postgres", "all", "mobile-architecture")
 
 
 def commands(scope):
@@ -102,6 +104,13 @@ def main(argv=None):
         print(f"[{status}] {label}", flush=True)
 
     for scope in scopes:
+        if scope in ("mobile", "mobile-architecture"):
+            if args.dry_run:
+                print("[PLAN] mobile architecture: shared HTTP construction (A-M07)")
+            else:
+                record("mobile architecture", check_mobile_architecture(ROOT))
+            if scope == "mobile-architecture":
+                continue
         if scope == "docs":
             if args.dry_run:
                 print("[PLAN] docs: local Markdown link existence")

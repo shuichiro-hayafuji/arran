@@ -5,7 +5,8 @@ Python 3標準ライブラリの `harness.py` を共通入口とする。ファ�
 | scope | 内容 |
 | --- | --- |
 | docs | AGENTSとハーネス・tool文書のローカルMarkdownリンクの存在確認 |
-| mobile | FVM Dartのformat確認、Flutter analyze、Flutter test |
+| mobile-architecture | A-M07の共通HTTP生成境界をPythonで検査（FVM不要） |
+| mobile | A-M07検査、FVM Dartのformat確認、Flutter analyze、Flutter test |
 | server | Go format確認、serverとAgentそれぞれのvet・test。テストDB環境変数を除いて実行 |
 | infra | npm scriptsのbuild・lint・test |
 | postgres | ARRAN_TEST_DATABASE_URLを必須として、PostgreSQL所有者・セッション統合テストを実行 |
@@ -13,6 +14,7 @@ Python 3標準ライブラリの `harness.py` を共通入口とする。ファ�
 
 ```sh
 python3 tools/harness.py check docs
+python3 tools/harness.py check mobile-architecture
 python3 tools/harness.py check mobile --dry-run
 python3 tools/harness.py check server
 python3 tools/harness.py check infra
@@ -31,3 +33,9 @@ python3 tools/harness.py check all
 CDK synthが必要な変更ではinfraで `npm run cdk -- synth` を別途実行する。DockerやAWS環境の必要条件を確認し、通常checkの結果と分けて報告する。
 
 ハーネスCLI自体を変更した場合は、ルートで `python3 -B -m unittest discover -s tools -p 'test_*.py'` とdocs scopeを実行する。CLIのテストは失敗判定・実行範囲等をモックで検証するもので、アプリのテスト成功を意味しない。
+
+## モバイルHTTP境界の検出範囲
+
+[mobile_architecture.py](mobile_architecture.py) はmobile/libのDartを検査し、core/network/api_client.dart以外でDio識別子、ApiClientの直接生成・init/new参照を検出するとファイル・行番号・A-M07を表示してFAILにする。mobile/allにも組み込み済み。mobile/testとmobile/packagesは対象外。sessionの除外はない。
+
+コメント・文字列を除く字句検査であり、Dart ASTや型解決は行わない。文字列補間内の実行コード、型別名・別HTTPライブラリ経由の迂回、Providerの選択・寿命の正しさは保証しない。これらは差分レビューとFlutterテストで確認する。通常のDartコメント・文字列を想定し、入れ子のブロックコメントは非対応。

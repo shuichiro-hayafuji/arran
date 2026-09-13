@@ -117,7 +117,10 @@ void main() {
     'intent validates, blocks duplicate submits, and activates the session',
     () async {
       final storage = MemoryStorage();
-      final controller = SessionController(storage);
+      final controller = SessionController(
+        storage,
+        apiClient: ApiClient(Dio()),
+      );
       final repository = FakeLoginRepository();
       final vm = TestLoginViewModel(repository, controller);
       addTearDown(vm.dispose);
@@ -141,7 +144,10 @@ void main() {
   test(
     'authentication failure leaves the session unchanged and allows retry',
     () async {
-      final controller = SessionController(MemoryStorage());
+      final controller = SessionController(
+        MemoryStorage(),
+        apiClient: ApiClient(Dio()),
+      );
       final repository = FakeLoginRepository();
       final vm = TestLoginViewModel(repository, controller);
       addTearDown(vm.dispose);
@@ -167,7 +173,7 @@ void main() {
         final storage = MemoryStorage();
         final controller = SessionController(
           storage,
-          dio: Dio()..httpClientAdapter = adapter,
+          apiClient: ApiClient(Dio()..httpClientAdapter = adapter),
         );
         final repository = FakeLoginRepository();
         final vm = TestLoginViewModel(repository, controller);
@@ -193,7 +199,10 @@ void main() {
   testWidgets(
     'login screen submits intent, disables controls, and displays failure',
     (tester) async {
-      final controller = SessionController(MemoryStorage());
+      final controller = SessionController(
+        MemoryStorage(),
+        apiClient: ApiClient(Dio()),
+      );
       await controller.initialize();
       final repository = FakeLoginRepository();
       addTearDown(controller.dispose);

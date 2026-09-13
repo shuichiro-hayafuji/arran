@@ -1,8 +1,8 @@
+import 'package:spendable_today/core/network/api_client.dart';
 import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
-import 'package:spendable_today/core/network/api_exception.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:spendable_today/features/session/domain/session.dart';
 import 'package:spendable_today/features/session/repository/dto/stored_session_dto.dart';
@@ -64,7 +64,10 @@ void main() {
         ),
       ),
     );
-    final controller = SessionController(storage);
+    final controller = SessionController(
+      storage,
+      apiClient: ApiClient(Dio()),
+    );
     await controller.initialize();
     expect(controller.token, 'saved');
     controller.dispose();
@@ -76,7 +79,10 @@ void main() {
         ),
       ),
     );
-    final expired = SessionController(storage);
+    final expired = SessionController(
+      storage,
+      apiClient: ApiClient(Dio()),
+    );
     await expired.initialize();
     expect(expired.loggedIn, isFalse);
     expect(storage.value, isNull);
@@ -88,7 +94,7 @@ void main() {
     final adapter = AuthAdapter();
     final controller = SessionController(
       storage,
-      dio: Dio()..httpClientAdapter = adapter,
+      apiClient: ApiClient(Dio()..httpClientAdapter = adapter),
     );
     await controller.initialize();
     await controller.activate(
@@ -116,7 +122,7 @@ void main() {
     final adapter = AuthAdapter();
     final controller = SessionController(
       storage,
-      dio: Dio()..httpClientAdapter = adapter,
+      apiClient: ApiClient(Dio()..httpClientAdapter = adapter),
     );
     await controller.initialize();
     await controller.activate(
@@ -145,7 +151,7 @@ void main() {
       final adapter = AuthAdapter()..logoutStatus = 503;
       final controller = SessionController(
         storage,
-        dio: Dio()..httpClientAdapter = adapter,
+        apiClient: ApiClient(Dio()..httpClientAdapter = adapter),
       );
       await controller.initialize();
       await controller.activate(
@@ -163,12 +169,37 @@ void main() {
     },
   );
 
+  test('revoking an unpublished token preserves the active session', () async {
+    final storage = MemoryStorage();
+    final adapter = AuthAdapter()..logoutStatus = 401;
+    final controller = SessionController(
+      storage,
+      apiClient: ApiClient(Dio()..httpClientAdapter = adapter),
+    );
+    addTearDown(controller.dispose);
+    await controller.activate(
+      Session(
+        token: 'current',
+        expiresAt: DateTime.now().add(const Duration(hours: 1)),
+      ),
+    );
+    await controller.revoke(
+      Session(
+        token: 'unpublished',
+        expiresAt: DateTime.now().add(const Duration(hours: 1)),
+      ),
+    );
+    expect(adapter.authorization, 'Bearer unpublished');
+    expect(controller.token, 'current');
+    expect(storage.value, contains('current'));
+  });
+
   test('secure storage failure revokes newly issued token', () async {
     final storage = MemoryStorage()..failWrite = true;
     final adapter = AuthAdapter();
     final controller = SessionController(
       storage,
-      dio: Dio()..httpClientAdapter = adapter,
+      apiClient: ApiClient(Dio()..httpClientAdapter = adapter),
     );
     await controller.initialize();
     await expectLater(

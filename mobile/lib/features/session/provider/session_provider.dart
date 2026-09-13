@@ -7,8 +7,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../config/env.dart';
-import '../../../core/network/api_error_handler.dart';
-import '../../../core/network/api_exception.dart';
+import '../../../core/network/api_client.dart';
 import '../domain/session.dart';
 import '../repository/dto/stored_session_dto.dart';
 
@@ -40,25 +39,25 @@ final sessionControllerProvider = Provider<SessionController>(
   (ref) => authSession,
 );
 
-final authSession = SessionController(SecureSessionStorage());
+// 画面の generation ごとの ProviderScope より長く保持し、遅延応答の失効も完了させる。
+final _sessionContainer = ProviderContainer();
+final _appSessionProvider = Provider<SessionController>((ref) {
+  final controller = SessionController(
+    SecureSessionStorage(),
+    apiClient: ref.watch(publicApiClientProvider),
+  );
+  ref.onDispose(controller.dispose);
+  return controller;
+});
+final authSession = _sessionContainer.read(_appSessionProvider);
 
 /// セッションの復元・期限切れ・失効を管理し、ルーターと画面へ認証状態を通知する。
 class SessionController extends ChangeNotifier {
-  SessionController(this.storage, {Dio? dio})
-    : _dio =
-          dio ??
-          Dio(
-            BaseOptions(
-              baseUrl: Env.apiBaseUrl,
-              connectTimeout: const Duration(seconds: 10),
-              receiveTimeout: const Duration(seconds: 20),
-              sendTimeout: const Duration(seconds: 20),
-              followRedirects: false,
-            ),
-          );
+  SessionController(this.storage, {required ApiClient apiClient})
+    : _apiClient = apiClient;
 
   final SessionStorage storage;
-  final Dio _dio;
+  final ApiClient _apiClient;
   Session? _session;
   Timer? _expiryTimer;
   bool initialized = false;
@@ -111,7 +110,7 @@ class SessionController extends ChangeNotifier {
     } catch (_) {
       // 保存失敗と、後始末の通信失敗を区別して利用者へ伝える。
       try {
-        await _dio.post<dynamic>(
+        await _apiClient.post(
           '/auth/logout',
           options: Options(
             headers: {'Authorization': 'Bearer ${session.token}'},
@@ -136,12 +135,12 @@ class SessionController extends ChangeNotifier {
   /// 公開しないセッションを解除する（ログイン画面破棄後の遅延応答など）。
   Future<void> revoke(Session session) async {
     try {
-      await _dio.post<dynamic>(
+      await _apiClient.post(
         '/auth/logout',
         options: Options(headers: {'Authorization': 'Bearer ${session.token}'}),
       );
-    } on DioException catch (error) {
-      if (error.response?.statusCode != 401) throw error.appException;
+    } on ApiException catch (error) {
+      if (error.statusCode != 401) rethrow;
     }
   }
 
@@ -152,13 +151,13 @@ class SessionController extends ChangeNotifier {
       return;
     }
     try {
-      await _dio.post<dynamic>(
+      await _apiClient.post(
         '/auth/logout',
         options: Options(headers: {'Authorization': 'Bearer $current'}),
       );
-    } on DioException catch (error) {
-      if (error.response?.statusCode != 401) {
-        throw error.appException;
+    } on ApiException catch (error) {
+      if (error.statusCode != 401) {
+        rethrow;
       }
     }
     await clearIfCurrent(current);
@@ -192,7 +191,6 @@ class SessionController extends ChangeNotifier {
   @override
   void dispose() {
     _expiryTimer?.cancel();
-    _dio.close(force: true);
     super.dispose();
   }
 }

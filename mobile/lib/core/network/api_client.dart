@@ -43,7 +43,8 @@ class ApiClient {
       InterceptorsWrapper(
         onRequest: (options, handler) =>
             requestInterceptor(options, handler, needAuthorize, ref),
-        onError: authenticationErrorInterceptor,
+        // public 通信の明示トークンは呼び出し元が管理する。
+        onError: needAuthorize ? authenticationErrorInterceptor : null,
       ),
     );
 
