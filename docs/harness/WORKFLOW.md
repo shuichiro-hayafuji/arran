@@ -19,8 +19,10 @@
 
 | ID | 対象・現状 | 当面の扱い・解消条件 |
 | --- | --- | --- |
-| EX-M01 | sessionは専用DioとSecure Storageを使用し、通常のRepository/MVI構成とは異なる | 現行の認証経路として許可。他機能へ広げない。統一する場合はセッション回帰テストを通す |
-| EX-M02 | 相談結果ViewModelがprofile側のメモリIntent・Providerを参照 | 既存連携を維持。新しい機能間依存は責務を説明する。共通の更新通知へ移す場合は表示更新を検証 |
+| EX-M01 | sessionは専用Dio・Secure Storage・ChangeNotifierを使用し、Session DomainもFlutter annotationとJSON変換を持つ | 現行の認証経路として限定許可。通常featureへ広げない。層を統一する際は認証・永続化・ユーザー切替の回帰テストを通す |
+| EX-M02 | 相談結果→profileのメモリ、CSV確定→dashboardのViewModelが他featureのIntent・Providerを参照 | 既存連携を維持。新しい機能間依存は責務を説明する。公開query等へ移す場合は保存後の表示更新を検証 |
+| GAP-M01 | 取引詳細Screenは保存中をsetStateで管理し、既存画面に生の例外表示や二重操作対策が不十分な経路がある | 新規実装の見本にしない。該当操作の変更時にMVIの保存状態・安全なエラー表示・重複操作防止へ寄せ、操作テストで確認する |
+| GAP-M02 | dashboard/profile等に直接指定の余白・文字・色が残る | 新規・変更部分はデザインシステムに従う。一括リデザインはしない。対象がtokenへ移行し画面確認できた範囲で解消する |
 | EX-S01 | applicationの構築経路がAgent module・agentadapterをimportする | 現行構築を許可。業務処理へプロバイダー固有DTOを持ち込まない。構築を移す場合はapp側とテストを更新 |
 | GAP-D01 | READMEのinfrastructure/参照、設計資料のViewModel配置が実装と不一致 | 新規作業は実在する配置と本ハーネスに従う。説明資料の修正は別途可能。存在しない旧ディレクトリを再作成しない |
 
