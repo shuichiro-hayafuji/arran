@@ -10,6 +10,7 @@
 
 | 横断する変更 | 追加で読む文書 |
 | --- | --- |
+| 対象者・相談体験・製品方針 | [対象者と支出相談の体験](../product/target-users.md)（初期方針と未検証事項） |
 | mobileの画面・Widget・テーマ | [モバイルのデザインシステム](implementation/mobile/design-system.md) |
 | API、DTO、認証、セッション | モバイル・サーバーの3文書と [OpenAPI](../../server/docs/openapi.yaml) |
 | 金額、分類、相談、CSV、レビュー | サーバー業務。表示も変える場合はモバイル業務・構成 |
