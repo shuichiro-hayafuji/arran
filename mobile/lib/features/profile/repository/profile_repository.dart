@@ -1,7 +1,18 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:riverpod_annotation/riverpod_annotation.dart';
+
 import '../../../core/network/api_client.dart';
 import '../../../shared/utils/json_parsing.dart';
 import '../domain/profile.dart';
 import 'dto/profile_dto.dart';
+
+@riverpod
+ProfileRepository profileRepository(Ref ref) =>
+    ProfileRepositoryImpl(ref.watch(authorizedApiClientProvider));
+
+final profileRepositoryProvider = Provider<ProfileRepository>(
+  profileRepository,
+);
 
 abstract interface class ProfileRepository {
   Future<Profile> get();

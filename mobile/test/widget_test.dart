@@ -3,25 +3,21 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:spendable_today/features/consultation/screens/consultation/consultation_screen.dart';
 import 'package:spendable_today/features/consultation/domain/consultation.dart';
-import 'package:spendable_today/features/consultation/providers/consultation_repository_provider.dart';
 import 'package:spendable_today/features/consultation/repository/consultation_repository.dart';
 import 'package:spendable_today/features/consultation/screens/result/result_screen.dart';
 import 'package:spendable_today/features/dashboard/screens/dashboard/dashboard_screen.dart';
 import 'package:spendable_today/features/dashboard/domain/dashboard.dart';
-import 'package:spendable_today/features/dashboard/providers/dashboard_repository_provider.dart';
 import 'package:spendable_today/features/dashboard/repository/dashboard_repository.dart';
 import 'package:spendable_today/features/profile/screens/profile/profile_screen.dart';
 import 'package:spendable_today/features/profile/domain/profile.dart';
 import 'package:spendable_today/features/profile/domain/memory_item.dart';
-import 'package:spendable_today/features/profile/providers/memory_repository_provider.dart';
 import 'package:spendable_today/features/profile/repository/memory_repository.dart';
 import 'package:spendable_today/features/transactions/screens/import/import_screen.dart';
 import 'package:spendable_today/features/transactions/domain/csv_mapping.dart';
 import 'package:spendable_today/features/transactions/domain/import_commit_result.dart';
 import 'package:spendable_today/features/transactions/domain/import_preview.dart';
 import 'package:spendable_today/features/transactions/domain/transaction_item.dart';
-import 'package:spendable_today/features/transactions/providers/import_controller_provider.dart';
-import 'package:spendable_today/features/transactions/providers/transactions_repository_provider.dart';
+import 'package:spendable_today/features/transactions/screens/import/import_view_model.dart';
 import 'package:spendable_today/features/transactions/repository/transactions_repository.dart';
 
 void main() {

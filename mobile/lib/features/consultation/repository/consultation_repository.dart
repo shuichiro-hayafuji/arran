@@ -1,7 +1,18 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:riverpod_annotation/riverpod_annotation.dart';
+
 import '../../../core/network/api_client.dart';
 import '../../../shared/utils/json_parsing.dart';
 import '../domain/consultation.dart';
 import 'dto/consultation_dto.dart';
+
+@riverpod
+ConsultationRepository consultationRepository(Ref ref) =>
+    ConsultationRepositoryImpl(ref.watch(authorizedApiClientProvider));
+
+final consultationRepositoryProvider = Provider<ConsultationRepository>(
+  consultationRepository,
+);
 
 abstract interface class ConsultationRepository {
   Future<Consultation> start(String message, int? plannedAmount);

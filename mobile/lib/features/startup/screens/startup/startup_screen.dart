@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:spendable_today/features/startup/screens/startup/startup_intent.dart';
-import 'package:spendable_today/features/startup/providers/startup_provider.dart';
+import 'package:spendable_today/features/startup/screens/startup/startup_view_model.dart';
 
 class StartupScreen extends ConsumerWidget {
   const StartupScreen({super.key});

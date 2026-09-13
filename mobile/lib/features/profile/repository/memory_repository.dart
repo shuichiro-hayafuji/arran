@@ -1,7 +1,16 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:riverpod_annotation/riverpod_annotation.dart';
+
 import '../../../core/network/api_client.dart';
 import '../../../shared/utils/json_parsing.dart';
 import '../domain/memory_item.dart';
 import 'dto/memory_item_dto.dart';
+
+@riverpod
+MemoryRepository memoryRepository(Ref ref) =>
+    MemoryRepositoryImpl(ref.watch(authorizedApiClientProvider));
+
+final memoryRepositoryProvider = Provider<MemoryRepository>(memoryRepository);
 
 abstract interface class MemoryRepository {
   Future<List<MemoryItem>> getAll();

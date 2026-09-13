@@ -1,12 +1,24 @@
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'dart:async';
 
-import 'package:spendable_today/features/consultation/providers/consultation_repository_provider.dart';
-import 'package:spendable_today/features/consultation/providers/consultations_provider.dart';
-import 'package:spendable_today/features/profile/providers/memories_provider.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:riverpod_annotation/riverpod_annotation.dart';
+
+import 'package:spendable_today/features/consultation/repository/consultation_repository.dart';
+import 'package:spendable_today/features/profile/screens/memories/memory_view_model.dart';
 import 'package:spendable_today/features/profile/screens/memories/memory_intent.dart';
 import 'package:spendable_today/shared/presentation/mvi.dart';
+import '../consultation/consultation_view_model.dart';
 import 'result_intent.dart';
 import 'result_state.dart';
+
+@riverpod
+ResultViewModel resultViewModelFactory(Ref ref, int consultationId) =>
+    ResultViewModel(ref, consultationId);
+
+final resultViewModelProvider =
+    StateNotifierProvider.family<ResultViewModel, ResultState, int>(
+      resultViewModelFactory,
+    );
 
 class ResultViewModel extends MviViewModel<ResultState, ResultIntent> {
   ResultViewModel(this.ref, this.consultationId)
@@ -79,7 +91,11 @@ class ResultViewModel extends MviViewModel<ResultState, ResultIntent> {
             note: note,
           );
       if (!mounted) return;
-      ref.invalidate(consultationsProvider);
+      if (ref.exists(consultationControllerProvider)) {
+        unawaited(
+          ref.read(consultationControllerProvider.notifier).refreshHistory(),
+        );
+      }
       ref.read(memoriesViewModelProvider.notifier).dispatch(RefreshMemories());
       state = state.copyWith(saving: false, saved: true);
     } catch (error) {

@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:spendable_today/features/consultation/domain/consultation.dart';
 import 'package:spendable_today/features/consultation/screens/result/result_intent.dart';
-import 'package:spendable_today/features/consultation/providers/result_provider.dart';
+import 'package:spendable_today/features/consultation/screens/result/result_view_model.dart';
 
 class ResultScreen extends ConsumerStatefulWidget {
   const ResultScreen({required this.consultationId, super.key});

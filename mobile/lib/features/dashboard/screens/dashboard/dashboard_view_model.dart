@@ -1,9 +1,19 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:riverpod_annotation/riverpod_annotation.dart';
 
-import 'package:spendable_today/features/dashboard/providers/dashboard_repository_provider.dart';
+import 'package:spendable_today/features/dashboard/repository/dashboard_repository.dart';
 import 'package:spendable_today/shared/presentation/mvi.dart';
 import 'dashboard_intent.dart';
 import 'dashboard_state.dart';
+
+@riverpod
+DashboardViewModel dashboardViewModelFactory(Ref ref) =>
+    DashboardViewModel(ref);
+
+final dashboardViewModelProvider =
+    StateNotifierProvider<DashboardViewModel, DashboardState>(
+      dashboardViewModelFactory,
+    );
 
 class DashboardViewModel extends MviViewModel<DashboardState, DashboardIntent> {
   DashboardViewModel(this.ref) : super(DashboardState.initial()) {

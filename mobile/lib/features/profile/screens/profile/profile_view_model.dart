@@ -1,10 +1,20 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import 'package:spendable_today/features/profile/domain/profile.dart';
-import 'package:spendable_today/features/profile/providers/profile_repository_provider.dart';
+import 'package:spendable_today/features/profile/repository/profile_repository.dart';
 import 'package:spendable_today/shared/presentation/mvi.dart';
 import 'profile_intent.dart';
 import 'profile_state.dart';
+
+@riverpod
+ProfileViewModel profileViewModelFactory(Ref ref, bool onboarding) =>
+    ProfileViewModel(ref, onboarding);
+
+final profileViewModelProvider =
+    StateNotifierProvider.family<ProfileViewModel, ProfileState, bool>(
+      profileViewModelFactory,
+    );
 
 /// 初回登録では取得を省略し、通常編集では保存済みプロフィールを読み込む。
 /// 保存失敗は actionError に分け、読み込み済みのプロフィールを維持する。

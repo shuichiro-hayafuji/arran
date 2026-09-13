@@ -6,7 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:spendable_today/features/transactions/domain/csv_mapping.dart';
 import 'package:spendable_today/features/transactions/domain/import_preview.dart';
 import 'package:spendable_today/features/transactions/screens/import/import_intent.dart';
-import 'package:spendable_today/features/transactions/providers/import_controller_provider.dart';
+import 'package:spendable_today/features/transactions/screens/import/import_view_model.dart';
 import 'package:spendable_today/shared/utils/formatters.dart';
 
 class ImportScreen extends ConsumerWidget {

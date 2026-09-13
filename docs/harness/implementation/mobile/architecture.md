@@ -25,12 +25,12 @@ mobile/lib/
   features/<feature>/
     domain/                      # 業務モデル・値
     repository/
-      <feature>_repository.dart  # 抽象契約とImpl
+      <feature>_repository.dart  # 抽象契約・Impl・Repository Provider
       dto/                       # 通信形式とDomain変換
-    providers/                   # DI・公開状態・読取query
+    providers/                   # 読取query・派生状態
     screens/<screen>/            # Presentationの実体
       <screen>_screen.dart
-      <screen>_view_model.dart
+      <screen>_view_model.dart    # ViewModelと公開Provider
       <screen>_state.dart
       <screen>_intent.dart
       widgets/                   # 必要な画面固有部品
@@ -68,7 +68,7 @@ Screen ← Riverpodで購読 ← 不変State ← Domain
 | ViewModel | Intent、State、Domain、Provider経由のRepository抽象 | Dio/ApiClientの直接使用、DTO、Widget、BuildContext、Navigator |
 | Screen | State購読、Intent送信、Domain表示、テーマ、UI副作用 | Repository/HTTPの直接実行、JSON解析、金融判断 |
 
-Providerはcomposition rootとしてApiClientとRepositoryImplを知ってよい。ViewModelのRef利用は現行方針として許可し、純粋Domainと区別する。共通HTTPは認証付きApiClientを原則とし、認証専用経路はEX-M01に限定する。
+Providerはcomposition rootとしてApiClientとRepositoryImplを知ってよい。RepositoryのDI定義は対応する`*_repository.dart`へ抽象契約・Implと集約し、構築と契約の参照先を揃える。利用側は同ファイルからProviderを参照するが、RepositoryImplを直接生成せず抽象契約を利用する。Repositoryの操作契約・ImplにはRefや状態通知の責務を追加しない。ViewModelのRef利用は現行方針として許可し、純粋Domainと区別する。共通HTTPは認証付きApiClientを原則とし、認証専用経路はEX-M01に限定する。
 
 ## A-M03: Domain・DTO・Repositoryの責務
 
@@ -105,7 +105,7 @@ Providerはcomposition rootとしてApiClientとRepositoryImplを知ってよい
 | ViewModel | MviViewModelを継承し、dispatchで処理し、Repositoryを呼び、Stateを更新 |
 | Riverpod | DI、状態公開、依存追跡、ライフサイクル、ユーザー切替時の破棄 |
 
-[MviViewModel](../../../../mobile/lib/shared/presentation/mvi.dart) はStateNotifier実装を使用する。通常はStateNotifierProviderで公開する。現行のannotationと手書きProviderの併用を、annotationがあるという理由だけで生成Providerへ置換しない。
+[MviViewModel](../../../../mobile/lib/shared/presentation/mvi.dart) はStateNotifier実装を使用する。通常はStateNotifierProviderで公開する。ViewModelを公開するProviderと生成関数は、対応する`*_view_model.dart`に集約する。利用側は同ファイルからProviderを参照し、読取query・派生状態のProviderは`providers/`に置く。現行のannotationと手書きProviderの併用を、annotationがあるという理由だけで生成Providerへ置換しない。
 
 - Provider<Repository>: 抽象契約へImplを注入する。
 - StateNotifierProvider<ViewModel, State>: 画面の操作・状態を公開する。
@@ -131,4 +131,4 @@ ApiClient/interceptorはHTTP・認証・エラー変換、app/routerはgo_router
 
 ## 参照実装
 
-[Profileモデル](../../../../mobile/lib/features/profile/domain/profile.dart)、[DTO](../../../../mobile/lib/features/profile/repository/dto/profile_dto.dart)、[Repository](../../../../mobile/lib/features/profile/repository/profile_repository.dart)、[ViewModel](../../../../mobile/lib/features/profile/screens/profile/profile_view_model.dart)、[State](../../../../mobile/lib/features/profile/screens/profile/profile_state.dart)、[Provider](../../../../mobile/lib/features/profile/providers/profile_view_model_provider.dart) を各責務の例とする。全ルール適合済みのテンプレートではない。既存との差異はWORKFLOWを確認する。
+[Profileモデル](../../../../mobile/lib/features/profile/domain/profile.dart)、[DTO](../../../../mobile/lib/features/profile/repository/dto/profile_dto.dart)、[Repository](../../../../mobile/lib/features/profile/repository/profile_repository.dart)、[ViewModelと公開Provider](../../../../mobile/lib/features/profile/screens/profile/profile_view_model.dart)、[State](../../../../mobile/lib/features/profile/screens/profile/profile_state.dart) を各責務の例とする。全ルール適合済みのテンプレートではない。既存との差異はWORKFLOWを確認する。

@@ -1,10 +1,17 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import 'package:spendable_today/features/profile/domain/memory_item.dart';
-import 'package:spendable_today/features/profile/providers/memory_repository_provider.dart';
+import 'package:spendable_today/features/profile/repository/memory_repository.dart';
 import 'package:spendable_today/shared/presentation/mvi.dart';
 import 'memory_intent.dart';
 import 'memory_state.dart';
+
+@riverpod
+MemoryViewModel memoryViewModelFactory(Ref ref) => MemoryViewModel(ref);
+
+final memoriesViewModelProvider =
+    StateNotifierProvider<MemoryViewModel, MemoryState>(memoryViewModelFactory);
 
 class MemoryViewModel extends MviViewModel<MemoryState, MemoryIntent> {
   MemoryViewModel(this.ref) : super(MemoryState.initial()) {

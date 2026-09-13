@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:spendable_today/features/transactions/screens/list/transactions_intent.dart';
-import 'package:spendable_today/features/transactions/providers/transactions_provider.dart';
+import 'package:spendable_today/features/transactions/screens/list/transactions_view_model.dart';
 import 'package:spendable_today/shared/utils/formatters.dart';
 import 'package:spendable_today/shared/widgets/async_error_card.dart';
 

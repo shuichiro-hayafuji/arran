@@ -4,7 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import 'package:spendable_today/features/dashboard/domain/dashboard.dart';
 import 'package:spendable_today/features/dashboard/screens/dashboard/dashboard_intent.dart';
-import 'package:spendable_today/features/dashboard/providers/dashboard_provider.dart';
+import 'package:spendable_today/features/dashboard/screens/dashboard/dashboard_view_model.dart';
 import 'package:spendable_today/shared/utils/formatters.dart';
 import 'package:spendable_today/shared/widgets/async_error_card.dart';
 import 'package:spendable_today/shared/widgets/section_title.dart';

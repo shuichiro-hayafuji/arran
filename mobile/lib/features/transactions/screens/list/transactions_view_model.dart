@@ -1,11 +1,21 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:riverpod_annotation/riverpod_annotation.dart';
 
-import 'package:spendable_today/features/dashboard/providers/dashboard_provider.dart';
+import 'package:spendable_today/features/dashboard/screens/dashboard/dashboard_view_model.dart';
 import 'package:spendable_today/features/dashboard/screens/dashboard/dashboard_intent.dart';
-import 'package:spendable_today/features/transactions/providers/transactions_repository_provider.dart';
+import 'package:spendable_today/features/transactions/repository/transactions_repository.dart';
 import 'package:spendable_today/shared/presentation/mvi.dart';
 import 'transactions_intent.dart';
 import 'transactions_state.dart';
+
+@riverpod
+TransactionsViewModel transactionsViewModelFactory(Ref ref) =>
+    TransactionsViewModel(ref);
+
+final transactionsViewModelProvider =
+    StateNotifierProvider<TransactionsViewModel, TransactionsState>(
+      transactionsViewModelFactory,
+    );
 
 class TransactionsViewModel
     extends MviViewModel<TransactionsState, TransactionsIntent> {

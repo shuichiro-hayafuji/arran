@@ -1,10 +1,19 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import 'package:spendable_today/core/network/api_client.dart';
-import 'package:spendable_today/features/profile/providers/profile_repository_provider.dart';
+import 'package:spendable_today/features/profile/repository/profile_repository.dart';
 import 'package:spendable_today/shared/presentation/mvi.dart';
 import 'startup_intent.dart';
 import 'startup_state.dart';
+
+@riverpod
+StartupViewModel startupViewModelFactory(Ref ref) => StartupViewModel(ref);
+
+final startupViewModelProvider =
+    StateNotifierProvider<StartupViewModel, StartupState>(
+      startupViewModelFactory,
+    );
 
 /// プロフィールの有無で初期遷移先を決める。
 /// 404 だけを初回登録と扱い、通信障害などは再試行できるエラーとして残す。

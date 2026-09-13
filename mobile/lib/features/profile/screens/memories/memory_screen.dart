@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:spendable_today/features/profile/domain/memory_item.dart';
 import 'package:spendable_today/features/profile/screens/memories/memory_intent.dart';
-import 'package:spendable_today/features/profile/providers/memories_provider.dart';
+import 'package:spendable_today/features/profile/screens/memories/memory_view_model.dart';
 import 'package:spendable_today/shared/widgets/async_error_card.dart';
 
 class MemoryScreen extends ConsumerWidget {

@@ -5,8 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import 'package:spendable_today/features/consultation/domain/consultation.dart';
 import 'package:spendable_today/features/consultation/screens/consultation/consultation_intent.dart';
-import 'package:spendable_today/features/consultation/providers/consultation_controller_provider.dart';
-import 'package:spendable_today/features/consultation/providers/consultations_provider.dart';
+import 'package:spendable_today/features/consultation/screens/consultation/consultation_view_model.dart';
 import 'package:spendable_today/shared/utils/formatters.dart';
 import 'package:spendable_today/shared/widgets/async_error_card.dart';
 import 'package:spendable_today/shared/widgets/section_title.dart';
@@ -49,8 +48,9 @@ class _ConsultationScreenState extends ConsumerState<ConsultationScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final state = ref.watch(consultationControllerProvider);
-    final history = ref.watch(consultationsProvider);
+    final viewState = ref.watch(consultationControllerProvider);
+    final state = viewState.consultation;
+    final history = viewState.history;
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 36),
       children: [

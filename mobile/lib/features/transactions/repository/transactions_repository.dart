@@ -1,4 +1,6 @@
 import 'package:dio/dio.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../shared/utils/json_parsing.dart';
@@ -8,6 +10,14 @@ import '../domain/import_preview.dart';
 import '../domain/transaction_item.dart';
 import 'dto/import_dto.dart';
 import 'dto/transaction_item_dto.dart';
+
+@riverpod
+TransactionsRepository transactionsRepository(Ref ref) =>
+    TransactionsRepositoryImpl(ref.watch(authorizedApiClientProvider));
+
+final transactionsRepositoryProvider = Provider<TransactionsRepository>(
+  transactionsRepository,
+);
 
 abstract interface class TransactionsRepository {
   Future<List<TransactionItem>> getAll();

@@ -5,7 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import 'package:spendable_today/features/profile/domain/profile.dart';
 import 'package:spendable_today/features/profile/screens/profile/profile_intent.dart';
-import 'package:spendable_today/features/profile/providers/profile_view_model_provider.dart';
+import 'package:spendable_today/features/profile/screens/profile/profile_view_model.dart';
 
 const reduceCategoryOptions = [
   '酒・飲み会',

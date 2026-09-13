@@ -1,18 +1,25 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
 
-import 'package:spendable_today/features/dashboard/providers/dashboard_provider.dart';
+import 'package:spendable_today/features/dashboard/screens/dashboard/dashboard_view_model.dart';
 import 'package:spendable_today/features/dashboard/screens/dashboard/dashboard_intent.dart';
 import 'package:spendable_today/features/transactions/domain/csv_mapping.dart';
 import 'package:spendable_today/features/transactions/domain/import_commit_result.dart';
 import 'package:spendable_today/features/transactions/domain/import_preview.dart';
-import 'package:spendable_today/features/transactions/providers/transactions_repository_provider.dart';
+import 'package:spendable_today/features/transactions/repository/transactions_repository.dart';
 import 'package:spendable_today/features/transactions/screens/list/transactions_intent.dart';
-import 'package:spendable_today/features/transactions/providers/transactions_provider.dart';
+import 'package:spendable_today/features/transactions/screens/list/transactions_view_model.dart';
 import 'package:spendable_today/shared/presentation/mvi.dart';
 import 'import_intent.dart';
 
 part 'import_view_model.freezed.dart';
+
+@riverpod
+ImportViewModel importViewModelFactory(Ref ref) => ImportViewModel(ref);
+
+final importControllerProvider =
+    StateNotifierProvider<ImportViewModel, ImportState>(importViewModelFactory);
 
 @freezed
 abstract class ImportState with _$ImportState {

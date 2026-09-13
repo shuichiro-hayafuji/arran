@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:spendable_today/features/review/domain/monthly_review.dart';
 import 'package:spendable_today/features/review/screens/review/review_intent.dart';
-import 'package:spendable_today/features/review/providers/review_provider.dart';
+import 'package:spendable_today/features/review/screens/review/review_view_model.dart';
 import 'package:spendable_today/shared/utils/formatters.dart';
 import 'package:spendable_today/shared/widgets/async_error_card.dart';
 

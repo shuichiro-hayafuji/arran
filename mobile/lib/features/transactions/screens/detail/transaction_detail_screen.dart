@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:spendable_today/features/transactions/domain/categories.dart';
 import 'package:spendable_today/features/transactions/domain/transaction_item.dart';
 import 'package:spendable_today/features/transactions/screens/list/transactions_intent.dart';
-import 'package:spendable_today/features/transactions/providers/transactions_provider.dart';
+import 'package:spendable_today/features/transactions/screens/list/transactions_view_model.dart';
 import 'package:spendable_today/shared/utils/formatters.dart';
 
 class TransactionDetailScreen extends ConsumerStatefulWidget {
