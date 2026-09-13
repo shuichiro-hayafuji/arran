@@ -4,11 +4,13 @@ import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../config/env.dart';
 import '../../../core/network/api_error_handler.dart';
 import '../../../core/network/api_exception.dart';
 import '../domain/session.dart';
+import '../repository/dto/stored_session_dto.dart';
 
 /// セッションの永続化を抽象化し、端末の安全なストレージとテスト用実装を差し替える。
 abstract class SessionStorage {
@@ -33,6 +35,10 @@ class SecureSessionStorage implements SessionStorage {
   @override
   Future<void> delete() => _storage.delete(key: _key);
 }
+
+final sessionControllerProvider = Provider<SessionController>(
+  (ref) => authSession,
+);
 
 final authSession = SessionController(SecureSessionStorage());
 
@@ -76,7 +82,7 @@ class SessionController extends ChangeNotifier {
     try {
       final saved = await storage.read();
       if (saved != null) {
-        final session = Session.fromJson(
+        final session = StoredSessionDto.fromJson(
           jsonDecode(saved) as Map<String, dynamic>,
         );
         if (session.alive) {
@@ -93,55 +99,49 @@ class SessionController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> login(String username, String password) async {
+  /// 認証済みセッションを保存し、アプリ全体へ公開する。
+  Future<void> activate(Session session) async {
+    if (!session.alive) {
+      throw StateError('セッションが無効です。');
+    }
     try {
-      final response = await _dio.post<Map<String, dynamic>>(
-        '/auth/login',
-        data: {'username': username.trim(), 'password': password},
+      await _persist(
+        () => storage.write(jsonEncode(StoredSessionDto.toJson(session))),
       );
-      final session = Session.fromJson(response.data!);
-      if (!session.alive) {
-        throw StateError('ログイン応答が無効です。');
-      }
+    } catch (_) {
+      // 保存失敗と、後始末の通信失敗を区別して利用者へ伝える。
       try {
-        await _persist(() => storage.write(jsonEncode(session.toJson())));
+        await _dio.post<dynamic>(
+          '/auth/logout',
+          options: Options(
+            headers: {'Authorization': 'Bearer ${session.token}'},
+          ),
+        );
       } catch (_) {
-        // 保存失敗と、後始末の通信失敗を区別して利用者へ伝える。
-        try {
-          await _dio.post<dynamic>(
-            '/auth/logout',
-            options: Options(
-              headers: {'Authorization': 'Bearer ${session.token}'},
-            ),
-          );
-        } catch (_) {
-          throw const ApiException(
-            'ユーザー認証は成功しましたが、端末への認証情報の保存とサーバーのセッション解除に失敗しました。アプリを完全に終了して再起動してください。',
-          );
-        }
         throw const ApiException(
-          'ユーザー認証は成功しましたが、端末に認証情報を保存できませんでした。アプリを完全に終了して再起動してください。',
+          'ユーザー認証は成功しましたが、端末への認証情報の保存とサーバーのセッション解除に失敗しました。アプリを完全に終了して再起動してください。',
         );
       }
-      _session = session;
-      storageError = null;
-      generation++;
-      _scheduleExpiry();
-      notifyListeners();
+      throw const ApiException(
+        'ユーザー認証は成功しましたが、端末に認証情報を保存できませんでした。アプリを完全に終了して再起動してください。',
+      );
+    }
+    _session = session;
+    storageError = null;
+    generation++;
+    _scheduleExpiry();
+    notifyListeners();
+  }
+
+  /// 公開しないセッションを解除する（ログイン画面破棄後の遅延応答など）。
+  Future<void> revoke(Session session) async {
+    try {
+      await _dio.post<dynamic>(
+        '/auth/logout',
+        options: Options(headers: {'Authorization': 'Bearer ${session.token}'}),
+      );
     } on DioException catch (error) {
-      if (error.response?.statusCode == 404) {
-        throw const ApiException(
-          '接続先にログインAPIがありません。Goサーバーの更新・再起動と接続先を確認してください。',
-          statusCode: 404,
-        );
-      }
-      if (error.response?.statusCode == 503) {
-        throw const ApiException(
-          'サーバーの認証処理に失敗しました。DB接続とGoサーバーの状態を確認してください。',
-          statusCode: 503,
-        );
-      }
-      throw error.appException;
+      if (error.response?.statusCode != 401) throw error.appException;
     }
   }
 

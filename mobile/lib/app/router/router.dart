@@ -14,7 +14,7 @@ import '../../features/transactions/screens/detail/transaction_detail_screen.dar
 import '../../features/transactions/screens/list/transactions_screen.dart';
 import 'navigation_shell.dart';
 import '../../features/session/provider/session_provider.dart';
-import '../../features/session/screens/login_screen.dart';
+import '../../features/login/screens/login/login_screen.dart';
 
 final rootNavigatorKey = GlobalKey<NavigatorState>(
   debugLabel: 'rootNavigatorKey',

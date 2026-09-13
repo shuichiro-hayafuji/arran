@@ -18,7 +18,7 @@ DEC-M04は教科書的な「Repository interfaceもDomain層に置く」配置�
 
 ## A-M01: featureと配置の粒度
 
-featureは業務概念・一連の操作で区切る。画面ひとつ、APIひとつを理由にfeatureを増やさない。現在のprofile、transactions、dashboard、consultation、review、session、startupを出発点とする。memoriesはprofile内に属する。
+featureは業務概念・一連の操作で区切る。画面ひとつ、APIひとつを理由にfeatureを増やさない。現在のprofile、transactions、dashboard、consultation、review、login、session、startupを出発点とする。memoriesはprofile内に属する。
 
 ```text
 mobile/lib/
@@ -45,6 +45,13 @@ mobile/lib/
 ```
 
 `screens/` と並立する `presentation/` を作らない。通信不要の機能へ空のRepository/DTOを作らない。複合Stateは専用ファイル、単純な読取結果だけなら既存reviewのようにAsyncValueを直接使える。既存ImportStateのViewModel同居、sessionの単数 `provider/` は移動を必須としない。
+
+### loginとsessionの責務
+
+- loginはログイン画面・入力検証・送信中とエラーのMVI状態・認証APIのRepository/DTOを所有する。RepositoryにはpublicApiClientProviderのApiClientを注入し、Dioの生成・設定・破棄と通信例外変換は共通HTTPへ集約する。
+- sessionはSession Domain・安全な保存と復元・期限切れ・失効・ログアウト・generationによるユーザー切替を所有する。ユーザー名・パスワードやログイン画面を扱わない。
+- LoginViewModelはLoginRepositoryから受け取ったSessionをSessionController.activateへ渡す。保存失敗時のサーバー失効はsessionが担当する。sessionからloginへは依存しない。
+- loginのProviderはautoDisposeとし、送信中の重複操作を抑止する。破棄またはユーザー切替後の認証応答は公開せず失効させる。Session DomainはJSONを持たず、ログイン応答DTOと保存形式はそれぞれのfeatureが所有する。
 
 ## A-M02: 依存方向と実行フロー
 

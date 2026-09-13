@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 import 'package:spendable_today/core/network/api_exception.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:spendable_today/features/session/domain/session.dart';
+import 'package:spendable_today/features/session/repository/dto/stored_session_dto.dart';
 import 'package:spendable_today/features/session/provider/session_provider.dart';
 
 class MemoryStorage implements SessionStorage {
@@ -28,7 +29,6 @@ class AuthAdapter implements HttpClientAdapter {
   int logoutStatus = 204;
   int logoutCount = 0;
   String? authorization;
-  String issuedToken = 'token-a';
   @override
   Future<ResponseBody> fetch(
     RequestOptions options,
@@ -46,18 +46,7 @@ class AuthAdapter implements HttpClientAdapter {
         },
       );
     }
-    return ResponseBody.fromString(
-      jsonEncode({
-        'access_token': issuedToken,
-        'expires_at': DateTime.now()
-            .add(const Duration(hours: 1))
-            .toIso8601String(),
-      }),
-      200,
-      headers: {
-        Headers.contentTypeHeader: [Headers.jsonContentType],
-      },
-    );
+    throw StateError('Unexpected session request: ${options.path}');
   }
 
   @override
@@ -68,20 +57,24 @@ void main() {
   test('restores live sessions and removes expired sessions', () async {
     final storage = MemoryStorage();
     storage.value = jsonEncode(
-      Session(
-        token: 'saved',
-        expiresAt: DateTime.now().add(const Duration(hours: 1)),
-      ).toJson(),
+      StoredSessionDto.toJson(
+        Session(
+          token: 'saved',
+          expiresAt: DateTime.now().add(const Duration(hours: 1)),
+        ),
+      ),
     );
     final controller = SessionController(storage);
     await controller.initialize();
     expect(controller.token, 'saved');
     controller.dispose();
     storage.value = jsonEncode(
-      Session(
-        token: 'expired',
-        expiresAt: DateTime.now().subtract(const Duration(seconds: 1)),
-      ).toJson(),
+      StoredSessionDto.toJson(
+        Session(
+          token: 'expired',
+          expiresAt: DateTime.now().subtract(const Duration(seconds: 1)),
+        ),
+      ),
     );
     final expired = SessionController(storage);
     await expired.initialize();
@@ -90,7 +83,7 @@ void main() {
     expired.dispose();
   });
 
-  test('login persists token only; logout revokes and clears it', () async {
+  test('activation persists session; logout revokes and clears it', () async {
     final storage = MemoryStorage();
     final adapter = AuthAdapter();
     final controller = SessionController(
@@ -98,9 +91,17 @@ void main() {
       dio: Dio()..httpClientAdapter = adapter,
     );
     await controller.initialize();
-    await controller.login('alice', 'private password');
+    await controller.activate(
+      Session(
+        token: 'token-a',
+        expiresAt: DateTime.now().add(const Duration(hours: 1)),
+      ),
+    );
     expect(controller.loggedIn, isTrue);
-    expect(storage.value, isNot(contains('private password')));
+    expect(
+      (jsonDecode(storage.value!) as Map).keys,
+      unorderedEquals(['access_token', 'expires_at']),
+    );
     final generation = controller.generation;
     await controller.logout();
     expect(adapter.authorization, 'Bearer token-a');
@@ -118,10 +119,19 @@ void main() {
       dio: Dio()..httpClientAdapter = adapter,
     );
     await controller.initialize();
-    await controller.login('alice', 'password');
+    await controller.activate(
+      Session(
+        token: 'token-a',
+        expiresAt: DateTime.now().add(const Duration(hours: 1)),
+      ),
+    );
     await controller.clearIfCurrent('token-a');
-    adapter.issuedToken = 'token-b';
-    await controller.login('bob', 'password');
+    await controller.activate(
+      Session(
+        token: 'token-b',
+        expiresAt: DateTime.now().add(const Duration(hours: 1)),
+      ),
+    );
     await controller.clearIfCurrent('token-a');
     expect(controller.token, 'token-b');
     expect(storage.value, contains('token-b'));
@@ -138,7 +148,12 @@ void main() {
         dio: Dio()..httpClientAdapter = adapter,
       );
       await controller.initialize();
-      await controller.login('alice', 'password');
+      await controller.activate(
+        Session(
+          token: 'token-a',
+          expiresAt: DateTime.now().add(const Duration(hours: 1)),
+        ),
+      );
       await expectLater(controller.logout(), throwsA(isA<Exception>()));
       expect(controller.loggedIn, isTrue);
       adapter.logoutStatus = 401;
@@ -157,7 +172,12 @@ void main() {
     );
     await controller.initialize();
     await expectLater(
-      controller.login('alice', 'password'),
+      controller.activate(
+        Session(
+          token: 'token-a',
+          expiresAt: DateTime.now().add(const Duration(hours: 1)),
+        ),
+      ),
       throwsA(
         isA<ApiException>().having(
           (e) => e.message,
