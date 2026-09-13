@@ -122,7 +122,7 @@ Providerはcomposition rootとしてApiClientとRepositoryImplを知ってよい
 
 ref.watchは描画・依存追跡、ref.readは操作時参照、ref.listenは遷移・Snackbar等の一回限りのUI副作用に用いる。同じ取得結果の正本をStateと別Providerへ無目的に二重保持しない。
 
-ユーザー切替時は [main.dart](../../../../mobile/lib/main.dart) のgenerationに基づくProviderScope再生成を維持する。session固有のChangeNotifier/Dio/Secure StorageはEX-M01であり、通常featureの見本にしない。
+ユーザー切替時は [main.dart](../../../../mobile/lib/main.dart) のgenerationに基づくProviderScope再生成を維持する。session固有のアプリ寿命ProviderContainer/ChangeNotifier/Secure StorageはEX-M01であり、通常featureの見本にしない。
 
 ## A-M05: 横断基盤とデザイン
 
@@ -139,3 +139,10 @@ ApiClient/interceptorはHTTP・認証・エラー変換、app/routerはgo_router
 ## 参照実装
 
 [Profileモデル](../../../../mobile/lib/features/profile/domain/profile.dart)、[DTO](../../../../mobile/lib/features/profile/repository/dto/profile_dto.dart)、[Repository](../../../../mobile/lib/features/profile/repository/profile_repository.dart)、[ViewModelと公開Provider](../../../../mobile/lib/features/profile/screens/profile/profile_view_model.dart)、[State](../../../../mobile/lib/features/profile/screens/profile/profile_state.dart) を各責務の例とする。全ルール適合済みのテンプレートではない。既存との差異はWORKFLOWを確認する。
+
+## A-M07: 共通HTTPの再利用
+
+- HTTP変更前に [ApiClient](../../../../mobile/lib/core/network/api_client.dart) と既存Providerを確認する。Dioの生成・設定・破棄はこのファイルへ集約し、他の `mobile/lib` ではDioの型参照・生成やApiClientの直接生成を追加しない。ApiClient型の注入とOptions/FormData等の転送用型は許可する。
+- 通常の認証付き通信はauthorizedApiClientProvider、ログインや明示したトークンの失効はpublicApiClientProviderから注入する。後者の401と対象トークンの照合は呼び出し元が管理する。
+- sessionのEX-M01は独自Dioを許可しない。画面のProviderScopeより長い寿命が必要なら、既存のアプリ寿命Containerから共通Providerを利用する。寿命の違いを理由に通信設定を複製しない。
+- [チェックtool](../../../../tools/CHECKS.md) のmobile-architectureを実行する。構成変更が必要なら理由・影響、ルール、検出範囲と回帰テストを同時に更新し、違反を通すだけの除外を追加しない。
