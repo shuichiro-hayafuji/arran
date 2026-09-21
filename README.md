@@ -116,7 +116,8 @@ Android Studioでは `mobile` を開き、Flutter SDKをFVMのSDKへ設定して
 ```bash
 USE_MOCK_LLM=false
 OPENAI_API_KEY=your-key
-OPENAI_MODEL=gpt-5-mini
+OPENAI_MODEL=gpt-5.6-terra
+OPENAI_REASONING_EFFORT=medium
 ```
 
 その後、LAN用サーバーを起動します。

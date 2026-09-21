@@ -9,10 +9,10 @@ Internet
   → internet-facing ALB :80
   → ECS Fargate（private subnet, :8080）
        ├─ RDS PostgreSQL 16（private subnet, :5432）
-       └─ NAT Gateway → OpenAI Responses API
+       └─ NAT Gateway → OpenAI Responses API / PagerDuty Events API
 ```
 
-CDKの `DockerImageAsset` は `server/` のDockerfileをx86_64 Linux向けにビルドします。ECSにはRDSの接続情報とSecrets ManagerのOpenAIキーを渡します。OpenAIキーが未設定でもAPIはMock fallbackで動作します。
+CDKの `DockerImageAsset` は `server/` のDockerfileをx86_64 Linux向けにビルドします。ECSにはRDSの接続情報とSecrets ManagerのOpenAIキー、PagerDuty routing keyを渡します。OpenAIキーが未設定でもAPIはMock fallbackで動作します。
 
 ## 構成
 
