@@ -1,8 +1,8 @@
 # ER図
 
-PostgreSQLの`001_init.sql`と`002_auth.sql`を適用した後の物理スキーマです。認証・家計データ・相談データに分けて示します。実DBを読み取った図ではなく、リポジトリ内のDDLに基づきます。
+PostgreSQLの`001_init.sql`から`008_monthly_costs.sql`までを適用した後の物理スキーマです。認証・運用設定・家計データ・相談データに分けて示します。実DBを読み取った図ではなく、リポジトリ内のDDLに基づきます。
 
-正本: [初期スキーマ](../server/internal/infrastructure/persistence/postgres/001_init.sql) / [認証・所有者の追加](../server/internal/infrastructure/persistence/postgres/002_auth.sql)
+正本: [PostgreSQL migration](../server/internal/infrastructure/persistence/postgres/)
 
 `PK`は主キー、`FK`は外部キー、`UK`は一意制約です。複合一意制約の列には同じ制約番号を付記しています。`NULL可`の記載がない列はNOT NULLです。`bigserial`はシーケンスで採番されるbigintとして表記します。関連線は外部キーが存在する関係だけを表します。
 
@@ -13,6 +13,10 @@ PostgreSQLの`001_init.sql`と`002_auth.sql`を適用した後の物理スキー
 ```mermaid
 erDiagram
     users ||..o{ auth_sessions : "セッションを持つ"
+    users ||--o| user_consultation_limits : "個別上限を持つ"
+    users ||--o{ monthly_consultation_usage : "月次相談数を持つ"
+    users ||--o{ admin_notifications : "管理者通知を発生させる"
+    users ||--o{ llm_usage : "外部モデルを利用する"
 
     users {
         bigint id PK "自動採番・正の値"
@@ -32,6 +36,54 @@ erDiagram
         integer attempts "期間内のログイン試行回数"
         timestamptz window_end "制限期間の終了日時"
     }
+    service_settings {
+        text key PK "設定名"
+        bigint integer_value "0以上"
+        timestamptz updated_at "既定値 CURRENT_TIMESTAMP"
+    }
+    user_consultation_limits {
+        bigint user_id PK, FK "users.id"
+        bigint monthly_limit "0以上"
+        timestamptz updated_at "既定値 CURRENT_TIMESTAMP"
+    }
+    monthly_consultation_usage {
+        bigint user_id PK, FK
+        text month PK "日本時間のYYYY-MM"
+        bigint consultation_count "0以上"
+        timestamptz updated_at
+    }
+    admin_notifications {
+        bigint user_id PK, FK
+        text month PK
+        text notification_type PK
+        text status "sending delivered failed"
+        integer attempts
+    }
+    llm_usage {
+        bigint id PK
+        bigint user_id FK
+        text operation
+        text model
+        bigint input_tokens
+        bigint cached_input_tokens
+        bigint output_tokens
+        bigint reasoning_tokens
+        bigint total_tokens
+        timestamptz occurred_at
+    }
+    llm_model_prices {
+        text model PK
+        date effective_from PK
+        numeric input_usd_per_million
+        numeric cached_input_usd_per_million
+        numeric output_usd_per_million
+    }
+    monthly_operating_costs {
+        text month PK
+        numeric infrastructure_cost_usd
+        integer support_case_count
+        integer support_minutes
+    }
     schema_migrations {
         bigint version PK "適用済みバージョン"
         timestamptz applied_at "適用日時"
@@ -41,6 +93,9 @@ erDiagram
 - `auth_sessions.user_id`は必須です。ユーザー削除時はセッションも削除されます（ON DELETE CASCADE）。
 - `auth_sessions.password_hash`は外部キーではありません。認証時にユーザーの現在のハッシュと比較し、パスワード変更後の旧セッションを拒否します。
 - `auth_attempts.key`は`users.id`ではありません。未登録ユーザーへの試行やIP単位の制限も記録するため、`users`との外部キーを持ちません。
+- 月間相談上限は`user_consultation_limits`の利用者別設定を優先し、行がなければ`service_settings`の`default_monthly_consultation_limit`を使います。利用者削除時は個別上限も削除されます。
+- `monthly_consultation_usage`は新規相談だけを数え、`admin_notifications`は上限通知を利用者・月ごとに一意化します。
+- `llm_usage`は費用集計用のtoken数だけを保持し、相談内容やモデル出力を保持しません。`llm_model_prices`と`monthly_operating_costs`にはユーザー外部キーがありません。
 
 ## プロフィール・取引・分類ルール
 

@@ -12,6 +12,7 @@
 | --- | --- |
 | 対象者・相談体験・製品方針 | [対象者と支出相談の体験](../product/target-users.md)（初期方針と未検証事項） |
 | 初版の機能範囲・公開先 | [初版の提供範囲](../product/initial-release-scope.md)（7機能の採否と後続の検討） |
+| 無料提供・相談上限・費用確認 | [無料提供と利用上限の方針](../product/free-service-cost-policy.md)（人数、変更可能な上限、到達後の動作、管理者通知、月次確認） |
 | mobileの画面・Widget・テーマ | [モバイルのデザインシステム](../mobile/design-system.md) |
 | API、DTO、認証、セッション | モバイル・サーバーの3文書と [OpenAPI](../../server/docs/openapi.yaml) |
 | 金額、分類、相談、CSV、レビュー | サーバー業務。表示も変える場合はモバイル業務・構成 |

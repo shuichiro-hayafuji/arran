@@ -38,6 +38,7 @@ infrastructure/persistence/postgres → Repository interface
 - `internal/infrastructure/persistence/postgres`: SQL、トランザクション、PostgreSQL migration、pgx driver
 - `internal/infrastructure/persistence/sqlite`: Repositoryテスト用adapter。実行時の依存ではない
 - `internal/infrastructure/openai`: Responses API、`store:false`、Structured Output schema
+- `internal/infrastructure/notification`: PagerDuty Events APIによる上限到達通知
 - `internal/csvimport`: 文字コード、列、日付、金額の正規化、カテゴリ分類、fingerprint生成
 
 Agent moduleは `server` の `internal` やdomainをimportしません。生のCSV、店舗名、口座名、明細本文をAgentやOpenAIへ渡さない境界は `internal/agentadapter` とApplication側で維持します。
@@ -62,6 +63,8 @@ POST /transactions/import/commit
 
 Applicationがプロフィール、月次集計、直近相談、記憶、関連明細を取得し、Goがカテゴリ、残額、支出後残額、予算超過、`verdict`（`safe`、`caution`、`avoid`、`insufficient_data`）を計算します。LLMはGoが計算した事実の説明だけを生成し、出力はGoで検証します。不備・タイムアウト・APIエラー時は決定論的モックへフォールバックします。
 
+新規相談は日本時間の月単位で数えます。全体の初期上限と利用者別上書きはPostgreSQLに保存し、上限到達後は追加メッセージ、メモリ抽出、月次レビューを含めて外部モデルを呼ばず、ローカルfallbackを使います。上限到達通知とOpenAI token利用量も、相談内容とは分離して保存します。
+
 ### 月次レビュー
 
 高額支出、カテゴリ傾向、サブスクリプションらしい定期支出、相談結果などから、ローカルで最大5件の見直し候補を作ります。OpenAIが利用できる場合は説明を補助しますが、失敗時はローカル候補を保存します。
@@ -71,7 +74,7 @@ Applicationがプロフィール、月次集計、直近相談、記憶、関連
 - [OpenAPI定義](../../server/docs/openapi.yaml): HTTPリクエスト・レスポンス
 - [DBスキーマ](../../server/docs/database-schema.md): テーブルと確認手順
 - [ER図](../ER_DIAGRAM.md): 全体のデータ関係
-- [PostgreSQL migration](../../server/internal/infrastructure/persistence/postgres/002_auth.sql): 実行時スキーマ
+- [PostgreSQL migration](../../server/internal/infrastructure/persistence/postgres/): 実行時スキーマ
 
 金額は整数の円、保存時刻はRFC 3339、月の判定は `Asia/Tokyo` を使います。
 
