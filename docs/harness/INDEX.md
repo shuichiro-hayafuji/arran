@@ -11,6 +11,7 @@
 | 横断する変更 | 追加で読む文書 |
 | --- | --- |
 | 対象者・相談体験・製品方針 | [対象者と支出相談の体験](../product/target-users.md)（初期方針と未検証事項） |
+| AI・利用者・決定論的処理・運営者の責務 | [AIと人間の責務境界](../product/ai-human-responsibility.md)（判断権限、説明責任、障害時の扱い） |
 | 初版の機能範囲・公開先 | [初版の提供範囲](../product/initial-release-scope.md)（7機能の採否と後続の検討） |
 | mobileの画面・Widget・テーマ | [モバイルのデザインシステム](../mobile/design-system.md) |
 | API、DTO、認証、セッション | モバイル・サーバーの3文書と [OpenAPI](../../server/docs/openapi.yaml) |

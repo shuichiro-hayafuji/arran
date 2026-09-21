@@ -40,6 +40,7 @@ infra/ Docker / ECS Fargate / RDS PostgreSQL
 ## 製品・業務
 
 - [対象者と支出相談の体験](product/target-users.md)
+- [AIと人間の責務境界](product/ai-human-responsibility.md)
 - [初版の提供範囲](product/initial-release-scope.md)
 
 ## 補助資料
