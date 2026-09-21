@@ -1,0 +1,16 @@
+{
+  "description": "Arran: notify locally when Codex finishes a response; this does not imply validation success.",
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/codex-notify.py\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
