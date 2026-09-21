@@ -7,4 +7,4 @@
 - C-S05: 外部モデル送信の許可項目を明示し、認証情報・CSV原文をログへ出さない。OpenAIの `store:false` を維持するが、それだけで保存ゼロを保証すると説明しない。
 - C-S06: Agent変更時は独立moduleのテストと親serverの結合を両方検証する。submoduleの未コミット差分と親が参照するrevisionを分けて報告する。
 - C-S07: テストは振る舞いを検証し、時刻・外部モデル・Repositoryを必要な境界で差し替える。PostgreSQL固有の保証をSQLiteテストだけで済ませない。
-- C-S08: 整形・vet・テストのコマンドは [tool](../../../../tools/INDEX.md)。専用テストDBを使い、普段使う家計DBへテストを向けない。
+- C-S08: 整形・vet・テストのコマンドは [tool](../../tools/INDEX.md)。専用テストDBを使い、普段使う家計DBへテストを向けない。

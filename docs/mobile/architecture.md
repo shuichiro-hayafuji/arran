@@ -1,6 +1,6 @@
 # モバイルのアーキテクチャ
 
-本書はAIがmobileを変更する際の設計制約。「必須・禁止」は新規実装と変更部分に適用する。現行との差異は [例外・未整備事項](../../WORKFLOW.md) に記録し、無関係な一括移行はしない。
+本書はmobileを変更する際の設計制約。「必須・禁止」は新規実装と変更部分に適用する。現行との差異は [例外・未整備事項](../harness/WORKFLOW.md) に記録し、無関係な一括移行はしない。
 
 ## 上位構成と意思決定
 
@@ -86,7 +86,7 @@ Providerはcomposition rootとしてApiClientとRepositoryImplを知ってよい
 - loading、saving、選択タブ、入力エラーをDomainへ入れない。これらはPresentationのStateに置く。
 - 不変として扱い、finalフィールドと新しい値への置換を基本とする。公開List/Mapも破壊的変更しない。必要な境界でコピー・unmodifiable化する。
 - 共通モデル化は意味の所有者を確認して判断する。二箇所で使うという理由だけでsharedへ移さない。
-- 表示変換・入力検証と金融判断を区別する。支出可否の正本は [B-S01](../../business/server.md) でありモバイルに再実装しない。
+- 表示変換・入力検証と金融判断を区別する。支出可否の正本は [B-S01](../server/business.md) でありモバイルに再実装しない。
 
 ### DTO
 
@@ -112,7 +112,7 @@ Providerはcomposition rootとしてApiClientとRepositoryImplを知ってよい
 | ViewModel | MviViewModelを継承し、dispatchで処理し、Repositoryを呼び、Stateを更新 |
 | Riverpod | DI、状態公開、依存追跡、ライフサイクル、ユーザー切替時の破棄 |
 
-[MviViewModel](../../../../mobile/lib/shared/presentation/mvi.dart) はStateNotifier実装を使用する。通常はStateNotifierProviderで公開する。ViewModelを公開するProviderと生成関数は、対応する`*_view_model.dart`に集約する。利用側は同ファイルからProviderを参照し、読取query・派生状態のProviderは`providers/`に置く。現行のannotationと手書きProviderの併用を、annotationがあるという理由だけで生成Providerへ置換しない。
+[MviViewModel](../../mobile/lib/shared/presentation/mvi.dart) はStateNotifier実装を使用する。通常はStateNotifierProviderで公開する。ViewModelを公開するProviderと生成関数は、対応する`*_view_model.dart`に集約する。利用側は同ファイルからProviderを参照し、読取query・派生状態のProviderは`providers/`に置く。現行のannotationと手書きProviderの併用を、annotationがあるという理由だけで生成Providerへ置換しない。
 
 - Provider<Repository>: 抽象契約へImplを注入する。
 - StateNotifierProvider<ViewModel, State>: 画面の操作・状態を公開する。
@@ -122,7 +122,7 @@ Providerはcomposition rootとしてApiClientとRepositoryImplを知ってよい
 
 ref.watchは描画・依存追跡、ref.readは操作時参照、ref.listenは遷移・Snackbar等の一回限りのUI副作用に用いる。同じ取得結果の正本をStateと別Providerへ無目的に二重保持しない。
 
-ユーザー切替時は [main.dart](../../../../mobile/lib/main.dart) のgenerationに基づくProviderScope再生成を維持する。session固有のアプリ寿命ProviderContainer/ChangeNotifier/Secure StorageはEX-M01であり、通常featureの見本にしない。
+ユーザー切替時は [main.dart](../../mobile/lib/main.dart) のgenerationに基づくProviderScope再生成を維持する。session固有のアプリ寿命ProviderContainer/ChangeNotifier/Secure StorageはEX-M01であり、通常featureの見本にしない。
 
 ## A-M05: 横断基盤とデザイン
 
@@ -138,11 +138,11 @@ ApiClient/interceptorはHTTP・認証・エラー変換、app/routerはgo_router
 
 ## 参照実装
 
-[Profileモデル](../../../../mobile/lib/features/profile/domain/profile.dart)、[DTO](../../../../mobile/lib/features/profile/repository/dto/profile_dto.dart)、[Repository](../../../../mobile/lib/features/profile/repository/profile_repository.dart)、[ViewModelと公開Provider](../../../../mobile/lib/features/profile/screens/profile/profile_view_model.dart)、[State](../../../../mobile/lib/features/profile/screens/profile/profile_state.dart) を各責務の例とする。全ルール適合済みのテンプレートではない。既存との差異はWORKFLOWを確認する。
+[Profileモデル](../../mobile/lib/features/profile/domain/profile.dart)、[DTO](../../mobile/lib/features/profile/repository/dto/profile_dto.dart)、[Repository](../../mobile/lib/features/profile/repository/profile_repository.dart)、[ViewModelと公開Provider](../../mobile/lib/features/profile/screens/profile/profile_view_model.dart)、[State](../../mobile/lib/features/profile/screens/profile/profile_state.dart) を各責務の例とする。全ルール適合済みのテンプレートではない。既存との差異はWORKFLOWを確認する。
 
 ## A-M07: 共通HTTPの再利用
 
-- HTTP変更前に [ApiClient](../../../../mobile/lib/core/network/api_client.dart) と既存Providerを確認する。Dioの生成・設定・破棄はこのファイルへ集約し、他の `mobile/lib` ではDioの型参照・生成やApiClientの直接生成を追加しない。ApiClient型の注入とOptions/FormData等の転送用型は許可する。
+- HTTP変更前に [ApiClient](../../mobile/lib/core/network/api_client.dart) と既存Providerを確認する。Dioの生成・設定・破棄はこのファイルへ集約し、他の `mobile/lib` ではDioの型参照・生成やApiClientの直接生成を追加しない。ApiClient型の注入とOptions/FormData等の転送用型は許可する。
 - 通常の認証付き通信はauthorizedApiClientProvider、ログインや明示したトークンの失効はpublicApiClientProviderから注入する。後者の401と対象トークンの照合は呼び出し元が管理する。
 - sessionのEX-M01は独自Dioを許可しない。画面のProviderScopeより長い寿命が必要なら、既存のアプリ寿命Containerから共通Providerを利用する。寿命の違いを理由に通信設定を複製しない。
-- [チェックtool](../../../../tools/CHECKS.md) のmobile-architectureを実行する。構成変更が必要なら理由・影響、ルール、検出範囲と回帰テストを同時に更新し、違反を通すだけの除外を追加しない。
+- [チェックtool](../../tools/CHECKS.md) のmobile-architectureを実行する。構成変更が必要なら理由・影響、ルール、検出範囲と回帰テストを同時に更新し、違反を通すだけの除外を追加しない。
