@@ -8,3 +8,11 @@
 - 決定論的な検証は [tool Index](tools/INDEX.md) の入口を使う。フォーマットを独自の文章ルールで再定義しない。
 - 作業中の既存差分を保持する。生成物・Agent submodule・同梱パッケージの扱いは該当文書に従う。
 - 完了時は変更内容、実行した検証、未実行・失敗・残る例外を報告する。静的検証だけで実機・DB・AWSの動作確認済みとしない。
+
+## PRの作成・更新
+
+PRの作成・本文更新・レビュー対応では [arran-pull-request Skill](.agents/skills/arran-pull-request/SKILL.md) を読み、[PRテンプレート](.github/pull_request_template.md) を使う。本文・コメントの作成と投稿範囲はSkillに従う。
+
+## ブランチ・コミット・push
+
+ブランチ作成・コミットの分割・commit・pushでは [arran-commit Skill](.agents/skills/arran-commit/SKILL.md) を読む。関連Issueがある場合のブランチ名、日本語のコミットメッセージ、関心ごととビルド可能性を基準にした分割はSkillに従う。
