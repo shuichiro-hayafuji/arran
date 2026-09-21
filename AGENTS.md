@@ -8,3 +8,11 @@
 - 決定論的な検証は [tool Index](tools/INDEX.md) の入口を使う。フォーマットを独自の文章ルールで再定義しない。
 - 作業中の既存差分を保持する。生成物・Agent submodule・同梱パッケージの扱いは該当文書に従う。
 - 完了時は変更内容、実行した検証、未実行・失敗・残る例外を報告する。静的検証だけで実機・DB・AWSの動作確認済みとしない。
+
+## Codexオーケストレーション
+
+- main sessionは依頼範囲、Issueの完了条件、守る対象、検証方法、AI実行クラス、役割分担、最終的な完了判定を管理する。
+- 通常の機能実装は`arran_implementer`へ委譲し、同じ作業ツリーで複数のエージェントに並行して書き込ませない。
+- `arran_explorer`は調査、`arran_implementer`は実装と必要なテスト、`arran_reviewer`は独立レビュー、`arran_verifier`は正規の検証実行を担当する。
+- サブエージェントは範囲変更、再委譲、ユーザーへの質問、commit、push、PR・Issue・Project更新、最終的な完了判定を行わない。
+- 詳細な責務、Issueからのモデル選択、実行順序は[Codexオーケストレーション](docs/harness/ORCHESTRATION.md)に従う。

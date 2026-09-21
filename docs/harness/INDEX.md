@@ -19,6 +19,7 @@
 | フォーマット、解析、テスト、生成、検証コマンド | [tool Index](../../tools/INDEX.md) |
 | ハーネス自体、例外、正本間の不一致 | [運用・検証範囲](WORKFLOW.md) と tool Index |
 | Issue・エピック・業務決定の文章を作成・更新 | [業務方針を決めるIssue・エピックの記述](WORKFLOW.md#業務方針を決めるissueエピックの記述) |
+| Codexオーケストレーション・サブエージェント・モデル選択 | [Codexオーケストレーション](ORCHESTRATION.md) |
 | 実装への指摘、レビュー修正、同じ問題の再発 | [自己改善ループ](FEEDBACK.md) と [改善記録](feedback/INDEX.md) |
 
 共通の作業手順は [運用・検証範囲](WORKFLOW.md) を参照する。
