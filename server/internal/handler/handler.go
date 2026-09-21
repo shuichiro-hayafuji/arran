@@ -16,12 +16,12 @@ import (
 
 const maxBodySize = 20 << 20
 
-type Handler struct {
+type handler struct {
 	application *application.Application
 }
 
 func New(apiApplication *application.Application) http.Handler {
-	handler := &Handler{application: apiApplication}
+	handler := &handler{application: apiApplication}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", handler.health)
 	mux.HandleFunc("GET /healthz", handler.health)
@@ -46,11 +46,11 @@ func New(apiApplication *application.Application) http.Handler {
 	return recoverMiddleware(logMiddleware(corsMiddleware(mux)))
 }
 
-func (h *Handler) health(w http.ResponseWriter, _ *http.Request) {
+func (h *handler) health(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-func (h *Handler) getProfile(w http.ResponseWriter, r *http.Request) {
+func (h *handler) getProfile(w http.ResponseWriter, r *http.Request) {
 	profile, err := h.application.GetProfile(r.Context())
 	if err != nil {
 		writeServiceError(w, err)
@@ -59,7 +59,7 @@ func (h *Handler) getProfile(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, profile)
 }
 
-func (h *Handler) putProfile(w http.ResponseWriter, r *http.Request) {
+func (h *handler) putProfile(w http.ResponseWriter, r *http.Request) {
 	var profile domain.Profile
 	if !decodeJSON(w, r, &profile) {
 		return
@@ -72,7 +72,7 @@ func (h *Handler) putProfile(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, profile)
 }
 
-func (h *Handler) previewImport(w http.ResponseWriter, r *http.Request) {
+func (h *handler) previewImport(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxBodySize)
 	if err := r.ParseMultipartForm(maxBodySize); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_csv", "CSVファイルを読み取れません。")
@@ -110,7 +110,7 @@ func (h *Handler) previewImport(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, preview)
 }
 
-func (h *Handler) commitImport(w http.ResponseWriter, r *http.Request) {
+func (h *handler) commitImport(w http.ResponseWriter, r *http.Request) {
 	var request struct {
 		PreviewID string `json:"preview_id"`
 	}
@@ -125,7 +125,7 @@ func (h *Handler) commitImport(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, result)
 }
 
-func (h *Handler) listTransactions(w http.ResponseWriter, r *http.Request) {
+func (h *handler) listTransactions(w http.ResponseWriter, r *http.Request) {
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 	items, err := h.application.ListTransactions(
 		r.Context(),
@@ -142,7 +142,7 @@ func (h *Handler) listTransactions(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *Handler) updateTransaction(w http.ResponseWriter, r *http.Request) {
+func (h *handler) updateTransaction(w http.ResponseWriter, r *http.Request) {
 	id, ok := parseID(w, r)
 	if !ok {
 		return
@@ -167,7 +167,7 @@ func (h *Handler) updateTransaction(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, transaction)
 }
 
-func (h *Handler) dashboard(w http.ResponseWriter, r *http.Request) {
+func (h *handler) dashboard(w http.ResponseWriter, r *http.Request) {
 	dashboard, err := h.application.Dashboard(
 		r.Context(),
 		r.URL.Query().Get("month"),
@@ -179,7 +179,7 @@ func (h *Handler) dashboard(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, dashboard)
 }
 
-func (h *Handler) startConsultation(w http.ResponseWriter, r *http.Request) {
+func (h *handler) startConsultation(w http.ResponseWriter, r *http.Request) {
 	var request struct {
 		Message       string `json:"message"`
 		PlannedAmount *int64 `json:"planned_amount"`
@@ -199,7 +199,7 @@ func (h *Handler) startConsultation(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, consultation)
 }
 
-func (h *Handler) continueConsultation(w http.ResponseWriter, r *http.Request) {
+func (h *handler) continueConsultation(w http.ResponseWriter, r *http.Request) {
 	id, ok := parseID(w, r)
 	if !ok {
 		return
@@ -224,7 +224,7 @@ func (h *Handler) continueConsultation(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, consultation)
 }
 
-func (h *Handler) updateConsultationResult(
+func (h *handler) updateConsultationResult(
 	w http.ResponseWriter,
 	r *http.Request,
 ) {
@@ -248,7 +248,7 @@ func (h *Handler) updateConsultationResult(
 	writeJSON(w, http.StatusOK, consultation)
 }
 
-func (h *Handler) listConsultations(w http.ResponseWriter, r *http.Request) {
+func (h *handler) listConsultations(w http.ResponseWriter, r *http.Request) {
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 	items, err := h.application.ListConsultations(r.Context(), limit)
 	if err != nil {
@@ -258,7 +258,7 @@ func (h *Handler) listConsultations(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
-func (h *Handler) getConsultation(w http.ResponseWriter, r *http.Request) {
+func (h *handler) getConsultation(w http.ResponseWriter, r *http.Request) {
 	id, ok := parseID(w, r)
 	if !ok {
 		return
@@ -271,7 +271,7 @@ func (h *Handler) getConsultation(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, consultation)
 }
 
-func (h *Handler) createReview(w http.ResponseWriter, r *http.Request) {
+func (h *handler) createReview(w http.ResponseWriter, r *http.Request) {
 	var request struct {
 		Month string `json:"month"`
 	}
@@ -286,7 +286,7 @@ func (h *Handler) createReview(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, review)
 }
 
-func (h *Handler) latestReview(w http.ResponseWriter, r *http.Request) {
+func (h *handler) latestReview(w http.ResponseWriter, r *http.Request) {
 	review, err := h.application.LatestReview(r.Context())
 	if err != nil {
 		writeServiceError(w, err)
@@ -295,7 +295,7 @@ func (h *Handler) latestReview(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, review)
 }
 
-func (h *Handler) listMemories(w http.ResponseWriter, r *http.Request) {
+func (h *handler) listMemories(w http.ResponseWriter, r *http.Request) {
 	items, err := h.application.ListMemories(r.Context())
 	if err != nil {
 		writeServiceError(w, err)
@@ -304,7 +304,7 @@ func (h *Handler) listMemories(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
-func (h *Handler) createMemory(w http.ResponseWriter, r *http.Request) {
+func (h *handler) createMemory(w http.ResponseWriter, r *http.Request) {
 	var item domain.MemoryItem
 	if !decodeJSON(w, r, &item) {
 		return
@@ -318,7 +318,7 @@ func (h *Handler) createMemory(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, saved)
 }
 
-func (h *Handler) updateMemory(w http.ResponseWriter, r *http.Request) {
+func (h *handler) updateMemory(w http.ResponseWriter, r *http.Request) {
 	id, ok := parseID(w, r)
 	if !ok {
 		return
@@ -336,7 +336,7 @@ func (h *Handler) updateMemory(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, saved)
 }
 
-func (h *Handler) deleteMemory(w http.ResponseWriter, r *http.Request) {
+func (h *handler) deleteMemory(w http.ResponseWriter, r *http.Request) {
 	id, ok := parseID(w, r)
 	if !ok {
 		return

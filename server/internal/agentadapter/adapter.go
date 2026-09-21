@@ -10,14 +10,14 @@ import (
 	"github.com/shuichirohayafuji/spendable-today/server/internal/domain"
 )
 
-type Adapter struct{ agent agent.Agent }
+type adapter struct{ agent agent.Agent }
 
-func New(primary, fallback agent.Model, source string) *Adapter {
-	return &Adapter{agent: agent.New(primary, fallback, source)}
+func New(primary, fallback agent.Model, source string) *adapter {
+	return &adapter{agent: agent.New(primary, fallback, source)}
 }
 
 // Run はカテゴリを確定してドメインで支出を判定し、その事実を Agent に説明させる。
-func (a *Adapter) Run(
+func (a *adapter) Run(
 	ctx context.Context,
 	input domain.ConsultationContext,
 	message string,
@@ -38,7 +38,7 @@ func (a *Adapter) Run(
 	return adviceDraft(result.Draft), result.Source, nil
 }
 
-func (a *Adapter) Review(
+func (a *adapter) Review(
 	ctx context.Context,
 	profile domain.Profile,
 	dashboard domain.Dashboard,
@@ -54,7 +54,7 @@ func (a *Adapter) Review(
 	return domainReviewCandidates(items), err
 }
 
-func (a *Adapter) ExtractMemory(ctx context.Context, item domain.Consultation) ([]domain.MemoryItem, error) {
+func (a *adapter) ExtractMemory(ctx context.Context, item domain.Consultation) ([]domain.MemoryItem, error) {
 	items, err := a.agent.ExtractMemory(ctx, agent.MemoryInput{
 		Category: item.InferredCategory, UserDecisionReason: item.UserDecisionReason,
 		SatisfactionScore: item.SatisfactionScore, RegretScore: item.RegretScore,
@@ -83,6 +83,7 @@ func categoryAmounts(items []domain.CategoryAmount) []agent.CategoryAmount {
 	}
 	return result
 }
+
 // transactionValues は日付・金額・カテゴリだけを明示的に転記する。
 // ドメイン型に項目が増えても、加盟店名やCSV原文を意図せず外部へ送らないための境界。
 func transactionValues(items []domain.Transaction) []agent.Transaction {

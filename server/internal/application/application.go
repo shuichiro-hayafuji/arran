@@ -13,8 +13,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/shuichiro-hayafuji/arran_agent"
-	"github.com/shuichirohayafuji/spendable-today/server/internal/agentadapter"
 	"github.com/shuichirohayafuji/spendable-today/server/internal/csvimport"
 	"github.com/shuichirohayafuji/spendable-today/server/internal/domain"
 	"github.com/shuichirohayafuji/spendable-today/server/internal/identity"
@@ -54,27 +52,52 @@ type MemoryAgent interface {
 	ExtractMemory(context.Context, domain.Consultation) ([]domain.MemoryItem, error)
 }
 
-// Repository は各ユースケースが共有する永続化の境界。
-// 本番用の PostgreSQL と従来の SQLite の実装を infrastructure 配下に持つ。
-type Repository interface {
+// ProfileRepository はプロフィールを扱うユースケースが必要とする永続化境界。
+type ProfileRepository interface {
 	GetProfile(context.Context) (domain.Profile, error)
 	PutProfile(context.Context, domain.Profile) error
+}
+
+// TransactionRepository は取引取込・一覧・集計に必要な永続化境界。
+type TransactionRepository interface {
 	MerchantRules(context.Context) (map[string]string, error)
 	ImportTransactions(context.Context, []domain.Transaction) (domain.ImportCommitResult, error)
 	ListTransactions(context.Context, string, int) ([]domain.Transaction, error)
 	UpdateTransactionCategory(context.Context, int64, string, bool) (domain.Transaction, error)
 	MonthlyDashboard(context.Context, string, domain.Profile) (domain.Dashboard, error)
+}
+
+// ConsultationRepository は相談と会話履歴に必要な永続化境界。
+type ConsultationRepository interface {
 	CreateConsultation(context.Context, domain.Consultation) (domain.Consultation, error)
 	UpdateConsultationAdvice(context.Context, domain.Consultation) (domain.Consultation, error)
 	ListConsultations(context.Context, int) ([]domain.Consultation, error)
 	GetConsultation(context.Context, int64) (domain.Consultation, error)
 	UpdateConsultationResult(context.Context, int64, domain.ConsultationResultUpdate) (domain.Consultation, error)
 	AddMessage(context.Context, int64, string, string) error
+}
+
+// MemoryRepository は相談から得た記憶を扱う永続化境界。
+type MemoryRepository interface {
 	ListMemories(context.Context) ([]domain.MemoryItem, error)
 	SaveMemory(context.Context, domain.MemoryItem) (domain.MemoryItem, error)
 	DeleteMemory(context.Context, int64) error
+}
+
+// ReviewRepository は月次レビューを扱う永続化境界。
+type ReviewRepository interface {
 	SaveReview(context.Context, domain.MonthlyReview) (domain.MonthlyReview, error)
 	LatestReview(context.Context) (domain.MonthlyReview, error)
+}
+
+// Repository は Application が利用する用途別の永続化境界を束ねる。
+// PostgreSQL とテスト用 SQLite の実装は infrastructure 配下に置く。
+type Repository interface {
+	ProfileRepository
+	TransactionRepository
+	ConsultationRepository
+	MemoryRepository
+	ReviewRepository
 }
 
 type Config struct {
@@ -90,24 +113,11 @@ func New(config Config) *Application {
 	if now == nil {
 		now = time.Now
 	}
-	fallback := agent.MockClient{}
-	consultationAgent := config.ConsultationAgent
-	if consultationAgent == nil {
-		consultationAgent = agentadapter.New(fallback, fallback, "mock")
-	}
-	reviewAgent := config.ReviewAgent
-	if reviewAgent == nil {
-		reviewAgent = agentadapter.New(fallback, fallback, "mock")
-	}
-	memoryAgent := config.MemoryAgent
-	if memoryAgent == nil {
-		memoryAgent = agentadapter.New(fallback, fallback, "mock")
-	}
 	return &Application{
 		repository:        config.Repository,
-		consultationAgent: consultationAgent,
-		reviewAgent:       reviewAgent,
-		memoryAgent:       memoryAgent,
+		consultationAgent: config.ConsultationAgent,
+		reviewAgent:       config.ReviewAgent,
+		memoryAgent:       config.MemoryAgent,
 		now:               now,
 		previews:          map[string]cachedPreview{},
 	}

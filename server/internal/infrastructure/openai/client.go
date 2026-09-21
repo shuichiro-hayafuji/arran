@@ -14,26 +14,26 @@ import (
 	"github.com/shuichiro-hayafuji/arran_agent"
 )
 
-type OpenAIClient struct {
+type client struct {
 	apiKey string
 	model  string
 	client *http.Client
 }
 
-var _ agent.Model = (*OpenAIClient)(nil)
+var _ agent.Model = (*client)(nil)
 
-func NewOpenAIClient(apiKey, model string) *OpenAIClient {
+func NewOpenAIClient(apiKey, model string) *client {
 	if model == "" {
 		model = "gpt-5-mini"
 	}
-	return &OpenAIClient{
+	return &client{
 		apiKey: apiKey,
 		model:  model,
 		client: &http.Client{Timeout: 20 * time.Second},
 	}
 }
 
-func (c *OpenAIClient) GenerateAdvice(
+func (c *client) GenerateAdvice(
 	ctx context.Context,
 	input agent.ConsultationInput,
 ) (agent.AdviceDraft, error) {
@@ -43,7 +43,7 @@ func (c *OpenAIClient) GenerateAdvice(
 	return result, err
 }
 
-func (c *OpenAIClient) GenerateAdviceRevision(
+func (c *client) GenerateAdviceRevision(
 	ctx context.Context,
 	input agent.AdviceRevisionInput,
 ) (agent.AdviceDraft, error) {
@@ -55,7 +55,7 @@ func (c *OpenAIClient) GenerateAdviceRevision(
 	return result, err
 }
 
-func (c *OpenAIClient) InferCategory(
+func (c *client) InferCategory(
 	_ context.Context,
 	_ string,
 	_ []string,
@@ -65,7 +65,7 @@ func (c *OpenAIClient) InferCategory(
 	)
 }
 
-func (c *OpenAIClient) GenerateReview(
+func (c *client) GenerateReview(
 	ctx context.Context,
 	input agent.ReviewInput,
 ) ([]agent.ReviewCandidate, error) {
@@ -89,7 +89,7 @@ func (c *OpenAIClient) GenerateReview(
 	return result.Candidates, err
 }
 
-func (c *OpenAIClient) ExtractMemoryCandidates(
+func (c *client) ExtractMemoryCandidates(
 	ctx context.Context,
 	consultation agent.MemoryInput,
 ) ([]agent.MemoryItem, error) {
@@ -109,7 +109,7 @@ func (c *OpenAIClient) ExtractMemoryCandidates(
 
 // structured は指定スキーマのJSONを要求し、応答の保存を無効にして送信する。
 // 通信・JSON解析エラーを上位へ返し、再生成やフォールバックは Agent に委ねる。
-func (c *OpenAIClient) structured(
+func (c *client) structured(
 	ctx context.Context,
 	system string,
 	input any,
@@ -165,7 +165,7 @@ func (c *OpenAIClient) structured(
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return fmt.Errorf("OpenAI returned HTTP %d", response.StatusCode)
 	}
-	output, err := ParseResponseOutput(responseBody)
+	output, err := parseResponseOutput(responseBody)
 	if err != nil {
 		return err
 	}
@@ -175,7 +175,7 @@ func (c *OpenAIClient) structured(
 	return nil
 }
 
-func ParseResponseOutput(data []byte) (string, error) {
+func parseResponseOutput(data []byte) (string, error) {
 	var response struct {
 		Output []struct {
 			Content []struct {
