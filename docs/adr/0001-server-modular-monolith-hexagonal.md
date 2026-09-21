@@ -161,5 +161,6 @@ PostgreSQLは共有しますが、テーブルの論理的な所有者を業務�
 
 - [Serverの全体像](../server/overview.md)
 - [サーバーのアーキテクチャルール](../server/architecture.md)
+- [Server Software詳細設計](../server/software-design.md)
 - [運用・検証範囲](../harness/WORKFLOW.md)
 - [Go server README](../../server/README.md)

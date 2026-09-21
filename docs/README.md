@@ -27,7 +27,7 @@ infra/ Docker / ECS Fargate / RDS PostgreSQL
 | 領域 | 業務ルール | アーキテクチャ | 実装時の作法 | 補助資料 |
 | --- | --- | --- | --- | --- |
 | mobile | [business](mobile/business.md) | [architecture](mobile/architecture.md) | [conventions](mobile/conventions.md) | [design-system](mobile/design-system.md) |
-| server | [business](server/business.md) | [architecture](server/architecture.md) | [conventions](server/conventions.md) | — |
+| server | [business](server/business.md) | [architecture](server/architecture.md) | [conventions](server/conventions.md) | [software-design](server/software-design.md) |
 | infra | [business](infra/business.md) | [architecture](infra/architecture.md) | [conventions](infra/conventions.md) | — |
 
 - [ハーネスIndex](harness/INDEX.md): 変更対象に応じた業務ルール、アーキテクチャ、実装作法の入口
