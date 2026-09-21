@@ -5,8 +5,10 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math"
 	"net/url"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -77,10 +79,116 @@ func TestPostgresOwnershipAndSessions(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	if _, err = r.db.DB.ExecContext(ctx, `
+		UPDATE service_settings SET integer_value=2 WHERE key='free_user_limit'
+	`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = r.db.DB.ExecContext(ctx, `
+		INSERT INTO users(username,password_hash) VALUES($1,$2)
+	`, "carol", hash); err == nil {
+		t.Fatal("free user limit accepted a third active user")
+	}
 	a, _ := r.FindUser(ctx, "alice")
 	b, _ := r.FindUser(ctx, "bob")
 	ca := identity.WithUser(ctx, a.ID)
 	cb := identity.WithUser(ctx, b.ID)
+	if limit, limitErr := r.MonthlyConsultationLimit(ca); limitErr != nil || limit != 30 {
+		t.Fatalf("default consultation limit = %d, err = %v", limit, limitErr)
+	}
+	if _, err = r.db.DB.ExecContext(ctx, `
+		INSERT INTO user_consultation_limits(user_id, monthly_limit)
+		VALUES($1, 12)
+	`, a.ID); err != nil {
+		t.Fatal(err)
+	}
+	if limit, limitErr := r.MonthlyConsultationLimit(ca); limitErr != nil || limit != 12 {
+		t.Fatalf("user consultation limit = %d, err = %v", limit, limitErr)
+	}
+	if limit, limitErr := r.MonthlyConsultationLimit(cb); limitErr != nil || limit != 30 {
+		t.Fatalf("other user consultation limit = %d, err = %v", limit, limitErr)
+	}
+	usage, err := r.ReserveMonthlyConsultation(ca, "2026-09")
+	if err != nil || usage.Count != 1 || usage.Limit != 12 {
+		t.Fatalf("reserved consultation usage = %#v, err = %v", usage, err)
+	}
+	if err = r.ReleaseMonthlyConsultation(ca, "2026-09"); err != nil {
+		t.Fatal(err)
+	}
+	usage, err = r.MonthlyConsultationUsage(ca, "2026-09")
+	if err != nil || usage.Count != 0 {
+		t.Fatalf("released consultation usage = %#v, err = %v", usage, err)
+	}
+	var wait sync.WaitGroup
+	errorsFromReservations := make(chan error, 20)
+	for i := 0; i < 20; i++ {
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			_, reserveErr := r.ReserveMonthlyConsultation(ca, "2026-10")
+			errorsFromReservations <- reserveErr
+		}()
+	}
+	wait.Wait()
+	close(errorsFromReservations)
+	for reserveErr := range errorsFromReservations {
+		if reserveErr != nil {
+			t.Fatal(reserveErr)
+		}
+	}
+	usage, err = r.MonthlyConsultationUsage(ca, "2026-10")
+	if err != nil || usage.Count != 20 {
+		t.Fatalf("concurrent consultation usage = %#v, err = %v", usage, err)
+	}
+	event := domain.MonthlyLimitEvent{
+		Environment: "test", UserID: a.ID, Month: "2026-09", Count: 12, Limit: 12,
+		OccurredAt: time.Date(2026, 9, 21, 12, 0, 0, 0, time.UTC),
+	}
+	claimed, err := r.ClaimMonthlyLimitNotification(ca, event)
+	if err != nil || !claimed {
+		t.Fatalf("notification claim = %v, err = %v", claimed, err)
+	}
+	if err = r.CompleteMonthlyLimitNotification(ca, event, nil); err != nil {
+		t.Fatal(err)
+	}
+	claimed, err = r.ClaimMonthlyLimitNotification(ca, event)
+	if err != nil || claimed {
+		t.Fatalf("duplicate notification claim = %v, err = %v", claimed, err)
+	}
+	if err = r.RecordLLMUsage(ca, domain.LLMUsage{
+		Operation: "spending_advice", Model: "gpt-5.6-terra",
+		InputTokens: 100, CachedInputTokens: 20, OutputTokens: 40,
+		ReasoningTokens: 10, TotalTokens: 140, OccurredAt: event.OccurredAt,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var usageRows int
+	if err = r.db.DB.QueryRowContext(ctx, `SELECT count(*) FROM llm_usage WHERE user_id=$1`, a.ID).Scan(&usageRows); err != nil || usageRows != 1 {
+		t.Fatalf("llm usage rows = %d, err = %v", usageRows, err)
+	}
+	if _, err = r.db.DB.ExecContext(ctx, `
+		INSERT INTO monthly_operating_costs(month, infrastructure_cost_usd, support_case_count, support_minutes)
+		VALUES('2026-09', 10, 2, 30)
+	`); err != nil {
+		t.Fatal(err)
+	}
+	var apiCost float64
+	if err = r.db.DB.QueryRowContext(ctx, `
+		SELECT (
+		  (usage.input_tokens - usage.cached_input_tokens) * price.input_usd_per_million
+		  + usage.cached_input_tokens * price.cached_input_usd_per_million
+		  + usage.output_tokens * price.output_usd_per_million
+		) / 1000000
+		FROM llm_usage AS usage
+		JOIN LATERAL (
+		  SELECT * FROM llm_model_prices
+		  WHERE model=usage.model AND effective_from <= usage.occurred_at::date
+		  ORDER BY effective_from DESC LIMIT 1
+		) AS price ON true
+		WHERE usage.user_id=$1
+	`, a.ID).Scan(&apiCost); err != nil || math.Abs(apiCost-0.000644) > 0.0000001 {
+		t.Fatalf("api cost = %.6f, err = %v", apiCost, err)
+	}
 	if _, err = r.GetProfile(ca); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("legacy data exposed: %v", err)
 	}

@@ -13,11 +13,14 @@ import (
 // Environment-variable parsing belongs here so the application composition
 // layer does not need to know how settings are represented externally.
 type Config struct {
-	APIAddr      string
-	DatabaseURL  string
-	UseMockLLM   bool
-	OpenAIAPIKey string
-	OpenAIModel  string
+	APIAddr               string
+	DatabaseURL           string
+	UseMockLLM            bool
+	OpenAIAPIKey          string
+	OpenAIModel           string
+	OpenAIReasoningEffort string
+	Environment           string
+	PagerDutyRoutingKey   string
 }
 
 func Load() (Config, error) {
@@ -30,12 +33,22 @@ func Load() (Config, error) {
 		return Config{}, fmt.Errorf("USE_MOCK_LLM must be true or false")
 	}
 
+	reasoningEffort := envOrDefault("OPENAI_REASONING_EFFORT", "medium")
+	switch reasoningEffort {
+	case "none", "low", "medium", "high", "xhigh", "max":
+	default:
+		return Config{}, fmt.Errorf("OPENAI_REASONING_EFFORT must be one of none, low, medium, high, xhigh, or max")
+	}
+
 	return Config{
-		APIAddr:      envOrDefault("API_ADDR", "127.0.0.1:8080"),
-		DatabaseURL:  loadDatabaseURL(),
-		UseMockLLM:   useMock,
-		OpenAIAPIKey: os.Getenv("OPENAI_API_KEY"),
-		OpenAIModel:  envOrDefault("OPENAI_MODEL", "gpt-5-mini"),
+		APIAddr:               envOrDefault("API_ADDR", "127.0.0.1:8080"),
+		DatabaseURL:           loadDatabaseURL(),
+		UseMockLLM:            useMock,
+		OpenAIAPIKey:          os.Getenv("OPENAI_API_KEY"),
+		OpenAIModel:           envOrDefault("OPENAI_MODEL", "gpt-5.6-terra"),
+		OpenAIReasoningEffort: reasoningEffort,
+		Environment:           envOrDefault("APP_ENVIRONMENT", "local"),
+		PagerDutyRoutingKey:   os.Getenv("PAGERDUTY_ROUTING_KEY"),
 	}, nil
 }
 

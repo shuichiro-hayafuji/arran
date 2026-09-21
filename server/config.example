@@ -5,4 +5,7 @@ API_ADDR=0.0.0.0:8080
 DATABASE_URL=postgres://spendable_today:local-only-password@127.0.0.1:5432/spendable_today?sslmode=disable
 USE_MOCK_LLM=false
 OPENAI_API_KEY=
-OPENAI_MODEL=gpt-5-mini
+OPENAI_MODEL=gpt-5.6-terra
+OPENAI_REASONING_EFFORT=medium
+APP_ENVIRONMENT=local
+PAGERDUTY_ROUTING_KEY=

@@ -6,6 +6,44 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
   applied_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS service_settings (
+  key TEXT PRIMARY KEY,
+  integer_value INTEGER NOT NULL CHECK (integer_value >= 0),
+  updated_at TEXT NOT NULL
+);
+
+INSERT OR IGNORE INTO service_settings(key, integer_value, updated_at)
+VALUES ('default_monthly_consultation_limit', 30, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'));
+
+CREATE TABLE IF NOT EXISTS user_consultation_limits (
+  user_id INTEGER PRIMARY KEY,
+  monthly_limit INTEGER NOT NULL CHECK (monthly_limit >= 0),
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS monthly_consultation_usage (
+  user_id INTEGER NOT NULL,
+  month TEXT NOT NULL,
+  consultation_count INTEGER NOT NULL CHECK (consultation_count >= 0),
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (user_id, month)
+);
+
+CREATE TABLE IF NOT EXISTS admin_notifications (
+  user_id INTEGER NOT NULL,
+  month TEXT NOT NULL,
+  notification_type TEXT NOT NULL,
+  consultation_count INTEGER NOT NULL CHECK (consultation_count >= 0),
+  consultation_limit INTEGER NOT NULL CHECK (consultation_limit >= 0),
+  status TEXT NOT NULL CHECK (status IN ('sending', 'delivered', 'failed')),
+  attempts INTEGER NOT NULL CHECK (attempts > 0),
+  last_error TEXT NOT NULL DEFAULT '',
+  occurred_at TEXT NOT NULL,
+  delivered_at TEXT,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (user_id, month, notification_type)
+);
+
 CREATE TABLE IF NOT EXISTS profiles (
   id INTEGER PRIMARY KEY CHECK (id = 1),
   monthly_income INTEGER NOT NULL,

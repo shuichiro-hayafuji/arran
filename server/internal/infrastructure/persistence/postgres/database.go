@@ -54,12 +54,26 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 	if _, err = tx.ExecContext(ctx, string(contents)); err != nil {
 		return err
 	}
-	var applied bool
-	if err = tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE version=2)").Scan(&applied); err != nil {
-		return err
-	}
-	if !applied {
-		contents, err = migrationFiles.ReadFile("002_auth.sql")
+	for _, migration := range []struct {
+		version int
+		file    string
+	}{
+		{version: 2, file: "002_auth.sql"},
+		{version: 3, file: "003_consultation_limits.sql"},
+		{version: 4, file: "004_consultation_usage.sql"},
+		{version: 5, file: "005_admin_notifications.sql"},
+		{version: 6, file: "006_free_user_limit.sql"},
+		{version: 7, file: "007_llm_usage.sql"},
+		{version: 8, file: "008_monthly_costs.sql"},
+	} {
+		var applied bool
+		if err = tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE version=$1)", migration.version).Scan(&applied); err != nil {
+			return err
+		}
+		if applied {
+			continue
+		}
+		contents, err = migrationFiles.ReadFile(migration.file)
 		if err != nil {
 			return err
 		}

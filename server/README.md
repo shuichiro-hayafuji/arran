@@ -111,7 +111,10 @@ Docker ComposeはPostgreSQLを`127.0.0.1:5432`だけに公開します。Go API�
 | `DATABASE_URL` | `postgres://spendable_today:local-only-password@127.0.0.1:5432/spendable_today?sslmode=disable` | PostgreSQL接続URL |
 | `USE_MOCK_LLM` | `true` | `true`ならローカルモック、`false`ならOpenAIを使用 |
 | `OPENAI_API_KEY` | 空 | `USE_MOCK_LLM=false`のときに必要 |
-| `OPENAI_MODEL` | `gpt-5-mini` | OpenAI Responses APIで使うモデル |
+| `OPENAI_MODEL` | `gpt-5.6-terra` | OpenAI Responses APIで使うモデル |
+| `OPENAI_REASONING_EFFORT` | `medium` | OpenAI Responses APIのreasoning effort |
+| `APP_ENVIRONMENT` | `local` | PagerDuty通知に含める環境名 |
+| `PAGERDUTY_ROUTING_KEY` | 空 | PagerDuty Events API v2のIntegration routing key |
 | `ENV_FILE` | 空 | 明示的に読み込むdotenvファイルのパス |
 
 `API_ADDR`のアプリケーション既定値は`127.0.0.1:8080`ですが、`scripts/start-server.sh`はLANアクセス用に`0.0.0.0:8080`を既定値として設定します。
@@ -253,7 +256,7 @@ infrastructure/persistence/postgres → Repository interface
 
 ## データベース
 
-起動時に[PostgreSQL migration](./internal/infrastructure/persistence/postgres/001_init.sql)が実行され、次のテーブルが作成されます。
+起動時に[PostgreSQL migration](./internal/infrastructure/persistence/postgres/001_init.sql)から未適用の番号付きSQLが順に実行され、次のテーブルが作成されます。
 
 詳細な列定義、制約、JSON列、PostgreSQL CLIによる確認方法は[docs/database-schema.md](./docs/database-schema.md)を参照してください。
 
@@ -265,6 +268,13 @@ infrastructure/persistence/postgres → Repository interface
 - `memories`
 - `monthly_reviews`
 - `schema_migrations`
+- `service_settings`
+- `user_consultation_limits`
+- `monthly_consultation_usage`
+- `admin_notifications`
+- `llm_usage`
+- `llm_model_prices`
+- `monthly_operating_costs`
 
 取引の`fingerprint`には一意制約があり、同じCSVを再インポートしても重複登録されません。
 

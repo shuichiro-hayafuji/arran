@@ -26,8 +26,13 @@ func IsNotFound(err error) bool { return errors.Is(err, domain.ErrNotFound) }
 type Application struct {
 	repository        Repository
 	consultationAgent ConsultationAgent
+	fallbackAgent     ConsultationAgent
 	reviewAgent       ReviewAgent
+	fallbackReview    ReviewAgent
 	memoryAgent       MemoryAgent
+	fallbackMemory    MemoryAgent
+	adminNotifier     AdminNotifier
+	environment       string
 	now               func() time.Time
 
 	previewMu sync.Mutex
@@ -51,6 +56,9 @@ type ReviewAgent interface {
 type MemoryAgent interface {
 	ExtractMemory(context.Context, domain.Consultation) ([]domain.MemoryItem, error)
 }
+type AdminNotifier interface {
+	NotifyMonthlyLimit(context.Context, domain.MonthlyLimitEvent) error
+}
 
 // ProfileRepository はプロフィールを扱うユースケースが必要とする永続化境界。
 type ProfileRepository interface {
@@ -69,6 +77,12 @@ type TransactionRepository interface {
 
 // ConsultationRepository は相談と会話履歴に必要な永続化境界。
 type ConsultationRepository interface {
+	MonthlyConsultationLimit(context.Context) (int, error)
+	MonthlyConsultationUsage(context.Context, string) (domain.ConsultationUsage, error)
+	ReserveMonthlyConsultation(context.Context, string) (domain.ConsultationUsage, error)
+	ReleaseMonthlyConsultation(context.Context, string) error
+	ClaimMonthlyLimitNotification(context.Context, domain.MonthlyLimitEvent) (bool, error)
+	CompleteMonthlyLimitNotification(context.Context, domain.MonthlyLimitEvent, error) error
 	CreateConsultation(context.Context, domain.Consultation) (domain.Consultation, error)
 	UpdateConsultationAdvice(context.Context, domain.Consultation) (domain.Consultation, error)
 	ListConsultations(context.Context, int) ([]domain.Consultation, error)
@@ -103,8 +117,13 @@ type Repository interface {
 type Config struct {
 	Repository        Repository
 	ConsultationAgent ConsultationAgent
+	FallbackAgent     ConsultationAgent
 	ReviewAgent       ReviewAgent
+	FallbackReview    ReviewAgent
 	MemoryAgent       MemoryAgent
+	FallbackMemory    MemoryAgent
+	AdminNotifier     AdminNotifier
+	Environment       string
 	Now               func() time.Time
 }
 
@@ -116,8 +135,13 @@ func New(config Config) *Application {
 	return &Application{
 		repository:        config.Repository,
 		consultationAgent: config.ConsultationAgent,
+		fallbackAgent:     config.FallbackAgent,
 		reviewAgent:       config.ReviewAgent,
+		fallbackReview:    config.FallbackReview,
 		memoryAgent:       config.MemoryAgent,
+		fallbackMemory:    config.FallbackMemory,
+		adminNotifier:     config.AdminNotifier,
+		environment:       config.Environment,
 		now:               now,
 		previews:          map[string]cachedPreview{},
 	}
@@ -269,11 +293,26 @@ func (s *Application) StartConsultation(
 	if plannedAmount != nil && *plannedAmount < 0 {
 		return domain.Consultation{}, fmt.Errorf("予定額は0円以上にしてください")
 	}
+	month := s.now().In(jst).Format("2006-01")
+	usage, err := s.repository.ReserveMonthlyConsultation(ctx, month)
+	if err != nil {
+		return domain.Consultation{}, err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = s.repository.ReleaseMonthlyConsultation(ctx, month)
+		}
+	}()
 	consultationContext, err := s.BuildConsultationContext(ctx)
 	if err != nil {
 		return domain.Consultation{}, err
 	}
-	draft, source, err := s.consultationAgent.Run(ctx, consultationContext, message, plannedAmount)
+	consultationAgent := s.consultationAgent
+	if !usage.UseExternalModel() {
+		consultationAgent = s.fallbackAgent
+	}
+	draft, source, err := consultationAgent.Run(ctx, consultationContext, message, plannedAmount)
 	if err != nil {
 		return domain.Consultation{}, err
 	}
@@ -289,9 +328,31 @@ func (s *Application) StartConsultation(
 	if err != nil {
 		return domain.Consultation{}, err
 	}
+	committed = true
+	s.notifyMonthlyLimit(ctx, usage)
 	_ = s.repository.AddMessage(ctx, created.ID, "user", message)
 	_ = s.repository.AddMessage(ctx, created.ID, "assistant", draft.Recommendation)
 	return created, nil
+}
+
+func (s *Application) notifyMonthlyLimit(ctx context.Context, usage domain.ConsultationUsage) {
+	if s.adminNotifier == nil || usage.Count < usage.Limit || usage.Count == 0 {
+		return
+	}
+	event := domain.MonthlyLimitEvent{
+		Environment: s.environment,
+		UserID:      identity.UserID(ctx),
+		Month:       usage.Month,
+		Count:       usage.Count,
+		Limit:       usage.Limit,
+		OccurredAt:  s.now().UTC(),
+	}
+	claimed, err := s.repository.ClaimMonthlyLimitNotification(ctx, event)
+	if err != nil || !claimed {
+		return
+	}
+	notifyErr := s.adminNotifier.NotifyMonthlyLimit(ctx, event)
+	_ = s.repository.CompleteMonthlyLimitNotification(ctx, event, notifyErr)
 }
 
 // ContinueConsultation は元の相談文と今回の追加情報で助言を更新する。
@@ -317,7 +378,15 @@ func (s *Application) ContinueConsultation(
 	if err != nil {
 		return domain.Consultation{}, err
 	}
-	draft, source, err := s.consultationAgent.Run(ctx, consultationContext, consultation.UserMessage+"\n追加情報: "+message, plannedAmount)
+	usage, err := s.repository.MonthlyConsultationUsage(ctx, s.now().In(jst).Format("2006-01"))
+	if err != nil {
+		return domain.Consultation{}, err
+	}
+	consultationAgent := s.consultationAgent
+	if usage.Count >= usage.Limit {
+		consultationAgent = s.fallbackAgent
+	}
+	draft, source, err := consultationAgent.Run(ctx, consultationContext, consultation.UserMessage+"\n追加情報: "+message, plannedAmount)
 	if err != nil {
 		return domain.Consultation{}, err
 	}
@@ -361,7 +430,11 @@ func (s *Application) UpdateConsultationResult(
 	if err != nil {
 		return domain.Consultation{}, err
 	}
-	candidates, _ := s.memoryAgent.ExtractMemory(ctx, consultation)
+	memoryAgent := s.memoryAgent
+	if !s.externalModelAllowed(ctx) {
+		memoryAgent = s.fallbackMemory
+	}
+	candidates, _ := memoryAgent.ExtractMemory(ctx, consultation)
 	for _, candidate := range candidates {
 		if candidate.Confidence < 0.7 ||
 			strings.TrimSpace(candidate.Content) == "" ||
@@ -371,6 +444,11 @@ func (s *Application) UpdateConsultationResult(
 		_, _ = s.repository.SaveMemory(ctx, candidate)
 	}
 	return consultation, nil
+}
+
+func (s *Application) externalModelAllowed(ctx context.Context) bool {
+	usage, err := s.repository.MonthlyConsultationUsage(ctx, s.now().In(jst).Format("2006-01"))
+	return err == nil && usage.Count < usage.Limit
 }
 
 func (s *Application) ListConsultations(
@@ -488,7 +566,11 @@ func (s *Application) CreateMonthlyReview(
 		transactions,
 		consultations,
 	)
-	candidates, err := s.reviewAgent.Review(ctx, profile, dashboard, sanitizeForLLM(transactions), consultations, sanitizeReviewCandidates(local))
+	reviewAgent := s.reviewAgent
+	if !s.externalModelAllowed(ctx) {
+		reviewAgent = s.fallbackReview
+	}
+	candidates, err := reviewAgent.Review(ctx, profile, dashboard, sanitizeForLLM(transactions), consultations, sanitizeReviewCandidates(local))
 	if err != nil {
 		candidates = local
 	}

@@ -2,6 +2,7 @@ FROM golang:1.26-bookworm AS build
 
 WORKDIR /src
 COPY go.mod go.sum ./
+COPY agent/go.mod ./agent/go.mod
 RUN go mod download
 COPY . .
 
