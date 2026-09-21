@@ -11,4 +11,4 @@
 
 ## PRの作成・更新
 
-PRの作成・本文更新・レビュー対応では [arran-pull-request Skill](skills/arran-pull-request/SKILL.md) を読み、[PRテンプレート](.github/pull_request_template.md) を使う。本文・コメントの作成と投稿範囲はSkillに従う。
+PRの作成・本文更新・レビュー対応では [arran-pull-request Skill](.agents/skills/arran-pull-request/SKILL.md) を読み、[PRテンプレート](.github/pull_request_template.md) を使う。本文・コメントの作成と投稿範囲はSkillに従う。
