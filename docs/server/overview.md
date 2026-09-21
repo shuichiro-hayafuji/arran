@@ -2,6 +2,8 @@
 
 `server/` はローカルとAWSの両方で使う唯一のGo REST API実装です。HTTP、業務ルール、Agent連携、永続化を分離し、金額と支出可否の最終判断をGo側で行います。
 
+System ArchitectureにはModular Monolith、server内部のSoftware ArchitectureにはHexagonal Architectureを採用します。現在の実装は一つの配備単位という方針に適合していますが、内部packageは技術レイヤー中心であり、業務モジュールへの移行は未完了です。採用理由と移行方針は[ADR-0001](../adr/0001-server-modular-monolith-hexagonal.md)、現行と目標の依存ルールは[サーバーのアーキテクチャ](architecture.md)を参照してください。
+
 ## 起動と依存性の組み立て
 
 エントリポイントは `server/cmd/api/main.go` です。
@@ -14,6 +16,7 @@ cmd/api/main.go
       → agent.MockClient または infrastructure/openai
       → application.New + agentadapter
       → handler.New
+      → auth.New(postgres).Wrap(handler)
       → net/http.Server
 ```
 
@@ -26,6 +29,10 @@ Flutter → HTTP → handler → application → domain
                               ├── agentadapter → agent module
                               └── Repository interface
 
+Flutter → HTTP → auth middleware
+                   ├── login / logout / me
+                   └── authenticated request → handler
+
 infrastructure/openai → agent.Model interface
 infrastructure/persistence/postgres → Repository interface
 ```
@@ -35,6 +42,8 @@ infrastructure/persistence/postgres → Repository interface
 - `internal/domain`: 型と純粋な支出ルール。`EvaluateSpending` が残額、予算超過、`verdict` を決定
 - `agent`（独立Go module）: 相談のbounded loop、Model interface、Prompt、出力Evaluator、モック
 - `internal/agentadapter`: domainの決定論的な評価結果をAgent DTOへ変換し、出力をdomainへ戻す
+- `internal/auth`: ログイン・ログアウト・利用者取得、Bearer token検証、認証middleware
+- `internal/identity`: 認証済み利用者IDを`context.Context`で業務処理へ伝達
 - `internal/infrastructure/persistence/postgres`: SQL、トランザクション、PostgreSQL migration、pgx driver
 - `internal/infrastructure/persistence/sqlite`: Repositoryテスト用adapter。実行時の依存ではない
 - `internal/infrastructure/openai`: Responses API、`store:false`、Structured Output schema
@@ -90,4 +99,5 @@ Applicationがプロフィール、月次集計、直近相談、記憶、関連
 - [サーバー業務ルール](business.md)
 - [サーバー実装ルール](architecture.md)
 - [サーバー実装時の作法](conventions.md)
+- [ADR-0001: Go serverをModular MonolithとHexagonal Architectureで構成する](../adr/0001-server-modular-monolith-hexagonal.md)
 - [認証設計・運用](../../server/docs/authentication.md)
