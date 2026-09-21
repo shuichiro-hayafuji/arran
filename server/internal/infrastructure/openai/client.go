@@ -13,8 +13,6 @@ import (
 	"time"
 
 	"github.com/shuichiro-hayafuji/arran_agent"
-	"github.com/shuichirohayafuji/spendable-today/server/internal/domain"
-	"github.com/shuichirohayafuji/spendable-today/server/internal/identity"
 )
 
 type client struct {
@@ -25,8 +23,19 @@ type client struct {
 	usageRecorder   UsageRecorder
 }
 
-type UsageRecorder interface {
-	RecordLLMUsage(context.Context, domain.LLMUsage) error
+type UsageRecorder func(context.Context, UsageRecord) error
+
+// UsageRecord は費用集計に必要なOpenAI固有の利用量だけを通知する。
+// 利用者との紐付けと永続化形式への変換はcomposition rootが担う。
+type UsageRecord struct {
+	Operation         string
+	Model             string
+	InputTokens       int
+	CachedInputTokens int
+	OutputTokens      int
+	ReasoningTokens   int
+	TotalTokens       int
+	OccurredAt        time.Time
 }
 
 var _ agent.Model = (*client)(nil)
@@ -188,19 +197,19 @@ func (c *client) structured(
 	output, usage, err := parseResponse(responseBody)
 	if usage.TotalTokens > 0 || usage.InputTokens > 0 || usage.OutputTokens > 0 {
 		log.Printf(
-			"OpenAI usage: user_id=%d operation=%s model=%s input_tokens=%d cached_input_tokens=%d output_tokens=%d reasoning_tokens=%d total_tokens=%d",
-			identity.UserID(ctx), name, c.model, usage.InputTokens, usage.CachedInputTokens,
+			"OpenAI usage: operation=%s model=%s input_tokens=%d cached_input_tokens=%d output_tokens=%d reasoning_tokens=%d total_tokens=%d",
+			name, c.model, usage.InputTokens, usage.CachedInputTokens,
 			usage.OutputTokens, usage.ReasoningTokens, usage.TotalTokens,
 		)
 		if c.usageRecorder != nil {
-			recordErr := c.usageRecorder.RecordLLMUsage(ctx, domain.LLMUsage{
-				UserID: identity.UserID(ctx), Operation: name, Model: c.model,
+			recordErr := c.usageRecorder(ctx, UsageRecord{
+				Operation: name, Model: c.model,
 				InputTokens: usage.InputTokens, CachedInputTokens: usage.CachedInputTokens,
 				OutputTokens: usage.OutputTokens, ReasoningTokens: usage.ReasoningTokens,
 				TotalTokens: usage.TotalTokens, OccurredAt: time.Now().UTC(),
 			})
 			if recordErr != nil {
-				log.Printf("OpenAI usage persistence failed: user_id=%d operation=%s: %v", identity.UserID(ctx), name, recordErr)
+				log.Printf("OpenAI usage persistence failed: operation=%s: %v", name, recordErr)
 			}
 		}
 	}

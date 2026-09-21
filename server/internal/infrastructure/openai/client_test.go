@@ -9,8 +9,6 @@ import (
 	"testing"
 
 	"github.com/shuichiro-hayafuji/arran_agent"
-	"github.com/shuichirohayafuji/spendable-today/server/internal/domain"
-	"github.com/shuichirohayafuji/spendable-today/server/internal/identity"
 )
 
 func TestParseResponseOutput(t *testing.T) {
@@ -112,7 +110,11 @@ func TestStructuredRequestDisablesStorage(t *testing.T) {
 }
 
 func TestStructuredResponsePersistsUsageWithoutContent(t *testing.T) {
-	recorder := &recordingUsageRecorder{}
+	var records []UsageRecord
+	recorder := UsageRecorder(func(_ context.Context, usage UsageRecord) error {
+		records = append(records, usage)
+		return nil
+	})
 	client := NewOpenAIClient("test-key", "gpt-5.6-terra", "medium")
 	client.SetUsageRecorder(recorder)
 	client.client = &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
@@ -129,30 +131,21 @@ func TestStructuredResponsePersistsUsageWithoutContent(t *testing.T) {
 		Value string `json:"value"`
 	}
 	err := client.structured(
-		identity.WithUser(context.Background(), 42), "instruction", map[string]string{"private": "input"},
+		context.Background(), "instruction", map[string]string{"private": "input"},
 		"spending_advice", map[string]any{"type": "object"}, &output,
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(recorder.records) != 1 {
-		t.Fatalf("usage records = %#v", recorder.records)
+	if len(records) != 1 {
+		t.Fatalf("usage records = %#v", records)
 	}
-	record := recorder.records[0]
-	if record.UserID != 42 || record.Operation != "spending_advice" || record.Model != "gpt-5.6-terra" ||
+	record := records[0]
+	if record.Operation != "spending_advice" || record.Model != "gpt-5.6-terra" ||
 		record.InputTokens != 100 || record.CachedInputTokens != 25 || record.OutputTokens != 40 ||
 		record.ReasoningTokens != 10 || record.TotalTokens != 140 {
 		t.Fatalf("usage record = %#v", record)
 	}
-}
-
-type recordingUsageRecorder struct {
-	records []domain.LLMUsage
-}
-
-func (r *recordingUsageRecorder) RecordLLMUsage(_ context.Context, usage domain.LLMUsage) error {
-	r.records = append(r.records, usage)
-	return nil
 }
 
 func TestSanitizedTransactionsExcludeMerchantAndRawText(t *testing.T) {

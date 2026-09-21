@@ -10,7 +10,9 @@ import (
 	"github.com/shuichirohayafuji/spendable-today/server/internal/application"
 	"github.com/shuichirohayafuji/spendable-today/server/internal/auth"
 	"github.com/shuichirohayafuji/spendable-today/server/internal/config"
+	"github.com/shuichirohayafuji/spendable-today/server/internal/domain"
 	"github.com/shuichirohayafuji/spendable-today/server/internal/handler"
+	"github.com/shuichirohayafuji/spendable-today/server/internal/identity"
 	"github.com/shuichirohayafuji/spendable-today/server/internal/infrastructure/notification"
 	"github.com/shuichirohayafuji/spendable-today/server/internal/infrastructure/openai"
 	"github.com/shuichirohayafuji/spendable-today/server/internal/infrastructure/persistence/postgres"
@@ -28,7 +30,7 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 		return nil, err
 	}
 
-	primary, source := modelClient(cfg, repo)
+	primary, source := modelClient(cfg, usageRecorder(repo))
 	fallback := agent.MockClient{}
 	agents := agentadapter.New(primary, fallback, source)
 	fallbackAgent := agentadapter.New(fallback, fallback, "quota_fallback")
@@ -50,6 +52,19 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 		},
 		repository: repo,
 	}, nil
+}
+
+func usageRecorder(repository interface {
+	RecordLLMUsage(context.Context, domain.LLMUsage) error
+}) openai.UsageRecorder {
+	return func(ctx context.Context, usage openai.UsageRecord) error {
+		return repository.RecordLLMUsage(ctx, domain.LLMUsage{
+			UserID: identity.UserID(ctx), Operation: usage.Operation, Model: usage.Model,
+			InputTokens: usage.InputTokens, CachedInputTokens: usage.CachedInputTokens,
+			OutputTokens: usage.OutputTokens, ReasoningTokens: usage.ReasoningTokens,
+			TotalTokens: usage.TotalTokens, OccurredAt: usage.OccurredAt,
+		})
+	}
 }
 
 func (a *App) Close() error {
