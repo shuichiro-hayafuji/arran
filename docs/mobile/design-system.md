@@ -1,16 +1,16 @@
 # モバイルのデザインシステムと画面設計
 
-実装ルールとして、画面・Widget・テーマの変更時に必ず読む。上位判断は [DEC-M05](architecture.md)、利用者の操作結果は [モバイル業務](../../business/mobile.md) を参照する。
+実装ルールとして、画面・Widget・テーマの変更時に必ず読む。上位判断は [DEC-M05](architecture.md)、利用者の操作結果は [モバイル業務](business.md) を参照する。
 
 ## D-M01: constantsを正本とする
 
 | 要素 | 正本 | 利用方法 |
 | --- | --- | --- |
-| 原始色 | [app_color_palette.dart](../../../../mobile/lib/app/constants/app_color_palette.dart) | 意味色を定義する素材。画面で直接色番号を選ばない |
-| 意味色 | [color_theme.dart](../../../../mobile/lib/app/constants/color_theme.dart) | AppColors.standardのbrand/background/border/text等を意味で選ぶ |
-| 文字 | [text_theme.dart](../../../../mobile/lib/app/constants/text_theme.dart) | AppTextStyles.of(context)またはThemeのtextThemeから役割で選ぶ |
-| 余白 | [space_theme.dart](../../../../mobile/lib/app/constants/space_theme.dart) | AppSpaceのpadding・縦横の間隔を使う |
-| 全体テーマ | [app_theme.dart](../../../../mobile/lib/app/constants/app_theme.dart) | AppTheme.standard、共通component themeを利用する |
+| 原始色 | [app_color_palette.dart](../../mobile/lib/app/constants/app_color_palette.dart) | 意味色を定義する素材。画面で直接色番号を選ばない |
+| 意味色 | [color_theme.dart](../../mobile/lib/app/constants/color_theme.dart) | AppColors.standardのbrand/background/border/text等を意味で選ぶ |
+| 文字 | [text_theme.dart](../../mobile/lib/app/constants/text_theme.dart) | AppTextStyles.of(context)またはThemeのtextThemeから役割で選ぶ |
+| 余白 | [space_theme.dart](../../mobile/lib/app/constants/space_theme.dart) | AppSpaceのpadding・縦横の間隔を使う |
+| 全体テーマ | [app_theme.dart](../../mobile/lib/app/constants/app_theme.dart) | AppTheme.standard、共通component themeを利用する |
 
 新規・変更する表示にColorリテラル、直接のColors指定、任意のfontSize、同じ目的の余白数値を散在させない。標準Material部品は既存Themeを活用する。paletteは意味色へ割り当て、画面から直接参照する新規コードを避ける。
 

@@ -6,9 +6,9 @@ Arran のドキュメントは、システムの責務ごとに分けていま�
 
 | 領域 | 説明 |
 | --- | --- |
-| [mobile](mobile/architecture.md) | Flutterクライアントの構成、画面・状態・API通信の境界 |
-| [server](server/architecture.md) | Go API、業務ルール、Agent、データ永続化の構成 |
-| [infra](infra/architecture.md) | AWS CDK、ECS、RDS、Secrets Managerの配備構成 |
+| [mobile](mobile/overview.md) | Flutterクライアントの構成、画面・状態・API通信の境界 |
+| [server](server/overview.md) | Go API、業務ルール、Agent、データ永続化の構成 |
+| [infra](infra/overview.md) | AWS CDK、ECS、RDS、Secrets Managerの配備構成 |
 
 ```text
 mobile/ Flutter
@@ -21,6 +21,14 @@ infra/ Docker / ECS Fargate / RDS PostgreSQL
 ```
 
 ## 正本と運用ルール
+
+領域別のルール本文は各領域ディレクトリに置き、ハーネスIndexは変更対象から参照先を選ぶために使います。
+
+| 領域 | 業務ルール | アーキテクチャ | 実装時の作法 | 補助資料 |
+| --- | --- | --- | --- | --- |
+| mobile | [business](mobile/business.md) | [architecture](mobile/architecture.md) | [conventions](mobile/conventions.md) | [design-system](mobile/design-system.md) |
+| server | [business](server/business.md) | [architecture](server/architecture.md) | [conventions](server/conventions.md) | — |
+| infra | [business](infra/business.md) | [architecture](infra/architecture.md) | [conventions](infra/conventions.md) | — |
 
 - [ハーネスIndex](harness/INDEX.md): 変更対象に応じた業務ルール、アーキテクチャ、実装作法の入口
 - [運用・検証範囲](harness/WORKFLOW.md): 文書・コード・検証の責務と、未検証範囲の扱い

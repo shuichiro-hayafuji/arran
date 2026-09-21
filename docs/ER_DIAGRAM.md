@@ -186,6 +186,6 @@ erDiagram
 - **DB外のデータ**: CSVインポートのプレビューはGoプロセスのメモリに保存し、ユーザーIDと30分の期限を持ちます。DBテーブルではないため図には含めません。
 - **派生データ**: ダッシュボードは取引等から集計し、専用テーブルを持ちません。JSON列の内容も独立したエンティティとしては図示していません。
 
-関連資料: [認証設計・ユーザー登録・既存データ移行](../server/docs/authentication.md) / [スキーマの運用手順](../server/docs/database-schema.md) / [サーバーアーキテクチャ](server/architecture.md)
+関連資料: [認証設計・ユーザー登録・既存データ移行](../server/docs/authentication.md) / [スキーマの運用手順](../server/docs/database-schema.md) / [サーバーアーキテクチャ](server/overview.md)
 
 DDLを変更した際はこの図のカラム、NULL可否、一意制約、外部キーと多重度を併せて更新してください。

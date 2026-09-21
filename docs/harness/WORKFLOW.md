@@ -12,7 +12,7 @@
 
 ## 正本
 
-- 開発上の責務・作法はこのハーネス、HTTP契約は [OpenAPI](../../server/docs/openapi.yaml)、実DBスキーマは [PostgreSQL migration](../../server/internal/infrastructure/persistence/postgres/002_auth.sql) を含むバージョン付きSQLを正本とする。
+- 領域固有の業務ルール・アーキテクチャ・実装作法は [領域別Docs](../README.md) の各ルール文書、このハーネスの運用・検証ルールは本ディレクトリを正本とする。HTTP契約は [OpenAPI](../../server/docs/openapi.yaml)、実DBスキーマは [PostgreSQL migration](../../server/internal/infrastructure/persistence/postgres/002_auth.sql) を含むバージョン付きSQLを正本とする。
 - [領域別アーキテクチャ資料](../README.md) とREADMEは説明資料。コードとの差異を発見した場合、過去の記述だけを根拠にコードを作り替えない。意図を確認し、必要な文書を同じ変更で整合させる。
 - 業務ルールは利用者に約束する結果を記述する。配置・依存はアーキテクチャ、エラー処理や変更の進め方は実装作法、機械的なコマンドはtoolへ置く。
 - 同じルールの本文を複数ファイルにコピーせず、IDとリンクで参照する。
