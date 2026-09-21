@@ -17,6 +17,7 @@
 | `internal/handler` | HTTPの入力・出力とapplication errorのHTTP変換 | `New(*application.Application) http.Handler` | `internal/app` |
 | `internal/agentadapter` | domainと独立AgentのDTO変換、Agent呼出し前の支出評価 | `New`。具象adapterは非公開 | `internal/app`。applicationは生成しない |
 | `internal/app` | production依存の生成と接続、HTTP Serverの所有 | `App`、`New` | `cmd/api` |
+| `internal/infrastructure/notification` | 月間相談上限の管理者通知をPagerDuty Events APIへ送信 | `NewPagerDuty` | `internal/app` |
 | `internal/infrastructure/openai` | Agentの`Model`を満たすOpenAI Responses API adapter | `NewOpenAIClient` | `internal/app` |
 | `internal/infrastructure/persistence/postgres` | production DB、migration、application/auth境界の実装 | `Repository`、`Open` | `internal/app` |
 | `internal/infrastructure/persistence/sqlite` | ローカルテスト用Repository実装 | `Repository`、`Open` | テストだけで生成 |
@@ -28,7 +29,7 @@
 
 `Application`は複数ユースケースの入口をまとめるため大きいが、永続化境界はプロフィール、取引、相談、記憶、レビューに分割する。機能別Serviceへの分割は呼出し側とトランザクション境界を変えるため、このIssueでは行わない。新しいRepository操作は、用途が一致する小さいinterfaceへ追加する。
 
-公開識別子は、別パッケージが型を指定する境界、DTO、生成関数、またはinterfaceの実装に必要なメソッドに限定する。今回の棚卸しでは、handlerの具象型、agentadapterの具象型、Agentのorchestratorと修正用interface、OpenAIの具象client、同一パッケージの検証helperを非公開にした。domainの業務型、applicationが所有するinterface、Agentと親server間のDTO・Model、各adapterの生成関数はパッケージ境界を越えるため公開を維持する。
+公開識別子は、別パッケージが型を指定する境界、DTO、生成関数、またはinterfaceの実装に必要なメソッドに限定する。今回の棚卸しでは、handlerの具象型、agentadapterの具象型、Agentのorchestratorと修正用interface、OpenAIの具象client、同一パッケージの検証helperを非公開にした。domainの業務型、applicationが所有するinterface、Agentと親server間のDTO・Model、各adapterの生成関数はパッケージ境界を越えるため公開を維持する。OpenAIの利用量は技術DTOの`UsageRecord`でcomposition rootへ通知し、そこで認証済み利用者とdomainの記録型へ結び付けるため、OpenAI実装からdomainとidentityを参照しない。
 
 循環依存はGoコンパイラでも失敗するが、コンパイル前に意図しない逆向き依存を説明できるよう、チェッカーは`internal`パッケージごとの許可先を列挙する。新しいパッケージは依存方針を登録しない限り失敗させ、既存パッケージから未許可の`internal`参照も失敗させる。
 

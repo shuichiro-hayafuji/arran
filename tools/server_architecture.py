@@ -28,14 +28,17 @@ DEPENDENCY_EXCEPTIONS = ()
 
 ALLOWED_INTERNAL = {
     "internal/agentadapter": {"internal/domain"},
-    "internal/app": {
-        "internal/agentadapter",
-        "internal/application",
-        "internal/auth",
-        "internal/config",
-        "internal/handler",
-        "internal/infrastructure/openai",
-        "internal/infrastructure/persistence/postgres",
+	"internal/app": {
+		"internal/agentadapter",
+		"internal/application",
+		"internal/auth",
+		"internal/config",
+		"internal/domain",
+		"internal/handler",
+		"internal/identity",
+		"internal/infrastructure/notification",
+		"internal/infrastructure/openai",
+		"internal/infrastructure/persistence/postgres",
     },
     "internal/application": {"internal/csvimport", "internal/domain", "internal/identity"},
     "internal/auth": {"internal/identity"},
@@ -43,12 +46,13 @@ ALLOWED_INTERNAL = {
     "internal/csvimport": {"internal/domain"},
     "internal/domain": set(),
     "internal/handler": {"internal/application", "internal/domain"},
-    "internal/identity": set(),
-    "internal/infrastructure/openai": set(),
+	"internal/identity": set(),
+	"internal/infrastructure/notification": {"internal/domain"},
+	"internal/infrastructure/openai": set(),
     "internal/infrastructure/persistence/postgres": {
         "internal/auth", "internal/domain", "internal/identity",
     },
-    "internal/infrastructure/persistence/sqlite": {"internal/domain"},
+	"internal/infrastructure/persistence/sqlite": {"internal/domain", "internal/identity"},
 }
 
 AGENT_IMPORTERS = {
