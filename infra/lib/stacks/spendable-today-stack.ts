@@ -29,7 +29,16 @@ export class SpendableTodayStack extends cdk.Stack {
           description: 'Populate this empty secret with the OpenAI API key after deployment',
           removalPolicy: cdk.RemovalPolicy.DESTROY,
         });
-    const container = new ContainerConstruct(this, 'Container', { ...config, network, database, openAiSecret });
+    const pagerDutySecret = config.pagerDutySecretArn
+      ? secretsmanager.Secret.fromSecretCompleteArn(this, 'PagerDutySecret', config.pagerDutySecretArn)
+      : new secretsmanager.Secret(this, 'PagerDutySecret', {
+          secretName: `${config.projectName}-${config.environmentName}-pagerduty`,
+          description: 'Populate this empty secret with the PagerDuty Events API routing key',
+          removalPolicy: cdk.RemovalPolicy.DESTROY,
+        });
+    const container = new ContainerConstruct(this, 'Container', {
+      ...config, network, database, openAiSecret, pagerDutySecret,
+    });
     const alb = new AlbConstruct(this, 'Alb', { ...config, network, service: container.service });
 
     new cdk.CfnOutput(this, 'AlbDnsName', { value: alb.loadBalancer.loadBalancerDnsName });
@@ -38,6 +47,7 @@ export class SpendableTodayStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'EcsServiceName', { value: container.service.serviceName });
     new cdk.CfnOutput(this, 'EcrRepositoryUri', { value: container.repository.repositoryUri });
     new cdk.CfnOutput(this, 'OpenAiSecretArn', { value: openAiSecret.secretArn });
+    new cdk.CfnOutput(this, 'PagerDutySecretArn', { value: pagerDutySecret.secretArn });
     new cdk.CfnOutput(this, 'RdsEndpoint', { value: database.instance.dbInstanceEndpointAddress });
   }
 }

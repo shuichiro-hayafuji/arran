@@ -30,7 +30,7 @@ describe('SpendableTodayStack', () => {
 
   test('uses private PostgreSQL and does not create an EFS or S3 data store', () => {
     const t = template();
-    t.hasResourceProperties('AWS::RDS::DBInstance', { PubliclyAccessible: false, DBName: 'spendable_today', Port: 5432 });
+    t.hasResourceProperties('AWS::RDS::DBInstance', { PubliclyAccessible: false, DBName: 'spendable_today', Port: '5432' });
     t.resourceCountIs('AWS::EFS::FileSystem', 0);
     t.resourceCountIs('AWS::S3::Bucket', 0);
   });
@@ -42,6 +42,17 @@ describe('SpendableTodayStack', () => {
         Environment: Match.arrayWith([
           { Name: 'API_ADDR', Value: '0.0.0.0:8080' },
           { Name: 'DB_NAME', Value: 'spendable_today' },
+          { Name: 'OPENAI_MODEL', Value: 'gpt-5.6-terra' },
+          { Name: 'OPENAI_REASONING_EFFORT', Value: 'medium' },
+          { Name: 'APP_ENVIRONMENT', Value: 'dev' },
+        ]),
+      })]),
+    });
+    t.hasResourceProperties('AWS::ECS::TaskDefinition', {
+      ContainerDefinitions: Match.arrayWith([Match.objectLike({
+        Secrets: Match.arrayWith([
+          Match.objectLike({ Name: 'OPENAI_API_KEY' }),
+          Match.objectLike({ Name: 'PAGERDUTY_ROUTING_KEY' }),
         ]),
       })]),
     });
