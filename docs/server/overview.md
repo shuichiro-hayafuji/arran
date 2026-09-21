@@ -95,6 +95,7 @@ Applicationがプロフィール、月次集計、直近相談、記憶、関連
 
 - [サーバー業務ルール](business.md)
 - [サーバー実装ルール](architecture.md)
+- [Server Software詳細設計](software-design.md)
 - [サーバー実装時の作法](conventions.md)
 - [ADR-0001: Go serverをModular MonolithとHexagonal Architectureで構成する](../adr/0001-server-modular-monolith-hexagonal.md)
 - [認証設計・運用](../../server/docs/authentication.md)
