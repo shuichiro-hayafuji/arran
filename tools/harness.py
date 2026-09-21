@@ -10,6 +10,7 @@ import subprocess
 import sys
 
 from mobile_architecture import check_mobile_architecture
+from server_architecture import check_server_architecture
 
 ROOT = Path(__file__).resolve().parent.parent
 SCOPES = ("docs", "mobile", "server", "infra", "postgres", "all", "mobile-architecture")
@@ -119,8 +120,10 @@ def main(argv=None):
             continue
         if scope == "server":
             if args.dry_run:
+                print("[PLAN] server architecture: Go package and Agent boundaries (A-S01-A-S05)")
                 print("[PLAN] server: gofmt -l (server and Agent source files)")
             else:
+                record("server architecture", check_server_architecture(ROOT))
                 record("server format", check_go_format(ROOT))
             print("[NOT RUN] PostgreSQL integration; use postgres scope", flush=True)
         env = os.environ.copy()

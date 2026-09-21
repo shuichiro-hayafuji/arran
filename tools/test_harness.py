@@ -52,19 +52,33 @@ class HarnessTests(unittest.TestCase):
 
     def test_server_includes_agent_and_clears_database(self):
         with patch("harness.run_command", return_value="PASS") as run, \
+                patch("harness.check_server_architecture", return_value="PASS") as architecture, \
                 patch("harness.check_go_format", return_value="PASS"), \
                 patch.dict("os.environ", {"ARRAN_TEST_DATABASE_URL": "test-only"}):
             self.assertEqual(harness.main(["check", "server"]), 0)
+            architecture.assert_called_once()
             self.assertEqual(run.call_count, 4)
             self.assertTrue(any(call.args[0].name == "agent" for call in run.call_args_list))
             self.assertTrue(all("ARRAN_TEST_DATABASE_URL" not in call.args[2]
                                 for call in run.call_args_list))
 
     def test_dry_run_never_executes(self):
-        with patch("harness.subprocess.run") as run, patch("harness.check_docs") as docs:
+        with patch("harness.subprocess.run") as run, patch("harness.check_docs") as docs, \
+                patch("harness.check_server_architecture") as architecture:
             self.assertEqual(harness.main(["check", "all", "--dry-run"]), 0)
             run.assert_not_called()
             docs.assert_not_called()
+            architecture.assert_not_called()
+
+    def test_server_architecture_failure_propagates(self):
+        for scope in ("server", "all"):
+            with self.subTest(scope=scope), \
+                    patch("harness.check_server_architecture", return_value="FAIL"), \
+                    patch("harness.check_mobile_architecture", return_value="PASS"), \
+                    patch("harness.check_docs", return_value="PASS"), \
+                    patch("harness.check_go_format", return_value="PASS"), \
+                    patch("harness.run_command", return_value="PASS"):
+                self.assertEqual(harness.main(["check", scope]), 1)
 
     def test_postgres_missing_configuration_is_not_success(self):
         with patch.dict("os.environ", {}, clear=True), patch("harness.run_command") as run:

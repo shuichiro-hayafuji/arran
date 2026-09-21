@@ -20,7 +20,7 @@ func TestParseResponseOutput(t *testing.T) {
 			}]
 		}]
 	}`)
-	got, err := ParseResponseOutput(response)
+	got, err := parseResponseOutput(response)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -30,7 +30,7 @@ func TestParseResponseOutput(t *testing.T) {
 }
 
 func TestParseResponseOutputRejectsMissingStructuredText(t *testing.T) {
-	if _, err := ParseResponseOutput([]byte(`{"output":[]}`)); err == nil {
+	if _, err := parseResponseOutput([]byte(`{"output":[]}`)); err == nil {
 		t.Fatal("expected an error")
 	}
 }
