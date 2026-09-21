@@ -4,13 +4,15 @@
 
 一般の利用者に向けた初期方針は、[対象者と支出相談の体験](docs/product/target-users.md)に記録しています。お金の管理が苦手な人が、黒字化や期限付きの貯金目標に沿って、支出を見送る助言を受け取る体験を目指します。本人への聞き取りに基づく方針であり、他の対象者への調査と実際の利用による検証は未実施です。
 
+領域別の構成・責務は[ドキュメントIndex](docs/README.md)から参照できます。
+
 ## ディレクトリ
 
 データ構造は[ER図](docs/ER_DIAGRAM.md)を参照してください。
 
 ```text
 server/          Go REST API、PostgreSQL、CSV取込、Agent境界、OpenAI Adapter
-infrastructure/  VS Codeワークスペース、ローカル実行用Makefile
+infra/           AWS CDK、ECS Fargate、RDS PostgreSQLの配備構成
 mobile/          Flutter iOS/Androidアプリ（Android Studioで開く）
 ```
 
