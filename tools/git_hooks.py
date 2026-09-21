@@ -114,6 +114,16 @@ def format_targets(paths):
         or (p.startswith("server/") and not p.startswith("server/agent/") and p.endswith(".go")))]
 
 
+def format_files(root, index, temp, targets):
+    """Shared formatter invocation; callers own file selection and staging policy."""
+    go = [str(temp / p) for p in targets if p.endswith(".go")]
+    if go:
+        run(["gofmt", "-w", *go], temp)
+    dart = [str(temp / p) for p in targets if p.endswith(".dart")]
+    if dart:
+        run([str(dart_sdk(root, index)), "format", *dart], temp / "mobile")
+
+
 def pre_commit(root):
     index = entries(root)
     changes = changed(root)
@@ -143,12 +153,7 @@ def pre_commit(root):
             paths.update(infra)
             paths.update(p for p in index if p.startswith("infra/") and p.endswith((".json", ".ts", ".cjs")))
         copy_index(root, index, temp, paths)
-        go = [str(temp / p) for p in targets if p.endswith(".go")]
-        if go:
-            run(["gofmt", "-w", *go], temp)
-        dart = [str(temp / p) for p in targets if p.endswith(".dart")]
-        if dart:
-            run([str(dart_sdk(root, index)), "format", *dart], temp / "mobile")
+        format_files(root, index, temp, targets)
         for name in existing:
             path = temp / name
             if name.endswith(".py"):

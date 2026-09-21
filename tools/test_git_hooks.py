@@ -219,7 +219,7 @@ class GitHookTests(unittest.TestCase):
             result = subprocess.run(args, cwd=self.root, env=self.env, capture_output=True)
             self.assertEqual(result.returncode, 0, result.stderr)
         path = self.root / ".codex/hooks.json"
-        self.assertEqual(json.loads(path.read_text())["hooks"].keys(), {"Stop"})
+        self.assertEqual(json.loads(path.read_text())["hooks"].keys(), {"UserPromptSubmit", "Stop"})
         path.write_text('{"hooks": {}}')
         result = subprocess.run(args, cwd=self.root, env=self.env, capture_output=True)
         self.assertNotEqual(result.returncode, 0)

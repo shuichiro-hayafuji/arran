@@ -1,13 +1,24 @@
 {
-  "description": "Arran: notify locally when Codex finishes a response; this does not imply validation success.",
+  "description": "Arran: format changed working files at turn end, then notify locally; no automatic staging.",
   "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/tools/codex_hooks.py\"",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
     "Stop": [
       {
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/codex-notify.py\"",
-            "timeout": 10
+            "command": "python3 \"$(git rev-parse --show-toplevel)/tools/codex_hooks.py\"",
+            "timeout": 90
           }
         ]
       }
