@@ -7,30 +7,47 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/shuichiro-hayafuji/arran_agent"
+	"github.com/shuichirohayafuji/spendable-today/server/internal/domain"
+	"github.com/shuichirohayafuji/spendable-today/server/internal/identity"
 )
 
 type client struct {
-	apiKey string
-	model  string
-	client *http.Client
+	apiKey          string
+	model           string
+	reasoningEffort string
+	client          *http.Client
+	usageRecorder   UsageRecorder
+}
+
+type UsageRecorder interface {
+	RecordLLMUsage(context.Context, domain.LLMUsage) error
 }
 
 var _ agent.Model = (*client)(nil)
 
-func NewOpenAIClient(apiKey, model string) *client {
+func NewOpenAIClient(apiKey, model, reasoningEffort string) *client {
 	if model == "" {
-		model = "gpt-5-mini"
+		model = "gpt-5.6-terra"
+	}
+	if reasoningEffort == "" {
+		reasoningEffort = "medium"
 	}
 	return &client{
-		apiKey: apiKey,
-		model:  model,
-		client: &http.Client{Timeout: 20 * time.Second},
+		apiKey:          apiKey,
+		model:           model,
+		reasoningEffort: reasoningEffort,
+		client:          &http.Client{Timeout: 20 * time.Second},
 	}
+}
+
+func (c *client) SetUsageRecorder(recorder UsageRecorder) {
+	c.usageRecorder = recorder
 }
 
 func (c *client) GenerateAdvice(
@@ -129,6 +146,9 @@ func (c *client) structured(
 		"instructions": system,
 		"input":        string(inputJSON),
 		"store":        false,
+		"reasoning": map[string]any{
+			"effort": c.reasoningEffort,
+		},
 		"text": map[string]any{
 			"format": map[string]any{
 				"type":   "json_schema",
@@ -165,7 +185,25 @@ func (c *client) structured(
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return fmt.Errorf("OpenAI returned HTTP %d", response.StatusCode)
 	}
-	output, err := parseResponseOutput(responseBody)
+	output, usage, err := parseResponse(responseBody)
+	if usage.TotalTokens > 0 || usage.InputTokens > 0 || usage.OutputTokens > 0 {
+		log.Printf(
+			"OpenAI usage: user_id=%d operation=%s model=%s input_tokens=%d cached_input_tokens=%d output_tokens=%d reasoning_tokens=%d total_tokens=%d",
+			identity.UserID(ctx), name, c.model, usage.InputTokens, usage.CachedInputTokens,
+			usage.OutputTokens, usage.ReasoningTokens, usage.TotalTokens,
+		)
+		if c.usageRecorder != nil {
+			recordErr := c.usageRecorder.RecordLLMUsage(ctx, domain.LLMUsage{
+				UserID: identity.UserID(ctx), Operation: name, Model: c.model,
+				InputTokens: usage.InputTokens, CachedInputTokens: usage.CachedInputTokens,
+				OutputTokens: usage.OutputTokens, ReasoningTokens: usage.ReasoningTokens,
+				TotalTokens: usage.TotalTokens, OccurredAt: time.Now().UTC(),
+			})
+			if recordErr != nil {
+				log.Printf("OpenAI usage persistence failed: user_id=%d operation=%s: %v", identity.UserID(ctx), name, recordErr)
+			}
+		}
+	}
 	if err != nil {
 		return err
 	}
@@ -176,6 +214,26 @@ func (c *client) structured(
 }
 
 func parseResponseOutput(data []byte) (string, error) {
+	output, _, err := parseResponse(data)
+	return output, err
+}
+
+// Usage contains token counts returned by the Responses API. OutputTokens
+// already includes reasoning tokens, so callers must not add them again.
+type Usage struct {
+	InputTokens       int
+	CachedInputTokens int
+	OutputTokens      int
+	ReasoningTokens   int
+	TotalTokens       int
+}
+
+func parseResponseUsage(data []byte) (Usage, error) {
+	_, usage, err := parseResponse(data)
+	return usage, err
+}
+
+func parseResponse(data []byte) (string, Usage, error) {
 	var response struct {
 		Output []struct {
 			Content []struct {
@@ -183,18 +241,36 @@ func parseResponseOutput(data []byte) (string, error) {
 				Text string `json:"text"`
 			} `json:"content"`
 		} `json:"output"`
+		Usage struct {
+			InputTokens       int `json:"input_tokens"`
+			OutputTokens      int `json:"output_tokens"`
+			TotalTokens       int `json:"total_tokens"`
+			InputTokenDetails struct {
+				CachedTokens int `json:"cached_tokens"`
+			} `json:"input_tokens_details"`
+			OutputTokenDetails struct {
+				ReasoningTokens int `json:"reasoning_tokens"`
+			} `json:"output_tokens_details"`
+		} `json:"usage"`
 	}
 	if err := json.Unmarshal(data, &response); err != nil {
-		return "", fmt.Errorf("OpenAI response JSON is invalid: %w", err)
+		return "", Usage{}, fmt.Errorf("OpenAI response JSON is invalid: %w", err)
+	}
+	usage := Usage{
+		InputTokens:       response.Usage.InputTokens,
+		CachedInputTokens: response.Usage.InputTokenDetails.CachedTokens,
+		OutputTokens:      response.Usage.OutputTokens,
+		ReasoningTokens:   response.Usage.OutputTokenDetails.ReasoningTokens,
+		TotalTokens:       response.Usage.TotalTokens,
 	}
 	for _, output := range response.Output {
 		for _, content := range output.Content {
 			if content.Type == "output_text" && content.Text != "" {
-				return content.Text, nil
+				return content.Text, usage, nil
 			}
 		}
 	}
-	return "", fmt.Errorf("OpenAI response did not contain output_text")
+	return "", usage, fmt.Errorf("OpenAI response did not contain output_text")
 }
 
 func sanitizedTransactions(items []agent.Transaction) []map[string]any {

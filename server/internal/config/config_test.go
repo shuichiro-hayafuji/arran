@@ -2,6 +2,32 @@ package config
 
 import "testing"
 
+func TestLoadUsesTerraMediumDefaults(t *testing.T) {
+	t.Setenv("USE_MOCK_LLM", "false")
+	t.Setenv("OPENAI_MODEL", "")
+	t.Setenv("OPENAI_REASONING_EFFORT", "")
+
+	config, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if config.OpenAIModel != "gpt-5.6-terra" {
+		t.Fatalf("OpenAIModel = %q", config.OpenAIModel)
+	}
+	if config.OpenAIReasoningEffort != "medium" {
+		t.Fatalf("OpenAIReasoningEffort = %q", config.OpenAIReasoningEffort)
+	}
+}
+
+func TestLoadRejectsUnknownReasoningEffort(t *testing.T) {
+	t.Setenv("USE_MOCK_LLM", "false")
+	t.Setenv("OPENAI_REASONING_EFFORT", "extreme")
+
+	if _, err := Load(); err == nil {
+		t.Fatal("expected an error")
+	}
+}
+
 func TestLoadDatabaseURLBuildsLocalPostgresDefault(t *testing.T) {
 	t.Setenv("DATABASE_URL", "")
 	t.Setenv("DB_HOST", "127.0.0.1")

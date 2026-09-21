@@ -11,6 +11,7 @@ import (
 	"github.com/shuichirohayafuji/spendable-today/server/internal/auth"
 	"github.com/shuichirohayafuji/spendable-today/server/internal/config"
 	"github.com/shuichirohayafuji/spendable-today/server/internal/handler"
+	"github.com/shuichirohayafuji/spendable-today/server/internal/infrastructure/notification"
 	"github.com/shuichirohayafuji/spendable-today/server/internal/infrastructure/openai"
 	"github.com/shuichirohayafuji/spendable-today/server/internal/infrastructure/persistence/postgres"
 )
@@ -27,11 +28,16 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 		return nil, err
 	}
 
-	primary, source := modelClient(cfg)
+	primary, source := modelClient(cfg, repo)
 	fallback := agent.MockClient{}
 	agents := agentadapter.New(primary, fallback, source)
+	fallbackAgent := agentadapter.New(fallback, fallback, "quota_fallback")
+	adminNotifier := notification.NewPagerDuty(cfg.PagerDutyRoutingKey)
 	apiApplication := application.New(application.Config{Repository: repo,
-		ConsultationAgent: agents, ReviewAgent: agents, MemoryAgent: agents})
+		ConsultationAgent: agents, FallbackAgent: fallbackAgent,
+		ReviewAgent: agents, FallbackReview: fallbackAgent,
+		MemoryAgent: agents, FallbackMemory: fallbackAgent, AdminNotifier: adminNotifier,
+		Environment: cfg.Environment})
 
 	return &App{
 		Server: &http.Server{
@@ -50,9 +56,11 @@ func (a *App) Close() error {
 	return a.repository.Close()
 }
 
-func modelClient(cfg config.Config) (agent.Model, string) {
+func modelClient(cfg config.Config, usageRecorder openai.UsageRecorder) (agent.Model, string) {
 	if cfg.UseMockLLM {
 		return agent.MockClient{}, "mock"
 	}
-	return openai.NewOpenAIClient(cfg.OpenAIAPIKey, cfg.OpenAIModel), "openai"
+	client := openai.NewOpenAIClient(cfg.OpenAIAPIKey, cfg.OpenAIModel, cfg.OpenAIReasoningEffort)
+	client.SetUsageRecorder(usageRecorder)
+	return client, "openai"
 }

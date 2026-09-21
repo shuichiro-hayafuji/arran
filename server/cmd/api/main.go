@@ -24,7 +24,7 @@ func main() {
 	} else if cfg.OpenAIAPIKey == "" {
 		log.Printf("LLM mode: OpenAI requested, but OPENAI_API_KEY is empty; responses will use fallback")
 	} else {
-		log.Printf("LLM mode: OpenAI Responses API (model=%s)", cfg.OpenAIModel)
+		log.Printf("LLM mode: OpenAI Responses API (model=%s, reasoning_effort=%s)", cfg.OpenAIModel, cfg.OpenAIReasoningEffort)
 	}
 	application, err := app.New(context.Background(), cfg)
 	if err != nil {

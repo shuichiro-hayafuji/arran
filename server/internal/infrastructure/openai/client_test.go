@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	"github.com/shuichiro-hayafuji/arran_agent"
+	"github.com/shuichirohayafuji/spendable-today/server/internal/domain"
+	"github.com/shuichirohayafuji/spendable-today/server/internal/identity"
 )
 
 func TestParseResponseOutput(t *testing.T) {
@@ -35,9 +37,30 @@ func TestParseResponseOutputRejectsMissingStructuredText(t *testing.T) {
 	}
 }
 
+func TestParseResponseUsage(t *testing.T) {
+	response := []byte(`{
+		"output":[{"content":[{"type":"output_text","text":"{}"}]}],
+		"usage":{
+			"input_tokens":1200,
+			"input_tokens_details":{"cached_tokens":300},
+			"output_tokens":240,
+			"output_tokens_details":{"reasoning_tokens":80},
+			"total_tokens":1440
+		}
+	}`)
+	usage, err := parseResponseUsage(response)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if usage.InputTokens != 1200 || usage.CachedInputTokens != 300 ||
+		usage.OutputTokens != 240 || usage.ReasoningTokens != 80 || usage.TotalTokens != 1440 {
+		t.Fatalf("usage = %#v", usage)
+	}
+}
+
 func TestStructuredRequestDisablesStorage(t *testing.T) {
 	var requestBody map[string]any
-	client := NewOpenAIClient("test-key", "test-model")
+	client := NewOpenAIClient("test-key", "test-model", "medium")
 	client.client = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 		if err := json.NewDecoder(request.Body).Decode(&requestBody); err != nil {
 			t.Fatal(err)
@@ -74,6 +97,10 @@ func TestStructuredRequestDisablesStorage(t *testing.T) {
 	if requestBody["store"] != false {
 		t.Fatalf("store = %#v", requestBody["store"])
 	}
+	reasoning, ok := requestBody["reasoning"].(map[string]any)
+	if !ok || reasoning["effort"] != "medium" {
+		t.Fatalf("reasoning = %#v", requestBody["reasoning"])
+	}
 	text, ok := requestBody["text"].(map[string]any)
 	if !ok {
 		t.Fatalf("text = %#v", requestBody["text"])
@@ -82,6 +109,50 @@ func TestStructuredRequestDisablesStorage(t *testing.T) {
 	if !ok || format["type"] != "json_schema" || format["strict"] != true {
 		t.Fatalf("format = %#v", text["format"])
 	}
+}
+
+func TestStructuredResponsePersistsUsageWithoutContent(t *testing.T) {
+	recorder := &recordingUsageRecorder{}
+	client := NewOpenAIClient("test-key", "gpt-5.6-terra", "medium")
+	client.SetUsageRecorder(recorder)
+	client.client = &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body: io.NopCloser(strings.NewReader(`{
+				"output":[{"content":[{"type":"output_text","text":"{\"value\":\"secret answer\"}"}]}],
+				"usage":{"input_tokens":100,"input_tokens_details":{"cached_tokens":25},"output_tokens":40,"output_tokens_details":{"reasoning_tokens":10},"total_tokens":140}
+			}`)),
+			Header: make(http.Header),
+		}, nil
+	})}
+	var output struct {
+		Value string `json:"value"`
+	}
+	err := client.structured(
+		identity.WithUser(context.Background(), 42), "instruction", map[string]string{"private": "input"},
+		"spending_advice", map[string]any{"type": "object"}, &output,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(recorder.records) != 1 {
+		t.Fatalf("usage records = %#v", recorder.records)
+	}
+	record := recorder.records[0]
+	if record.UserID != 42 || record.Operation != "spending_advice" || record.Model != "gpt-5.6-terra" ||
+		record.InputTokens != 100 || record.CachedInputTokens != 25 || record.OutputTokens != 40 ||
+		record.ReasoningTokens != 10 || record.TotalTokens != 140 {
+		t.Fatalf("usage record = %#v", record)
+	}
+}
+
+type recordingUsageRecorder struct {
+	records []domain.LLMUsage
+}
+
+func (r *recordingUsageRecorder) RecordLLMUsage(_ context.Context, usage domain.LLMUsage) error {
+	r.records = append(r.records, usage)
+	return nil
 }
 
 func TestSanitizedTransactionsExcludeMerchantAndRawText(t *testing.T) {

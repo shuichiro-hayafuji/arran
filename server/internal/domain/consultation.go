@@ -1,6 +1,9 @@
 package domain
 
-import "time"
+import (
+	"fmt"
+	"time"
+)
 
 type Consultation struct {
 	ID                 int64          `json:"id"`
@@ -42,4 +45,28 @@ type ConsultationContext struct {
 	Memories             []MemoryItem   `json:"memories"`
 	RelevantTransactions []Transaction  `json:"relevant_transactions"`
 	AdviceFacts          AdviceFacts    `json:"advice_facts"`
+}
+
+// ConsultationUsage は利用者の対象月における新規相談数と有効な上限を表す。
+type ConsultationUsage struct {
+	Month string
+	Count int
+	Limit int
+}
+
+func (u ConsultationUsage) UseExternalModel() bool {
+	return u.Count <= u.Limit
+}
+
+type MonthlyLimitEvent struct {
+	Environment string
+	UserID      int64
+	Month       string
+	Count       int
+	Limit       int
+	OccurredAt  time.Time
+}
+
+func (e MonthlyLimitEvent) DedupKey() string {
+	return fmt.Sprintf("arran-monthly-consultation-limit-%s-%d-%s", e.Environment, e.UserID, e.Month)
 }

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/shuichirohayafuji/spendable-today/server/internal/domain"
+	"github.com/shuichirohayafuji/spendable-today/server/internal/identity"
 )
 
 type Repository struct {
@@ -31,6 +32,142 @@ func (r *Repository) Close() error {
 // Migrate は明示的なスキーマ確認用の窓口。Open 時にも同じ移行を実行する。
 func (r *Repository) Migrate(ctx context.Context) error {
 	return Migrate(ctx, r.db.DB)
+}
+
+// MonthlyConsultationLimit は利用者別設定を優先し、未設定なら全体の既定値を返す。
+func (r *Repository) MonthlyConsultationLimit(ctx context.Context) (int, error) {
+	var limit int
+	err := r.db.QueryRowContext(ctx, `
+		SELECT COALESCE(user_limits.monthly_limit, settings.integer_value)
+		FROM service_settings AS settings
+		LEFT JOIN user_consultation_limits AS user_limits
+		  ON user_limits.user_id = :user_id
+		WHERE settings.key = 'default_monthly_consultation_limit'
+	`).Scan(&limit)
+	return limit, err
+}
+
+func (r *Repository) MonthlyConsultationUsage(ctx context.Context, month string) (domain.ConsultationUsage, error) {
+	usage := domain.ConsultationUsage{Month: month}
+	err := r.db.QueryRowContext(ctx, `
+		SELECT COALESCE(usage.consultation_count, 0),
+		       COALESCE(user_limits.monthly_limit, settings.integer_value)
+		FROM service_settings AS settings
+		LEFT JOIN user_consultation_limits AS user_limits
+		  ON user_limits.user_id = :user_id
+		LEFT JOIN monthly_consultation_usage AS usage
+		  ON usage.user_id = :user_id AND usage.month = ?
+		WHERE settings.key = 'default_monthly_consultation_limit'
+	`, month).Scan(&usage.Count, &usage.Limit)
+	return usage, err
+}
+
+// ReserveMonthlyConsultation は同一利用者・月の同時要求をDBのupsertで直列化する。
+func (r *Repository) ReserveMonthlyConsultation(ctx context.Context, month string) (domain.ConsultationUsage, error) {
+	userID := identity.UserID(ctx)
+	if userID <= 0 {
+		return domain.ConsultationUsage{}, errors.New("authenticated user is required")
+	}
+	tx, err := r.db.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return domain.ConsultationUsage{}, err
+	}
+	defer tx.Rollback()
+	usage := domain.ConsultationUsage{Month: month}
+	err = tx.QueryRowContext(ctx, `
+		INSERT INTO monthly_consultation_usage(user_id, month, consultation_count)
+		VALUES($1, $2, 1)
+		ON CONFLICT (user_id, month) DO UPDATE SET
+		  consultation_count = monthly_consultation_usage.consultation_count + 1,
+		  updated_at = CURRENT_TIMESTAMP
+		RETURNING consultation_count
+	`, userID, month).Scan(&usage.Count)
+	if err != nil {
+		return domain.ConsultationUsage{}, err
+	}
+	err = tx.QueryRowContext(ctx, `
+		SELECT COALESCE(user_limits.monthly_limit, settings.integer_value)
+		FROM service_settings AS settings
+		LEFT JOIN user_consultation_limits AS user_limits ON user_limits.user_id = $1
+		WHERE settings.key = 'default_monthly_consultation_limit'
+	`, userID).Scan(&usage.Limit)
+	if err != nil {
+		return domain.ConsultationUsage{}, err
+	}
+	if err = tx.Commit(); err != nil {
+		return domain.ConsultationUsage{}, err
+	}
+	return usage, nil
+}
+
+func (r *Repository) ReleaseMonthlyConsultation(ctx context.Context, month string) error {
+	result, err := r.db.ExecContext(ctx, `
+		UPDATE monthly_consultation_usage
+		SET consultation_count = consultation_count - 1,
+		    updated_at = CURRENT_TIMESTAMP
+		WHERE user_id = :user_id AND month = ? AND consultation_count > 0
+	`, month)
+	if err != nil {
+		return err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return domain.ErrNotFound
+	}
+	return nil
+}
+
+func (r *Repository) ClaimMonthlyLimitNotification(ctx context.Context, event domain.MonthlyLimitEvent) (bool, error) {
+	var claimed bool
+	err := r.db.QueryRowContext(ctx, `
+		WITH claimed AS (
+		  INSERT INTO admin_notifications(
+		    user_id, month, notification_type, consultation_count,
+		    consultation_limit, status, attempts, occurred_at
+		  ) VALUES(:user_id, ?, 'monthly_consultation_limit', ?, ?, 'sending', 1, ?)
+		  ON CONFLICT (user_id, month, notification_type) DO UPDATE SET
+		    consultation_count = excluded.consultation_count,
+		    consultation_limit = excluded.consultation_limit,
+		    status = 'sending', attempts = admin_notifications.attempts + 1,
+		    last_error = '', updated_at = CURRENT_TIMESTAMP
+		  WHERE admin_notifications.status = 'failed'
+		  RETURNING 1
+		)
+		SELECT EXISTS(SELECT 1 FROM claimed)
+	`, event.Month, event.Count, event.Limit, event.OccurredAt).Scan(&claimed)
+	return claimed, err
+}
+
+func (r *Repository) CompleteMonthlyLimitNotification(ctx context.Context, event domain.MonthlyLimitEvent, notifyErr error) error {
+	status := "delivered"
+	lastError := ""
+	var deliveredAt any = event.OccurredAt
+	if notifyErr != nil {
+		status = "failed"
+		lastError = notifyErr.Error()
+		deliveredAt = nil
+	}
+	_, err := r.db.ExecContext(ctx, `
+		UPDATE admin_notifications
+		SET status = ?, last_error = ?, delivered_at = ?, updated_at = CURRENT_TIMESTAMP
+		WHERE user_id = :user_id AND month = ?
+		  AND notification_type = 'monthly_consultation_limit'
+	`, status, lastError, deliveredAt, event.Month)
+	return err
+}
+
+func (r *Repository) RecordLLMUsage(ctx context.Context, usage domain.LLMUsage) error {
+	_, err := r.db.ExecContext(ctx, `
+		INSERT INTO llm_usage(
+		  user_id, operation, model, input_tokens, cached_input_tokens,
+		  output_tokens, reasoning_tokens, total_tokens, occurred_at
+		) VALUES(:user_id, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, usage.Operation, usage.Model, usage.InputTokens, usage.CachedInputTokens,
+		usage.OutputTokens, usage.ReasoningTokens, usage.TotalTokens, usage.OccurredAt)
+	return err
 }
 
 func (r *Repository) GetProfile(ctx context.Context) (domain.Profile, error) {

@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -217,6 +218,165 @@ func TestAdviceUsesBoundedRevisionLoop(t *testing.T) {
 	if consultation.AIRecommendation == "" || consultation.InferredCategory != "酒・飲み会" {
 		t.Fatalf("consultation = %#v", consultation)
 	}
+}
+
+func TestMonthlyConsultationLimitUsesFallbackWithoutCountingFollowUp(t *testing.T) {
+	ctx := context.Background()
+	repo, err := sqlite.Open(ctx, filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = repo.Close() })
+	now := time.Date(2026, 7, 31, 23, 59, 0, 0, jst)
+	primary := &recordingConsultationAgent{source: "openai"}
+	fallback := &recordingConsultationAgent{source: "quota_fallback"}
+	primaryAux := &recordingAuxAgent{}
+	fallbackAux := &recordingAuxAgent{}
+	notifier := &recordingAdminNotifier{}
+	service := New(Config{
+		Repository: repo, ConsultationAgent: primary, FallbackAgent: fallback,
+		ReviewAgent: primaryAux, FallbackReview: fallbackAux,
+		MemoryAgent: primaryAux, FallbackMemory: fallbackAux,
+		AdminNotifier: notifier, Environment: "test",
+		Now: func() time.Time { return now },
+	})
+	if _, err = service.PutProfile(ctx, testProfile()); err != nil {
+		t.Fatal(err)
+	}
+
+	var thirtieth domain.Consultation
+	for i := 0; i < 30; i++ {
+		thirtieth, err = service.StartConsultation(ctx, "相談", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if primary.calls != 30 || fallback.calls != 0 || thirtieth.ResponseSource != "openai" {
+		t.Fatalf("at limit primary=%d fallback=%d source=%q", primary.calls, fallback.calls, thirtieth.ResponseSource)
+	}
+	if len(notifier.events) != 1 || notifier.events[0].Count != 30 || notifier.events[0].UserID != 0 {
+		t.Fatalf("limit notifications = %#v", notifier.events)
+	}
+	if _, err = service.UpdateConsultationResult(ctx, thirtieth.ID, domain.ConsultationResultUpdate{Status: "skipped"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = service.CreateMonthlyReview(ctx, "2026-07"); err != nil {
+		t.Fatal(err)
+	}
+	if primaryAux.memoryCalls != 0 || primaryAux.reviewCalls != 0 ||
+		fallbackAux.memoryCalls != 1 || fallbackAux.reviewCalls != 1 {
+		t.Fatalf("auxiliary calls primary=%#v fallback=%#v", primaryAux, fallbackAux)
+	}
+
+	overLimit, err := service.StartConsultation(ctx, "31回目の相談", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if primary.calls != 30 || fallback.calls != 1 || overLimit.ResponseSource != "quota_fallback" {
+		t.Fatalf("over limit primary=%d fallback=%d source=%q", primary.calls, fallback.calls, overLimit.ResponseSource)
+	}
+	if len(notifier.events) != 1 {
+		t.Fatalf("duplicate limit notifications = %#v", notifier.events)
+	}
+	if _, err = service.ContinueConsultation(ctx, overLimit.ID, "追加情報", nil); err != nil {
+		t.Fatal(err)
+	}
+	usage, err := repo.MonthlyConsultationUsage(ctx, "2026-07")
+	if err != nil || usage.Count != 31 || fallback.calls != 2 {
+		t.Fatalf("follow-up usage=%#v fallback=%d err=%v", usage, fallback.calls, err)
+	}
+
+	now = time.Date(2026, 8, 1, 0, 0, 0, 0, jst)
+	newMonth, err := service.StartConsultation(ctx, "翌月の相談", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if primary.calls != 31 || newMonth.ResponseSource != "openai" {
+		t.Fatalf("new month primary=%d source=%q", primary.calls, newMonth.ResponseSource)
+	}
+}
+
+func TestFailedConsultationReleasesMonthlyReservation(t *testing.T) {
+	ctx := context.Background()
+	repo, err := sqlite.Open(ctx, filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = repo.Close() })
+	primary := &recordingConsultationAgent{source: "openai", err: errors.New("model unavailable")}
+	service := New(Config{
+		Repository: repo, ConsultationAgent: primary,
+		Now: func() time.Time { return time.Date(2026, 7, 31, 12, 0, 0, 0, jst) },
+	})
+	if _, err = service.PutProfile(ctx, testProfile()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = service.StartConsultation(ctx, "失敗する相談", nil); err == nil {
+		t.Fatal("consultation unexpectedly succeeded")
+	}
+	usage, err := repo.MonthlyConsultationUsage(ctx, "2026-07")
+	if err != nil || usage.Count != 0 {
+		t.Fatalf("failed consultation usage = %#v, err = %v", usage, err)
+	}
+}
+
+type recordingConsultationAgent struct {
+	calls  int
+	source string
+	err    error
+}
+
+type recordingAdminNotifier struct {
+	events []domain.MonthlyLimitEvent
+	err    error
+}
+
+func (n *recordingAdminNotifier) NotifyMonthlyLimit(_ context.Context, event domain.MonthlyLimitEvent) error {
+	n.events = append(n.events, event)
+	return n.err
+}
+
+type recordingAuxAgent struct {
+	reviewCalls int
+	memoryCalls int
+}
+
+func (a *recordingAuxAgent) Review(
+	context.Context,
+	domain.Profile,
+	domain.Dashboard,
+	[]domain.Transaction,
+	[]domain.Consultation,
+	[]domain.ReviewCandidate,
+) ([]domain.ReviewCandidate, error) {
+	a.reviewCalls++
+	return nil, nil
+}
+
+func (a *recordingAuxAgent) ExtractMemory(context.Context, domain.Consultation) ([]domain.MemoryItem, error) {
+	a.memoryCalls++
+	return nil, nil
+}
+
+func (a *recordingConsultationAgent) Run(
+	context.Context,
+	domain.ConsultationContext,
+	string,
+	*int64,
+) (domain.AdviceDraft, string, error) {
+	a.calls++
+	if a.err != nil {
+		return domain.AdviceDraft{}, "", a.err
+	}
+	return domain.AdviceDraft{
+		Recommendation:   "今回は見送りましょう",
+		Verdict:          "skip",
+		ReasoningSummary: "予算を守るためです",
+		CurrentSituation: "予算を確認しました",
+		Alternative:      "無料の選択肢を検討してください",
+		FinalQuestion:    "この方針でよいですか？",
+		InferredCategory: "その他",
+	}, a.source, nil
 }
 
 type scriptedAdviceClient struct {
