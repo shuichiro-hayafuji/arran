@@ -5,15 +5,18 @@ export interface EnvironmentConfig {
   readonly environmentName: string;
   readonly region: string;
   readonly openAiSecretArn?: string;
+  readonly pagerDutySecretArn?: string;
 }
 
 export function loadEnvironmentConfig(app: cdk.App): EnvironmentConfig {
   const openAiSecretArn = app.node.tryGetContext('openAiSecretArn') as string | undefined;
+  const pagerDutySecretArn = app.node.tryGetContext('pagerDutySecretArn') as string | undefined;
   const region = app.node.tryGetContext('region') as string | undefined;
   return {
     projectName: 'spendable-today',
     environmentName: 'dev',
     region: region ?? 'ap-northeast-1',
     openAiSecretArn,
+    pagerDutySecretArn,
   };
 }

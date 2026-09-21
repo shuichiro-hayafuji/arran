@@ -18,6 +18,7 @@ export interface ContainerConstructProps {
   readonly network: NetworkConstruct;
   readonly database: DatabaseConstruct;
   readonly openAiSecret: secretsmanager.ISecret;
+  readonly pagerDutySecret: secretsmanager.ISecret;
 }
 
 export class ContainerConstruct extends Construct {
@@ -59,19 +60,7 @@ export class ContainerConstruct extends Construct {
     // DockerImageAsset is published to the CDK bootstrap ECR repository. The
     // repository name is account-specific, but CDK exposes it so pulls can
     // still be scoped to one repository instead of all ECR repositories.
-    const assetRepositoryArn = cdk.Stack.of(this).formatArn({
-      service: 'ecr',
-      resource: 'repository',
-      resourceName: image.repositoryName,
-    });
-    executionRole.addToPolicy(new iam.PolicyStatement({
-      actions: ['ecr:BatchCheckLayerAvailability', 'ecr:BatchGetImage', 'ecr:GetDownloadUrlForLayer'],
-      resources: [assetRepositoryArn],
-    }));
-    executionRole.addToPolicy(new iam.PolicyStatement({
-      actions: ['ecr:GetAuthorizationToken'],
-      resources: ['*'],
-    }));
+    image.repository.grantPull(executionRole);
     executionRole.addToPolicy(new iam.PolicyStatement({
       actions: ['logs:CreateLogStream', 'logs:PutLogEvents'],
       resources: [logGroup.logGroupArn],
@@ -90,6 +79,7 @@ export class ContainerConstruct extends Construct {
 
     props.database.secret.grantRead(executionRole);
     props.openAiSecret.grantRead(executionRole);
+    props.pagerDutySecret.grantRead(executionRole);
 
     const taskDefinition = new ecs.FargateTaskDefinition(this, 'TaskDefinition', {
       family: `${props.projectName}-${props.environmentName}`,
@@ -113,11 +103,15 @@ export class ContainerConstruct extends Construct {
         DB_NAME: 'spendable_today',
         DB_SSLMODE: 'require',
         USE_MOCK_LLM: 'false',
+        OPENAI_MODEL: 'gpt-5.6-terra',
+        OPENAI_REASONING_EFFORT: 'medium',
+        APP_ENVIRONMENT: props.environmentName,
       },
       secrets: {
         DB_USER: ecs.Secret.fromSecretsManager(props.database.secret, 'username'),
         DB_PASSWORD: ecs.Secret.fromSecretsManager(props.database.secret, 'password'),
         OPENAI_API_KEY: ecs.Secret.fromSecretsManager(props.openAiSecret),
+        PAGERDUTY_ROUTING_KEY: ecs.Secret.fromSecretsManager(props.pagerDutySecret),
       },
       healthCheck: {
         command: ['CMD-SHELL', 'wget -q -O - http://127.0.0.1:8080/health || exit 1'],

@@ -20,6 +20,7 @@ export class DatabaseConstruct extends Construct {
       instanceType: ec2.InstanceType.of(ec2.InstanceClass.BURSTABLE3, ec2.InstanceSize.MICRO),
       vpc: props.network.vpc, vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
       securityGroups: [props.network.databaseSecurityGroup], databaseName: 'spendable_today',
+      port: 5432,
       allocatedStorage: 20, storageType: rds.StorageType.GP3, storageEncrypted: true,
       publiclyAccessible: false, multiAz: false, backupRetention: cdk.Duration.days(1),
       deletionProtection: false, deleteAutomatedBackups: true, removalPolicy: cdk.RemovalPolicy.DESTROY,
