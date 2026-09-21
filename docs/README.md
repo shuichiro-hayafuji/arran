@@ -37,6 +37,10 @@ infra/ Docker / ECS Fargate / RDS PostgreSQL
 - [ER図](ER_DIAGRAM.md): データ構造の説明資料
 - [PostgreSQL migration](../server/internal/infrastructure/persistence/postgres/002_auth.sql): 実行時スキーマの正本
 
+## 設計判断（ADR）
+
+- [ADR-0001: Go serverをModular MonolithとHexagonal Architectureで構成する](adr/0001-server-modular-monolith-hexagonal.md)
+
 ## 製品・業務
 
 - [対象者と支出相談の体験](product/target-users.md)
