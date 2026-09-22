@@ -88,7 +88,9 @@ ON CONFLICT (month) DO UPDATE SET
 psql "$DATABASE_URL" -v report_month=2026-09 -f docs/monthly-cost-report.sql
 ```
 
-分母は、その月に新しい相談を1回以上開始した利用者です。金額換算するのはOpenAIとインフラの実費で、サポートは合意どおり時間を利用者数で按分して併記します。
+分母は、その月に新しい相談を1回以上開始した利用者です。結果には月次サマリーと利用者別内訳を同じ行で返し、対象月の実利用者が0人でも`user_id`がNULLのサマリー行を1行返します。金額換算するのはOpenAIとインフラの実費で、サポートは合意どおり時間を利用者数で按分して併記します。
+
+`monthly_unpriced_api_call_count`が1件以上の場合、モデル単価が未登録の呼出しを0ドルと誤認しないよう、`monthly_measured_cash_cost_usd`と平均原価をNULLにします。利用者別の`measured_cash_cost_usd`も同様です。`monthly_operating_costs`が未登録の場合も測定済み原価はNULLとなり、`operating_cost_recorded`で判別できます。`monthly_priced_api_cost_usd`は単価を適用できた呼出しだけの小計であり、単価網羅が不完全なときは確定原価として扱いません。
 
 ## ローカルDBの操作
 

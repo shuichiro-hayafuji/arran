@@ -60,6 +60,7 @@ AWS CLIでは認証情報を取得できず、ArranのAWS請求額を確認で�
 - 初版の上限変更はDB操作とし、SQL手順を記録済み。管理者画面は後続で検討する。
 - PagerDuty Events API通知、月単位の重複防止、失敗記録、次回相談での再試行を実装済み。メール代替はPagerDutyを利用できないと判明した場合の後続課題とする。
 - OpenAI APIのtoken利用量をDBへ保存し、モデル単価の確認日・出典と月次集計SQLを追加済み。実OpenAI APIでの保存確認はAPI keyと実リクエストが必要。
+- 月次集計では、単価未登録のAPI呼出し件数を明示し、単価または月次運用費が不足している場合は測定済み原価を未確定として扱う。
 - 実際のAWS請求額、問い合わせ件数、対応時間を`monthly_operating_costs`へ登録し、実利用者1人あたりの月次結果を得る作業は、実運用データの発生後に行う。
 
 OpenAI、PagerDuty、AWSを使った確認は、認証情報を持つ実施者が[外部サービス確認手順](../../server/docs/external-service-verification.md)に従って行う。
