@@ -1,6 +1,6 @@
 # Arranの対象者と支出相談の体験
 
-関連: [Issue #13](https://github.com/shuichiro-hayafuji/arran/issues/13)
+関連: [Issue #13](https://github.com/shuichiro-hayafuji/arran/issues/13)、[支出相談における登録残高の扱い](spending-balance-policy.md)
 
 2026-09-14、開発者本人への対話から整理した製品方針。本人の希望として確認済みだが、他の対象者にも当てはまるか、実際の支出行動が変わるかは未検証。実装済みの動作を示す文書ではない。
 

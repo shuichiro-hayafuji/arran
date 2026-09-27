@@ -374,6 +374,9 @@ func (s *Application) ContinueConsultation(
 	if plannedAmount == nil {
 		plannedAmount = consultation.PlannedAmount
 	}
+	if plannedAmount != nil && *plannedAmount < 0 {
+		return domain.Consultation{}, fmt.Errorf("予定額は0円以上にしてください")
+	}
 	consultationContext, err := s.BuildConsultationContext(ctx)
 	if err != nil {
 		return domain.Consultation{}, err
