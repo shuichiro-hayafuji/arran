@@ -108,7 +108,7 @@ func memoryValues(items []domain.MemoryItem) []agent.MemoryItem {
 	return result
 }
 func adviceFacts(v domain.AdviceFacts) agent.AdviceFacts {
-	return agent.AdviceFacts{Category: v.Category, PlannedAmount: v.PlannedAmount, FreeBudgetRemaining: v.FreeBudgetRemaining, RemainingAfterPlanned: v.RemainingAfterPlanned, RegisteredCurrentBalance: v.RegisteredCurrentBalance, RegisteredBalanceAfterPlanned: v.RegisteredBalanceAfterPlanned, RegisteredBalanceInsufficient: v.RegisteredBalanceInsufficient, CategoryTotal: v.CategoryTotal, CategoryIsReduced: v.CategoryIsReduced, CategoryIsAllowed: v.CategoryIsAllowed, BudgetExceeded: v.BudgetExceeded, RegretPattern: v.RegretPattern, Verdict: v.Verdict}
+	return agent.AdviceFacts{Category: v.Category, PlannedAmount: v.PlannedAmount, FreeBudgetRemaining: v.FreeBudgetRemaining, RemainingAfterPlanned: v.RemainingAfterPlanned, CategoryTotal: v.CategoryTotal, CategoryIsReduced: v.CategoryIsReduced, CategoryIsAllowed: v.CategoryIsAllowed, BudgetExceeded: v.BudgetExceeded, RegretPattern: v.RegretPattern, Verdict: v.Verdict}
 }
 func adviceDraft(v agent.AdviceDraft) domain.AdviceDraft {
 	return domain.AdviceDraft{Recommendation: v.Recommendation, Verdict: v.Verdict, ReasoningSummary: v.ReasoningSummary, CurrentSituation: v.CurrentSituation, Alternative: v.Alternative, FinalQuestion: v.FinalQuestion, InferredCategory: v.InferredCategory, NeedsFollowUp: v.NeedsFollowUp, FollowUpQuestion: v.FollowUpQuestion}
