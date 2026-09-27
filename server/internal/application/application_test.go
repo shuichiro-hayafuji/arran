@@ -320,6 +320,57 @@ func TestFailedConsultationReleasesMonthlyReservation(t *testing.T) {
 	}
 }
 
+func TestContinueConsultationRejectsNegativeAmountBeforeAgentRun(t *testing.T) {
+	for _, tt := range []struct {
+		name          string
+		storedAmount  *int64
+		requestAmount *int64
+	}{
+		{name: "explicit negative amount", requestAmount: int64Pointer(-1 << 63)},
+		{name: "inherited negative amount", storedAmount: int64Pointer(-1 << 63)},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			repo, err := sqlite.Open(ctx, filepath.Join(t.TempDir(), "test.db"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = repo.Close() })
+			agentRecorder := &recordingConsultationAgent{source: "recording"}
+			service := New(Config{
+				Repository:        repo,
+				ConsultationAgent: agentRecorder,
+				Now: func() time.Time {
+					return time.Date(2026, 9, 27, 12, 0, 0, 0, jst)
+				},
+			})
+			profile := testProfile()
+			profile.CurrentBalance = 1
+			if _, err := service.PutProfile(ctx, profile); err != nil {
+				t.Fatal(err)
+			}
+			stored, err := repo.CreateConsultation(ctx, domain.Consultation{
+				CreatedAt:     "2026-09-27T12:00:00+09:00",
+				UserMessage:   "元の相談",
+				PlannedAmount: tt.storedAmount,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			_, err = service.ContinueConsultation(ctx, stored.ID, "追加情報", tt.requestAmount)
+			if err == nil || err.Error() != "予定額は0円以上にしてください" {
+				t.Fatalf("error = %v", err)
+			}
+			if agentRecorder.calls != 0 {
+				t.Fatalf("agent calls = %d, want 0", agentRecorder.calls)
+			}
+		})
+	}
+}
+
+func int64Pointer(value int64) *int64 { return &value }
+
 type recordingConsultationAgent struct {
 	calls  int
 	source string
