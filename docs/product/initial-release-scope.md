@@ -1,6 +1,6 @@
 # 初版の提供範囲
 
-関連: [Issue #17](https://github.com/shuichiro-hayafuji/arran/issues/17)、[対象者と支出相談の体験](target-users.md)、[支出相談における登録残高の扱い](spending-balance-policy.md)
+関連: [Issue #17](https://github.com/shuichiro-hayafuji/arran/issues/17)、[対象者と支出相談の体験](target-users.md)
 
 2026-09-16の対話で決定した初期方針。実装済みの動作や外部利用者による検証結果ではない。詳細な家計簿を作ることより、入力負担を抑えて支出の相談に答えることを優先する。
 

@@ -23,13 +23,12 @@ func EvaluateSpending(input SpendingEvaluationInput) AdviceFacts {
 		category = "その他"
 	}
 	facts := AdviceFacts{
-		Category:                 category,
-		PlannedAmount:            input.PlannedAmount,
-		FreeBudgetRemaining:      input.Dashboard.FreeBudgetRemaining,
-		RegisteredCurrentBalance: input.Profile.CurrentBalance,
-		CategoryTotal:            categoryTotal(input.Dashboard, category),
-		CategoryIsReduced:        slices.Contains(input.Profile.ReduceCategories, category),
-		CategoryIsAllowed:        slices.Contains(input.Profile.AllowedCategories, category),
+		Category:            category,
+		PlannedAmount:       input.PlannedAmount,
+		FreeBudgetRemaining: input.Dashboard.FreeBudgetRemaining,
+		CategoryTotal:       categoryTotal(input.Dashboard, category),
+		CategoryIsReduced:   slices.Contains(input.Profile.ReduceCategories, category),
+		CategoryIsAllowed:   slices.Contains(input.Profile.AllowedCategories, category),
 	}
 	if input.PlannedAmount == nil {
 		facts.Verdict = "insufficient_data"
@@ -37,9 +36,6 @@ func EvaluateSpending(input SpendingEvaluationInput) AdviceFacts {
 	}
 	facts.RemainingAfterPlanned = input.Dashboard.FreeBudgetRemaining - *input.PlannedAmount
 	facts.BudgetExceeded = *input.PlannedAmount > input.Dashboard.FreeBudgetRemaining
-	balanceAfterPlanned := input.Profile.CurrentBalance - *input.PlannedAmount
-	facts.RegisteredBalanceAfterPlanned = &balanceAfterPlanned
-	facts.RegisteredBalanceInsufficient = *input.PlannedAmount > input.Profile.CurrentBalance
 	for _, memory := range input.Memories {
 		if memory.Type == "regret_pattern" &&
 			(strings.Contains(memory.Content, category) || strings.Contains(input.Message, "飲")) {
@@ -48,7 +44,7 @@ func EvaluateSpending(input SpendingEvaluationInput) AdviceFacts {
 		}
 	}
 	switch {
-	case facts.RegisteredBalanceInsufficient || facts.BudgetExceeded || facts.RegretPattern != "":
+	case facts.BudgetExceeded || facts.RegretPattern != "":
 		facts.Verdict = "avoid"
 	case facts.CategoryIsReduced && *input.PlannedAmount > max(input.Dashboard.FreeBudgetRemaining/5, 3000):
 		facts.Verdict = "avoid"
