@@ -209,8 +209,12 @@ func TestChatAdviceUsesFreeResponseSchemaAndNoProfileVerdict(t *testing.T) {
 		schema := payload["text"].(map[string]any)["format"].(map[string]any)["schema"].(map[string]any)
 		props := schema["properties"].(map[string]any)
 		purchase := props["purchase_change"].(map[string]any)
-		if len(purchase["required"].([]any)) != 3 {
+		if len(purchase["required"].([]any)) != 4 {
 			t.Fatal("purchase change schema is incomplete")
+		}
+		outcome := props["purchase_updates"].(map[string]any)["items"].(map[string]any)
+		if len(outcome["required"].([]any)) != 4 {
+			t.Fatal("purchase outcome schema is incomplete")
 		}
 		if _, ok := props["planned_amount"]; ok {
 			t.Fatal("redundant planned amount model output")

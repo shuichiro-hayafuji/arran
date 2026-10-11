@@ -23,10 +23,13 @@ type Fact struct {
 	Active     bool   `json:"active"`
 }
 type State struct {
-	Version    int64  `json:"version"`
-	Facts      []Fact `json:"facts"`
-	Strictness int    `json:"strictness"`
-	CSVOffered bool   `json:"csv_offered"`
+	Version           int64      `json:"version"`
+	Facts             []Fact     `json:"facts"`
+	Strictness        int        `json:"strictness"`
+	CSVOffered        bool       `json:"csv_offered"`
+	Purchases         []Purchase `json:"purchases"`
+	PurchasesMigrated bool       `json:"purchases_migrated"`
+	purchasesHydrated bool
 }
 type Message struct {
 	Role        string `json:"role"`
@@ -43,6 +46,7 @@ type PendingPurchase struct {
 }
 type Thread struct {
 	PendingPurchase *PendingPurchase `json:"pending_purchase,omitempty"`
+	Purchases       []Purchase       `json:"purchases,omitempty"`
 	ID              int64            `json:"id"`
 	Version         int64            `json:"version"`
 	CreatedAt       string           `json:"created_at"`
@@ -58,6 +62,7 @@ type Change struct {
 	Operation string `json:"operation"`
 }
 type PurchaseChange struct {
+	ID          string  `json:"id"`
 	Operation   string  `json:"operation"`
 	Description *string `json:"description"`
 	Amount      *int64  `json:"amount"`
@@ -78,18 +83,23 @@ type HistoricalMessage struct {
 	Message
 }
 type Reply struct {
-	PurchaseChange *PurchaseChange `json:"purchase_change"`
-	Status         string          `json:"status"`
-	Answer         string          `json:"answer"`
-	Reason         string          `json:"reason"`
-	Assumptions    string          `json:"assumptions"`
-	Question       string          `json:"question"`
-	PlannedAmount  *int64          `json:"planned_amount"`
-	Changes        []Change        `json:"changes"`
-	Strictness     *int            `json:"strictness"`
+	PurchaseChange  *PurchaseChange  `json:"purchase_change"`
+	PurchaseUpdates []PurchaseUpdate `json:"purchase_updates"`
+	Status          string           `json:"status"`
+	Answer          string           `json:"answer"`
+	Reason          string           `json:"reason"`
+	Assumptions     string           `json:"assumptions"`
+	Question        string           `json:"question"`
+	PlannedAmount   *int64           `json:"planned_amount"`
+	Changes         []Change         `json:"changes"`
+	Strictness      *int             `json:"strictness"`
 }
 type Input struct {
+	ValidationFeedback  string              `json:"validation_feedback"`
 	PendingPurchase     *PendingPurchase    `json:"pending_purchase"`
+	Purchases           []Purchase          `json:"purchases"`
+	AutoConfirmIDs      []string            `json:"auto_confirm_ids"`
+	PurchaseCoverage    PurchaseCoverage    `json:"purchase_coverage"`
 	Transactions        []Transaction       `json:"transactions"`
 	TransactionCoverage TransactionCoverage `json:"transaction_coverage"`
 	RelatedHistory      []HistoricalMessage `json:"related_history"`
@@ -161,6 +171,15 @@ func (s Service) Send(ctx context.Context, id int64, message string) (Thread, er
 		return Thread{}, err
 	}
 	input.RelatedHistory = relatedHistory(pastThreads, input.Message, state.Facts)
+	input.Purchases, input.PurchaseCoverage = modelPurchases(state, input.Message, id)
+	for _, p := range input.Purchases {
+		if pending(p) && p.SecondAskedAt != "" {
+			input.AutoConfirmIDs = append(input.AutoConfirmIDs, p.ID)
+		}
+	}
+	if len(input.Purchases) > 0 {
+		input.Facts = financialFacts(state.Facts, relevantFacts(state.Facts, input.Message+" 残高 予算", input.History))
+	}
 	if thread.PendingPurchase != nil && thread.PendingPurchase.RecordedAt > latestForgetAt(state.Facts) {
 		pending := *thread.PendingPurchase
 		pending.Description = Redact(pending.Description)
@@ -178,8 +197,11 @@ func (s Service) Send(ctx context.Context, id int64, message string) (Thread, er
 			reply, agentErr = s.Agent.Advise(modelCtx, input)
 			if agentErr == nil {
 				agentErr = Validate(reply)
-				if agentErr == nil && reply.PurchaseChange != nil && reply.PurchaseChange.Operation == "set" && input.PendingPurchase == nil && (reply.PurchaseChange.Description == nil || strings.TrimSpace(*reply.PurchaseChange.Description) == "") {
-					agentErr = errors.New("new purchase requires a product")
+				if agentErr == nil {
+					agentErr = validatePurchases(reply, input)
+				}
+				if agentErr != nil {
+					input.ValidationFeedback = "前回の出力を修正してください: " + agentErr.Error()
 				}
 			}
 			if agentErr == nil {
@@ -212,21 +234,16 @@ func (s Service) Send(ctx context.Context, id int64, message string) (Thread, er
 			state.CSVOffered = true
 		}
 	}
-	if agentErr == nil && reply.PurchaseChange != nil {
-		change := reply.PurchaseChange
-		if change.Operation == "cancel" {
-			thread.PendingPurchase = nil
-		} else {
-			description := ""
-			if input.PendingPurchase != nil {
-				description = input.PendingPurchase.Description
-			}
-			if change.Description != nil && strings.TrimSpace(*change.Description) != "" {
-				description = Redact(strings.TrimSpace(*change.Description))
-			}
-			thread.PendingPurchase = &PendingPurchase{Description: description, Amount: *change.Amount, RecordedAt: timestamp, Status: "purchase_confirmation_pending"}
-		}
+	if agentErr == nil {
+		applyPurchases(&state, &thread, reply, input, timestamp)
 	}
+	// Asking again is a stored lifecycle step, never a financial calculation.
+	second := secondConfirmation(&state, input, timestamp)
+	if second != "" {
+		reply.Answer += "\n\n" + second
+	}
+	ProjectPurchases(state, &thread)
+
 	reply.PlannedAmount = nil
 	if thread.PendingPurchase != nil {
 		reply.PlannedAmount = &thread.PendingPurchase.Amount
@@ -254,13 +271,13 @@ func Validate(r Reply) error {
 		return errors.New("missing follow-up question")
 	}
 	if change := r.PurchaseChange; change != nil {
-		if change.Operation != "set" && change.Operation != "cancel" {
+		if change.Operation != "set" && change.Operation != "add" && change.Operation != "cancel" {
 			return errors.New("invalid purchase operation")
 		}
 		if change.Description != nil && len(*change.Description) > 2000 {
 			return errors.New("purchase description too long")
 		}
-		if change.Operation == "set" && (change.Amount == nil || *change.Amount < 0) {
+		if change.Operation != "cancel" && (change.Amount == nil || *change.Amount < 0) {
 			return errors.New("invalid purchase amount")
 		}
 		if change.Operation == "cancel" && (change.Amount != nil || change.Description != nil) {

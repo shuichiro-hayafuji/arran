@@ -12,6 +12,26 @@ type PendingPurchase struct {
 	Status      string `json:"status"`
 }
 
+type PurchaseEvent struct {
+	Outcome        string `json:"outcome"`
+	Amount         *int64 `json:"amount"`
+	Classification string `json:"classification"`
+	RecordedAt     string `json:"recorded_at"`
+	Source         string `json:"source"`
+}
+type Purchase struct {
+	ID             string          `json:"id"`
+	ConsultationID int64           `json:"consultation_id"`
+	Description    string          `json:"description"`
+	Amount         int64           `json:"amount"`
+	RecordedAt     string          `json:"recorded_at"`
+	Status         string          `json:"status"`
+	FirstAskedAt   string          `json:"first_asked_at"`
+	SecondAskedAt  string          `json:"second_asked_at"`
+	ActualAmount   *int64          `json:"actual_amount"`
+	Classification string          `json:"classification"`
+	Events         []PurchaseEvent `json:"events"`
+}
 type ChatMessage struct {
 	Reason      string `json:"reason,omitempty"`
 	Assumptions string `json:"assumptions,omitempty"`
@@ -21,6 +41,7 @@ type ChatMessage struct {
 }
 
 type Consultation struct {
+	Purchases          []Purchase       `json:"purchases"`
 	PendingPurchase    *PendingPurchase `json:"pending_purchase,omitempty"`
 	Messages           []ChatMessage    `json:"messages"`
 	ID                 int64            `json:"id"`

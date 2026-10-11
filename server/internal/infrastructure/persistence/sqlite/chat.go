@@ -10,6 +10,7 @@ import (
 	"github.com/shuichirohayafuji/spendable-today/server/internal/identity"
 	"strconv"
 	"strings"
+	"time"
 )
 
 func chatQuery(ctx context.Context, query string) string {
@@ -20,13 +21,20 @@ func (r *Repository) LoadChatState(ctx context.Context) (consultation.State, err
 	var payload string
 	err := r.db.QueryRowContext(ctx, chatQuery(ctx, "SELECT payload FROM chat_states WHERE user_id=:user_id")).Scan(&payload)
 	if errors.Is(err, sql.ErrNoRows) {
-		return r.initialChatState(ctx)
+		state, err := r.initialChatState(ctx)
+		if err == nil {
+			err = r.hydratePurchases(ctx, &state)
+		}
+		return state, err
 	}
 	if err != nil {
 		return consultation.State{}, err
 	}
 	var state consultation.State
 	err = json.Unmarshal([]byte(payload), &state)
+	if err == nil {
+		err = r.hydratePurchases(ctx, &state)
+	}
 	return state, err
 }
 func (r *Repository) LoadChatThread(ctx context.Context, id int64) (consultation.Thread, error) {
@@ -80,6 +88,12 @@ func (r *Repository) SaveChatTurn(ctx context.Context, state consultation.State,
 			return consultation.Thread{}, err
 		}
 	}
+	for i := range state.Purchases {
+		if state.Purchases[i].ConsultationID == 0 {
+			state.Purchases[i].ConsultationID = thread.ID
+		}
+	}
+	consultation.ProjectPurchases(state, &thread)
 	reply := thread.Reply
 	if reply.PlannedAmount == nil && thread.PendingPurchase != nil {
 		reply.PlannedAmount = &thread.PendingPurchase.Amount
@@ -117,6 +131,48 @@ func (r *Repository) SaveChatTurn(ctx context.Context, state consultation.State,
 	_, err = tx.ExecContext(ctx, query("INSERT INTO chat_threads(consultation_id,user_id,version,payload) VALUES(?,:user_id,?,?) ON CONFLICT(consultation_id) DO UPDATE SET version=excluded.version,payload=excluded.payload"), thread.ID, thread.Version, string(threadJSON))
 	if err != nil {
 		return consultation.Thread{}, err
+	}
+
+	if _, err = tx.ExecContext(ctx, query("DELETE FROM chat_purchase_schedule WHERE user_id=:user_id")); err != nil {
+		return consultation.Thread{}, err
+	}
+	visited := map[int64]bool{thread.ID: true}
+	for _, p := range state.Purchases {
+		if p.RecordedAt <= forgottenCutoff(state) {
+			continue
+		}
+		if p.Status == "purchase_confirmation_pending" {
+			at, e := time.Parse(time.RFC3339, p.RecordedAt)
+			if e != nil {
+				return consultation.Thread{}, e
+			}
+			_, err = tx.ExecContext(ctx, query("INSERT INTO chat_purchase_schedule(user_id,purchase_id,consultation_id,due_at,first_sent) VALUES(:user_id,?,?,?,?) ON CONFLICT(user_id,purchase_id) DO UPDATE SET consultation_id=excluded.consultation_id,due_at=excluded.due_at,first_sent=excluded.first_sent"), p.ID, p.ConsultationID, at.Add(6*time.Hour).UTC().Format(time.RFC3339), p.FirstAskedAt != "")
+			if err != nil {
+				return consultation.Thread{}, err
+			}
+		}
+		if visited[p.ConsultationID] {
+			continue
+		}
+		visited[p.ConsultationID] = true
+		var payload string
+		err = tx.QueryRowContext(ctx, query("SELECT payload FROM chat_threads WHERE user_id=:user_id AND consultation_id=?"), p.ConsultationID).Scan(&payload)
+		if err != nil {
+			return consultation.Thread{}, err
+		}
+		var original consultation.Thread
+		if err = json.Unmarshal([]byte(payload), &original); err != nil {
+			return consultation.Thread{}, err
+		}
+		consultation.ProjectPurchases(state, &original)
+		original.Version++
+		encoded, e := json.Marshal(original)
+		if e != nil {
+			return consultation.Thread{}, e
+		}
+		if _, err = tx.ExecContext(ctx, query("UPDATE chat_threads SET version=?,payload=? WHERE user_id=:user_id AND consultation_id=?"), original.Version, string(encoded), original.ID); err != nil {
+			return consultation.Thread{}, err
+		}
 	}
 	if err = tx.Commit(); err != nil {
 		return consultation.Thread{}, err
@@ -229,4 +285,41 @@ func (r *Repository) ListRecentChatThreads(ctx context.Context, excludedID int64
 		threads = append(threads, thread)
 	}
 	return threads, rows.Err()
+}
+
+func forgottenCutoff(state consultation.State) string {
+	var cutoff string
+	for _, f := range state.Facts {
+		if !f.Active && f.Value == "" && f.RecordedAt > cutoff {
+			cutoff = f.RecordedAt
+		}
+	}
+	return cutoff
+}
+func (r *Repository) hydratePurchases(ctx context.Context, state *consultation.State) error {
+	if state.PurchasesMigrated {
+		return nil
+	}
+	rows, err := r.db.QueryContext(ctx, chatQuery(ctx, "SELECT payload FROM chat_threads WHERE user_id=:user_id ORDER BY consultation_id"))
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	var threads []consultation.Thread
+	for rows.Next() {
+		var payload string
+		if err = rows.Scan(&payload); err != nil {
+			return err
+		}
+		var t consultation.Thread
+		if err = json.Unmarshal([]byte(payload), &t); err != nil {
+			return err
+		}
+		threads = append(threads, t)
+	}
+	if err = rows.Err(); err != nil {
+		return err
+	}
+	consultation.LegacyPurchases(state, threads)
+	return nil
 }
