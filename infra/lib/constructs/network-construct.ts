@@ -20,10 +20,10 @@ export class NetworkConstruct extends Construct {
       vpcName: `${props.projectName}-${props.environmentName}-vpc`,
       ipAddresses: ec2.IpAddresses.cidr('10.20.0.0/16'),
       maxAzs: 2,
-      natGateways: 1,
+      natGateways: 0,
       subnetConfiguration: [
         { name: 'Public', subnetType: ec2.SubnetType.PUBLIC, cidrMask: 24 },
-        { name: 'Private', subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS, cidrMask: 24 },
+        { name: 'Database', subnetType: ec2.SubnetType.PRIVATE_ISOLATED, cidrMask: 24 },
       ],
     });
 
@@ -35,7 +35,7 @@ export class NetworkConstruct extends Construct {
     });
     this.albSecurityGroup.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(80), 'Public HTTP');
 
-    // DNS、ECR、CloudWatch、OpenAI、DBへの通信を通すため、MVPでは送信を許可する。
+    // 公開サブネットのタスクからDNS、ECR、CloudWatch、OpenAI、PagerDuty、DBへの通信を通す。
     // 制限する場合は、必要なエンドポイントと送信ルールも併せて定義する。
     this.ecsSecurityGroup = new ec2.SecurityGroup(this, 'EcsSecurityGroup', {
       vpc: this.vpc,

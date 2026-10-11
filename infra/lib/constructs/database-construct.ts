@@ -18,7 +18,7 @@ export class DatabaseConstruct extends Construct {
     this.instance = new rds.DatabaseInstance(this, 'Postgres', {
       engine: rds.DatabaseInstanceEngine.postgres({ version: rds.PostgresEngineVersion.VER_16 }),
       instanceType: ec2.InstanceType.of(ec2.InstanceClass.BURSTABLE3, ec2.InstanceSize.MICRO),
-      vpc: props.network.vpc, vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
+      vpc: props.network.vpc, vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_ISOLATED },
       securityGroups: [props.network.databaseSecurityGroup], databaseName: 'spendable_today',
       port: 5432,
       allocatedStorage: 20, storageType: rds.StorageType.GP3, storageEncrypted: true,
