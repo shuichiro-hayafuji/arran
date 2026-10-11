@@ -212,6 +212,11 @@ func (s Service) Send(ctx context.Context, id int64, message string) (Thread, er
 			}
 		}
 	}
+	completedNow := time.Now()
+	if s.Now != nil {
+		completedNow = s.Now()
+	}
+	completedTimestamp := completedNow.UTC().Format(time.RFC3339)
 	thread.Source = "openai"
 	if agentErr != nil {
 		reply = Reply{Status: "unavailable", Answer: "今は助言を作成できません。相談内容は保存しました。同じ相談で再試行できます。"}
@@ -232,7 +237,7 @@ func (s Service) Send(ctx context.Context, id int64, message string) (Thread, er
 					state.Facts[i].Active = false
 				}
 			}
-			state.Facts = append(state.Facts, Fact{Key: change.Key, Basis: change.Basis, Value: Redact(change.Value), Kind: change.Kind, Period: change.Period, Source: fmt.Sprintf("chat:%d:turn:%d", thread.ID, len(thread.Messages)/2+1), RecordedAt: timestamp, Active: change.Operation == "set"})
+			state.Facts = append(state.Facts, Fact{Key: change.Key, Basis: change.Basis, Value: Redact(change.Value), Kind: change.Kind, Period: change.Period, Source: fmt.Sprintf("chat:%d:turn:%d", thread.ID, len(thread.Messages)/2+1), RecordedAt: completedTimestamp, Active: change.Operation == "set"})
 		}
 		if reply.Strictness != nil {
 			state.Strictness = *reply.Strictness
@@ -243,10 +248,10 @@ func (s Service) Send(ctx context.Context, id int64, message string) (Thread, er
 		}
 	}
 	if agentErr == nil {
-		applyPurchases(&state, &thread, reply, input, timestamp)
+		applyPurchases(&state, &thread, reply, input, completedTimestamp)
 	}
 	// Asking again is a stored lifecycle step, never a financial calculation.
-	second := secondConfirmation(&state, input, timestamp)
+	second := secondConfirmation(&state, input, completedTimestamp)
 	if second != "" {
 		reply.Answer += "\n\n" + second
 	}
@@ -256,7 +261,7 @@ func (s Service) Send(ctx context.Context, id int64, message string) (Thread, er
 	if thread.PendingPurchase != nil {
 		reply.PlannedAmount = &thread.PendingPurchase.Amount
 	}
-	thread.Messages = append(thread.Messages, Message{Role: "user", Content: message, CreatedAt: timestamp}, Message{Role: "assistant", Content: reply.Answer, Reason: reply.Reason, Assumptions: reply.Assumptions, CreatedAt: timestamp})
+	thread.Messages = append(thread.Messages, Message{Role: "user", Content: message, CreatedAt: timestamp}, Message{Role: "assistant", Content: reply.Answer, Reason: reply.Reason, Assumptions: reply.Assumptions, CreatedAt: completedTimestamp})
 	thread.Reply = reply
 	// Store the consultation even when model calls exhaust the request's deadline.
 	saveCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
