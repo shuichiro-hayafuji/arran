@@ -14,24 +14,30 @@ import (
 
 // Purchase is owned by the consultation module. Events retain every posted outcome.
 type Purchase struct {
-	ID             string          `json:"id"`
-	ConsultationID int64           `json:"consultation_id"`
-	Description    string          `json:"description"`
-	Amount         int64           `json:"amount"`
-	RecordedAt     string          `json:"recorded_at"`
-	Status         string          `json:"status"`
-	FirstAskedAt   string          `json:"first_asked_at"`
-	SecondAskedAt  string          `json:"second_asked_at"`
-	ActualAmount   *int64          `json:"actual_amount"`
-	Classification string          `json:"classification"`
-	Events         []PurchaseEvent `json:"events"`
+	ID                      string          `json:"id"`
+	ConsultationID          int64           `json:"consultation_id"`
+	Description             string          `json:"description"`
+	Amount                  int64           `json:"amount"`
+	RecordedAt              string          `json:"recorded_at"`
+	Status                  string          `json:"status"`
+	FirstAskedAt            string          `json:"first_asked_at"`
+	SecondAskedAt           string          `json:"second_asked_at"`
+	ActualAmount            *int64          `json:"actual_amount"`
+	Classification          string          `json:"classification"`
+	AccountingTracked       bool            `json:"accounting_tracked"`
+	BalanceAppliedAmount    *int64          `json:"balance_applied_amount"`
+	FreeBudgetAppliedAmount *int64          `json:"free_budget_applied_amount"`
+	Events                  []PurchaseEvent `json:"events"`
 }
 type PurchaseEvent struct {
-	Outcome        string `json:"outcome"`
-	Amount         *int64 `json:"amount"`
-	Classification string `json:"classification"`
-	RecordedAt     string `json:"recorded_at"`
-	Source         string `json:"source"`
+	BalanceAppliedAmount    *int64 `json:"balance_applied_amount"`
+	FreeBudgetAppliedAmount *int64 `json:"free_budget_applied_amount"`
+	BalanceBasis            string `json:"balance_basis"`
+	Outcome                 string `json:"outcome"`
+	Amount                  *int64 `json:"amount"`
+	Classification          string `json:"classification"`
+	RecordedAt              string `json:"recorded_at"`
+	Source                  string `json:"source"`
 }
 type PurchaseUpdate struct {
 	ID             string `json:"id"`
@@ -41,7 +47,7 @@ type PurchaseUpdate struct {
 }
 
 func pending(p Purchase) bool {
-	return p.Status == "purchase_confirmation_pending" || p.Status == "needs_classification"
+	return p.Status == "purchase_confirmation_pending" || (p.Status == "needs_classification" || p.Status == "classification_required")
 }
 
 // LegacyPurchases imports old single-purchase threads once, including before any UI use.
@@ -95,7 +101,7 @@ func modelPurchases(state State, message string, currentID int64) ([]Purchase, P
 			}
 		}
 		if common {
-			rank += 5
+			rank += 40
 		}
 		if rank == 0 {
 			coverage.Omitted++
@@ -108,6 +114,9 @@ func modelPurchases(state State, message string, currentID int64) ([]Purchase, P
 	bytes, pendingCount, historyCount := 2, 0, 0
 	for _, c := range candidates {
 		p := c.p
+		p.BalanceAppliedAmount = balanceApplied(p)
+		p.FreeBudgetAppliedAmount = budgetApplied(p)
+		p.AccountingTracked = true
 		if (pending(p) && pendingCount == coverage.PendingLimit) || (!pending(p) && historyCount == coverage.HistoryLimit) {
 			coverage.Omitted++
 			continue
@@ -118,7 +127,7 @@ func modelPurchases(state State, message string, currentID int64) ([]Purchase, P
 			// Include the most recent posted outcome even after repeated classification questions.
 			previous := -1
 			for i := len(events) - 1; i >= 0; i-- {
-				if events[i].Outcome != "needs_classification" {
+				if events[i].BalanceAppliedAmount != nil || events[i].Outcome != "needs_classification" {
 					previous = i
 					break
 				}
@@ -153,13 +162,31 @@ func modelPurchases(state State, message string, currentID int64) ([]Purchase, P
 }
 
 func validatePurchases(r Reply, in Input) error {
+	if r.PurchaseTargetUnclear && (r.Question == "" || len(r.PurchaseUpdates) > 0 || r.PurchaseChange != nil) {
+		return errors.New("unclear target requires a question without purchase mutations")
+	}
+	balanceNeeded, budgetNeeded := false, false
+	for _, u := range r.PurchaseUpdates {
+		for _, p := range in.Purchases {
+			if p.ID == u.ID && u.Outcome != "classification_required" {
+				if u.Outcome != "needs_classification" && u.Classification != "unknown" && (u.Classification == "free" || budgetApplied(p) != nil) && !(u.Outcome == "not_purchased" && budgetApplied(p) == nil) {
+					budgetNeeded = true
+				}
+				applied := balanceApplied(p)
+				if (u.Amount != nil && (applied == nil || *applied != *u.Amount)) || (u.Outcome == "not_purchased" && applied != nil) {
+					balanceNeeded = true
+				}
+			}
+		}
+	}
+
 	visible := map[string]Purchase{}
 	for _, p := range in.Purchases {
 		visible[p.ID] = p
 	}
 	if c := r.PurchaseChange; c != nil && c.ID != "" {
 		p, ok := visible[c.ID]
-		if !ok || !pending(p) {
+		if !ok || !pending(p) || p.ActualAmount != nil {
 			return errors.New("unknown pending purchase")
 		}
 	}
@@ -174,6 +201,9 @@ func validatePurchases(r Reply, in Input) error {
 					matches++
 				}
 			}
+		}
+		if c.ID == "" && c.Operation != "add" && in.PendingPurchase != nil && in.PendingPurchase.Status == "needs_classification" {
+			return errors.New("known payment must use a purchase outcome correction")
 		}
 		if matches > 1 {
 			return errors.New("purchase change requires an unambiguous ID")
@@ -203,17 +233,29 @@ func validatePurchases(r Reply, in Input) error {
 		}
 		switch u.Outcome {
 		case "purchased", "unanswered":
-			if u.Amount == nil || (u.Classification != "free" && u.Classification != "necessary") {
+			if u.Amount == nil || (u.Outcome == "purchased" && u.Classification != "free" && u.Classification != "necessary") {
 				return errors.New("purchase requires amount and classification")
 			}
 			if u.Outcome == "unanswered" {
-				if !pending(p) || p.SecondAskedAt == "" || *u.Amount != p.Amount {
+				if u.Classification == "unknown" && r.Question == "" {
+					return errors.New("assumed purchase requires a classification question")
+				}
+				if !pending(p) || p.ActualAmount != nil || p.SecondAskedAt == "" || *u.Amount != p.Amount {
 					return errors.New("purchase cannot be assumed yet")
 				}
 			}
 		case "not_purchased":
 			if u.Amount != nil {
 				return errors.New("unbought purchase must have no payment")
+			}
+		case "classification_required":
+			for _, id := range in.AutoConfirmIDs {
+				if id == u.ID {
+					return errors.New("automatic purchase must apply the planned amount to current balance even before classification")
+				}
+			}
+			if p.ActualAmount != nil || u.Amount != nil || u.Classification != "unknown" || r.Question == "" {
+				return errors.New("unknown planned classification cannot contain an actual payment")
 			}
 		case "needs_classification":
 			if u.Amount == nil || u.Classification != "unknown" || r.Question == "" {
@@ -222,33 +264,39 @@ func validatePurchases(r Reply, in Input) error {
 		default:
 			return errors.New("invalid purchase outcome")
 		}
-		if u.Outcome != "needs_classification" {
-			// Require the model's bookkeeping whenever known balances are affected. Go does
-			// not derive or compare arithmetic results, including during corrections.
-			for _, f := range in.Facts {
-				if f.Key != "current_balance" && f.Key != "monthly_free_budget" {
+		// The model computes money. This validates which bookkeeping operation is
+		// needed and which amount was already applied, without computing a balance.
+		for _, f := range in.Facts {
+			if f.Key != "current_balance" && f.Key != "monthly_free_budget" {
+				continue
+			}
+			needed := false
+			if f.Key == "current_balance" {
+				needed = balanceNeeded
+			} else if u.Outcome != "needs_classification" && u.Outcome != "classification_required" && u.Classification != "unknown" {
+				needed = budgetNeeded
+			}
+			if u.Outcome == "not_purchased" && balanceApplied(p) == nil && budgetApplied(p) == nil {
+				needed = false
+			}
+			found := false
+			for _, c := range r.Changes {
+				if c.Key != f.Key || c.Operation != "set" {
 					continue
 				}
-				if f.Key == "monthly_free_budget" && u.Classification != "free" && postedClassification(p) != "free" {
-					continue
-				}
-				if u.Outcome == "not_purchased" && postedAmount(p) == nil {
-					continue
-				}
-				found := false
-				for _, c := range r.Changes {
-					if c.Key == f.Key && c.Operation == "set" {
-						found = true
-					}
-				}
-				if !found {
-					return errors.New("model must recalculate known financial facts")
+				found = true
+				if ((f.Key == "current_balance" && !balanceNeeded) || (f.Key == "monthly_free_budget" && !budgetNeeded)) && c.Value != f.Value && c.Basis != "user_report" {
+					return errors.New("payment already applied; only an explicit user balance correction can change the balance")
 				}
 			}
+			if needed && !found {
+				return errors.New("model must recalculate known financial facts")
+			}
 		}
+
 	}
 	for _, id := range in.AutoConfirmIDs {
-		if !seen[id] {
+		if !seen[id] && !r.PurchaseTargetUnclear {
 			return errors.New("second unanswered confirmation requires an explicit model outcome")
 		}
 	}
@@ -315,10 +363,36 @@ func applyPurchases(state *State, thread *Thread, r Reply, in Input, timestamp s
 			if p.ID != u.ID {
 				continue
 			}
-			p.Events = append(p.Events, PurchaseEvent{Outcome: u.Outcome, Amount: u.Amount, Classification: u.Classification, RecordedAt: timestamp, Source: fmt.Sprintf("chat:%d", thread.ID)})
-			p.ActualAmount = u.Amount
+			appliedBalance, appliedBudget := balanceApplied(*p), budgetApplied(*p)
+			basis := ""
+			for _, c := range r.Changes {
+				if c.Operation != "set" {
+					continue
+				}
+				if c.Key == "current_balance" && u.Outcome != "classification_required" {
+					appliedBalance = u.Amount
+					basis = c.Basis
+				}
+				if c.Key == "monthly_free_budget" && u.Outcome != "needs_classification" && u.Outcome != "classification_required" && u.Classification != "unknown" {
+					if u.Classification == "free" && u.Outcome != "not_purchased" {
+						appliedBudget = u.Amount
+					} else {
+						appliedBudget = nil
+					}
+				}
+			}
+			p.AccountingTracked = true
+			p.BalanceAppliedAmount = appliedBalance
+			p.FreeBudgetAppliedAmount = appliedBudget
+			p.Events = append(p.Events, PurchaseEvent{Outcome: u.Outcome, Amount: u.Amount, Classification: u.Classification, RecordedAt: timestamp, Source: fmt.Sprintf("chat:%d", thread.ID), BalanceAppliedAmount: appliedBalance, FreeBudgetAppliedAmount: appliedBudget, BalanceBasis: basis})
+			if u.Outcome != "classification_required" {
+				p.ActualAmount = u.Amount
+			}
 			p.Classification = u.Classification
 			p.Status = u.Outcome
+			if u.Outcome == "unanswered" && u.Classification == "unknown" {
+				p.Status = "needs_classification"
+			}
 		}
 	}
 }
@@ -339,7 +413,7 @@ func secondConfirmation(state *State, in Input, timestamp string) string {
 	var items []Purchase
 	for i := range state.Purchases {
 		p := &state.Purchases[i]
-		if visible[p.ID] && p.Status == "purchase_confirmation_pending" && p.FirstAskedAt != "" && p.SecondAskedAt == "" {
+		if visible[p.ID] && unconfirmed(*p) && p.FirstAskedAt != "" && p.SecondAskedAt == "" {
 			p.SecondAskedAt = timestamp
 			items = append(items, *p)
 		}
@@ -391,7 +465,7 @@ func (s Service) DeliverDue(ctx context.Context) error {
 	for i := range state.Purchases {
 		p := &state.Purchases[i]
 		at, err := time.Parse(time.RFC3339, p.RecordedAt)
-		if err != nil || p.Status != "purchase_confirmation_pending" || p.FirstAskedAt != "" || now.Before(at.Add(6*time.Hour)) || p.RecordedAt <= latestForgetAt(state.Facts) {
+		if err != nil || !unconfirmed(*p) || p.FirstAskedAt != "" || now.Before(at.Add(6*time.Hour)) || p.RecordedAt <= latestForgetAt(state.Facts) {
 			continue
 		}
 		p.FirstAskedAt = timestamp
@@ -484,7 +558,7 @@ func financialFacts(all, selected []Fact) []Fact {
 func postedClassification(p Purchase) string {
 	for i := len(p.Events) - 1; i >= 0; i-- {
 		e := p.Events[i]
-		if e.Outcome != "needs_classification" {
+		if e.Outcome != "needs_classification" && e.Outcome != "classification_required" {
 			return e.Classification
 		}
 	}
@@ -493,7 +567,7 @@ func postedClassification(p Purchase) string {
 func postedAmount(p Purchase) *int64 {
 	for i := len(p.Events) - 1; i >= 0; i-- {
 		e := p.Events[i]
-		if e.Outcome != "needs_classification" {
+		if e.Outcome != "needs_classification" && e.Outcome != "classification_required" {
 			return e.Amount
 		}
 	}
@@ -501,12 +575,12 @@ func postedAmount(p Purchase) *int64 {
 }
 
 func samePostedOutcome(p Purchase, u PurchaseUpdate) bool {
-	if u.Outcome == "needs_classification" {
+	if u.Outcome == "needs_classification" || u.Outcome == "classification_required" || p.Status == "needs_classification" || p.Status == "classification_required" {
 		return false
 	}
 	for i := len(p.Events) - 1; i >= 0; i-- {
 		e := p.Events[i]
-		if e.Outcome == "needs_classification" {
+		if e.Outcome == "needs_classification" || e.Outcome == "classification_required" {
 			continue
 		}
 		paid := func(outcome string) bool { return outcome == "purchased" || outcome == "unanswered" }
@@ -515,4 +589,24 @@ func samePostedOutcome(p Purchase, u PurchaseUpdate) bool {
 		return outcomeSame && amountSame && e.Classification == u.Classification
 	}
 	return false
+}
+
+func balanceApplied(p Purchase) *int64 {
+	if p.AccountingTracked {
+		return p.BalanceAppliedAmount
+	}
+	return postedAmount(p)
+}
+func budgetApplied(p Purchase) *int64 {
+	if p.AccountingTracked {
+		return p.FreeBudgetAppliedAmount
+	}
+	if postedClassification(p) == "free" {
+		return postedAmount(p)
+	}
+	return nil
+}
+
+func unconfirmed(p Purchase) bool {
+	return p.ActualAmount == nil && (p.Status == "purchase_confirmation_pending" || p.Status == "classification_required")
 }

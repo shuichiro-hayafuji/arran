@@ -122,6 +122,9 @@ paths:
                 file: { type: string, format: binary }
                 mapping: { type: string, description: JSON形式のCSVMapping }
                 source: { type: string }
+              balance_applied_amount: { type: integer, format: int64, nullable: true }
+              free_budget_applied_amount: { type: integer, format: int64, nullable: true }
+              balance_basis: { type: string, description: purchase・user_report。旧イベントは空文字。 }
                 source_account_name: { type: string }
       responses:
         '401': { description: Invalid or expired bearer session }
@@ -469,7 +472,7 @@ components:
             description: { type: string }
             amount: { type: integer, format: int64 }
             recorded_at: { type: string, format: date-time }
-            status: { type: string, enum: [purchase_confirmation_pending, needs_classification] }
+            status: { type: string, enum: [purchase_confirmation_pending, needs_classification, classification_required] }
         purchases:
           type: array
           nullable: true
@@ -490,17 +493,19 @@ components:
               created_at: { type: string, format: date-time }
     Purchase:
       type: object
-      required: [id, consultation_id, description, amount, recorded_at, status, first_asked_at, second_asked_at, actual_amount, classification, events]
+      required: [id, consultation_id, description, amount, recorded_at, status, first_asked_at, second_asked_at, actual_amount, classification, balance_applied_amount, free_budget_applied_amount, events]
       properties:
         id: { type: string }
         consultation_id: { type: integer, format: int64 }
         description: { type: string }
         amount: { type: integer, format: int64 }
         recorded_at: { type: string, format: date-time }
-        status: { type: string, enum: [purchase_confirmation_pending, needs_classification, purchased, not_purchased, unanswered, cancelled] }
+        status: { type: string, enum: [purchase_confirmation_pending, needs_classification, classification_required, purchased, not_purchased, unanswered, cancelled] }
         first_asked_at: { type: string, description: 未確認は空文字 }
         second_asked_at: { type: string, description: 未確認は空文字 }
         actual_amount: { type: integer, format: int64, nullable: true }
+        balance_applied_amount: { type: integer, format: int64, nullable: true, description: 現在残高へ反映済みの実額。Goで計算する値ではない。 }
+        free_budget_applied_amount: { type: integer, format: int64, nullable: true, description: 自由予算へ反映済みの実額。分類待ちは保留。 }
         classification: { type: string, enum: ['', free, necessary, unknown] }
         events:
           type: array
@@ -509,11 +514,14 @@ components:
             type: object
             required: [outcome, amount, classification, recorded_at, source]
             properties:
-              outcome: { type: string, enum: [purchased, not_purchased, unanswered, needs_classification] }
+              outcome: { type: string, enum: [purchased, not_purchased, unanswered, needs_classification, classification_required] }
               amount: { type: integer, format: int64, nullable: true }
               classification: { type: string, enum: [free, necessary, unknown] }
               recorded_at: { type: string, format: date-time }
               source: { type: string }
+              balance_applied_amount: { type: integer, format: int64, nullable: true }
+              free_budget_applied_amount: { type: integer, format: int64, nullable: true }
+              balance_basis: { type: string, description: purchase・user_report。旧イベントは空文字。 }
     ConsultationResultUpdate:
       type: object
       properties:

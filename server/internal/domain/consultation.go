@@ -13,24 +13,29 @@ type PendingPurchase struct {
 }
 
 type PurchaseEvent struct {
-	Outcome        string `json:"outcome"`
-	Amount         *int64 `json:"amount"`
-	Classification string `json:"classification"`
-	RecordedAt     string `json:"recorded_at"`
-	Source         string `json:"source"`
+	BalanceAppliedAmount    *int64 `json:"balance_applied_amount"`
+	FreeBudgetAppliedAmount *int64 `json:"free_budget_applied_amount"`
+	BalanceBasis            string `json:"balance_basis"`
+	Outcome                 string `json:"outcome"`
+	Amount                  *int64 `json:"amount"`
+	Classification          string `json:"classification"`
+	RecordedAt              string `json:"recorded_at"`
+	Source                  string `json:"source"`
 }
 type Purchase struct {
-	ID             string          `json:"id"`
-	ConsultationID int64           `json:"consultation_id"`
-	Description    string          `json:"description"`
-	Amount         int64           `json:"amount"`
-	RecordedAt     string          `json:"recorded_at"`
-	Status         string          `json:"status"`
-	FirstAskedAt   string          `json:"first_asked_at"`
-	SecondAskedAt  string          `json:"second_asked_at"`
-	ActualAmount   *int64          `json:"actual_amount"`
-	Classification string          `json:"classification"`
-	Events         []PurchaseEvent `json:"events"`
+	BalanceAppliedAmount    *int64          `json:"balance_applied_amount"`
+	FreeBudgetAppliedAmount *int64          `json:"free_budget_applied_amount"`
+	ID                      string          `json:"id"`
+	ConsultationID          int64           `json:"consultation_id"`
+	Description             string          `json:"description"`
+	Amount                  int64           `json:"amount"`
+	RecordedAt              string          `json:"recorded_at"`
+	Status                  string          `json:"status"`
+	FirstAskedAt            string          `json:"first_asked_at"`
+	SecondAskedAt           string          `json:"second_asked_at"`
+	ActualAmount            *int64          `json:"actual_amount"`
+	Classification          string          `json:"classification"`
+	Events                  []PurchaseEvent `json:"events"`
 }
 type ChatMessage struct {
 	Reason      string `json:"reason,omitempty"`

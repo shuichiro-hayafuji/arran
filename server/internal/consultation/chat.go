@@ -21,6 +21,7 @@ type Fact struct {
 	Source     string `json:"source"`
 	RecordedAt string `json:"recorded_at"`
 	Active     bool   `json:"active"`
+	Basis      string `json:"basis,omitempty"`
 }
 type State struct {
 	Version           int64      `json:"version"`
@@ -60,6 +61,7 @@ type Change struct {
 	Kind      string `json:"kind"`
 	Period    string `json:"period"`
 	Operation string `json:"operation"`
+	Basis     string `json:"basis"`
 }
 type PurchaseChange struct {
 	ID          string  `json:"id"`
@@ -83,16 +85,17 @@ type HistoricalMessage struct {
 	Message
 }
 type Reply struct {
-	PurchaseChange  *PurchaseChange  `json:"purchase_change"`
-	PurchaseUpdates []PurchaseUpdate `json:"purchase_updates"`
-	Status          string           `json:"status"`
-	Answer          string           `json:"answer"`
-	Reason          string           `json:"reason"`
-	Assumptions     string           `json:"assumptions"`
-	Question        string           `json:"question"`
-	PlannedAmount   *int64           `json:"planned_amount"`
-	Changes         []Change         `json:"changes"`
-	Strictness      *int             `json:"strictness"`
+	PurchaseChange        *PurchaseChange  `json:"purchase_change"`
+	PurchaseTargetUnclear bool             `json:"purchase_target_unclear"`
+	PurchaseUpdates       []PurchaseUpdate `json:"purchase_updates"`
+	Status                string           `json:"status"`
+	Answer                string           `json:"answer"`
+	Reason                string           `json:"reason"`
+	Assumptions           string           `json:"assumptions"`
+	Question              string           `json:"question"`
+	PlannedAmount         *int64           `json:"planned_amount"`
+	Changes               []Change         `json:"changes"`
+	Strictness            *int             `json:"strictness"`
 }
 type Input struct {
 	ValidationFeedback  string              `json:"validation_feedback"`
@@ -173,7 +176,7 @@ func (s Service) Send(ctx context.Context, id int64, message string) (Thread, er
 	input.RelatedHistory = relatedHistory(pastThreads, input.Message, state.Facts)
 	input.Purchases, input.PurchaseCoverage = modelPurchases(state, input.Message, id)
 	for _, p := range input.Purchases {
-		if pending(p) && p.SecondAskedAt != "" {
+		if pending(p) && p.ActualAmount == nil && p.SecondAskedAt != "" {
 			input.AutoConfirmIDs = append(input.AutoConfirmIDs, p.ID)
 		}
 	}
@@ -224,7 +227,7 @@ func (s Service) Send(ctx context.Context, id int64, message string) (Thread, er
 					state.Facts[i].Active = false
 				}
 			}
-			state.Facts = append(state.Facts, Fact{Key: change.Key, Value: Redact(change.Value), Kind: change.Kind, Period: change.Period, Source: fmt.Sprintf("chat:%d:turn:%d", thread.ID, len(thread.Messages)/2+1), RecordedAt: timestamp, Active: change.Operation == "set"})
+			state.Facts = append(state.Facts, Fact{Key: change.Key, Basis: change.Basis, Value: Redact(change.Value), Kind: change.Kind, Period: change.Period, Source: fmt.Sprintf("chat:%d:turn:%d", thread.ID, len(thread.Messages)/2+1), RecordedAt: timestamp, Active: change.Operation == "set"})
 		}
 		if reply.Strictness != nil {
 			state.Strictness = *reply.Strictness
@@ -294,6 +297,9 @@ func Validate(r Reply) error {
 		return errors.New("too many fact changes")
 	}
 	for _, c := range r.Changes {
+		if c.Basis != "" && c.Basis != "purchase" && c.Basis != "user_report" && c.Basis != "memory" {
+			return errors.New("invalid fact basis")
+		}
 		if c.Key == "" || len(c.Key) > 120 || len(c.Value) > 2000 || len(c.Period) > 100 {
 			return errors.New("invalid fact")
 		}

@@ -115,6 +115,6 @@ docker compose down -v
 
 ## 購入確認の保存
 
-010 migrationで`chat_purchase_schedule`を追加する。利用者の`chat_states.payload.purchases`が履歴の正本であり、予定額、実額、分類、確認日時、変更前のイベントを保持する。期限索引は保存時に同じtransactionで再構成する。009の旧予定は最初の所有者状態読取で取り込み、引継ぎ前の旧予定もworkerが検索する。相談を削除すると期限索引もCASCADEで削除する。所有者未割当の旧相談は取り込まない。
+010 migrationで`chat_purchase_schedule`を追加する。利用者の`chat_states.payload.purchases`が履歴の正本であり、予定額、実額、分類、確認日時、残高・自由予算へ反映済みの実額、更新根拠、変更前のイベントを保持する。期限索引は保存時に同じtransactionで再構成する。009の旧予定は最初の所有者状態読取で取り込み、引継ぎ前の旧予定もworkerが検索する。相談を削除すると期限索引もCASCADEで削除する。所有者未割当の旧相談は取り込まない。
 
 確認workerとモデル応答は利用者状態のversionとrow lockで直列化し、原チャットへの複数更新を原子的に保存する。SQLiteは004のテストスキーマを使い、本番保証は専用PostgreSQLで別に検証する。実績反映の金融計算はLLMが担い、SQL・Goでは金額を再計算しない。

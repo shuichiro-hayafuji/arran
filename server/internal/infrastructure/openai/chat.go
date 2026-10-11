@@ -24,9 +24,12 @@ purchase_changeは購入予定の新規・変更・取り消しがある場合�
 purchase_coverageは取得範囲と部分取得を示します。未取得の予定がないと断定せず、表示されたIDだけを更新します。eventsの最新posted結果と同じ実額・分類・購入/未購入を繰り返した場合はpurchase_updatesへ再出力せず、残高・予算を再度減額しません。同じ金額への訂正で変化がない場合も同じです。
 purchasesにはID・商品・予定額・相談日時・確認回数・実額・分類・訂正履歴を持つ複数の予定が入ります。回答対象をIDで区別します。商品・予定額・相談日時で対象を識別できなければ質問し、誤って別の商品を確定しません。
 新しい購入はpurchase_change.operation=add,id=""で追加し、変更・取消はset/cancelと該当idを返します。旧pending_purchaseは互換情報で、purchasesが正本です。更新のdescription省略は指定idの商品を保持します。
-購入結果はpurchase_updatesへ該当IDとoutcome=purchased/not_purchased/needs_classification/unansweredを返します。「予定どおり」は予定額を実額にします。分類は自由支出=free、生活上の必要支出=necessary、不明=unknownです。分類が不明な時だけneeds_classificationで実額を保持し質問してください。未購入のamountはnullです。通常の回答や質問で実績を推測しません。
-auto_confirm_idsは2回目の確認にも答えず続けたターンの候補です。この全IDについて、回答が購入結果を伝えていればその結果、無関係な話ならunansweredを返してください。unansweredは予定額を実額とし、分類が分からない時だけneeds_classificationにして質問します。対象不明の回答はneeds_classification（amountは既存実額または予定額）として対象確認の質問をし、確定しないでください。候補が空なら無回答の自動確定はしません。
-購入・自動確定で現在残高をあなたが計算しchangesのcurrent_balanceに返します。自由支出だけmonthly_free_budgetも計算します。既知の残高・予算がある場合は必ず結果を返し、元の金額が不明なら捏造しません。計算に用いた実額・分類・基準時点をreasonへ書きます。既に確定したIDへの訂正は元の履歴を基に前回の反映を戻して新しい実額を反映し、not_purchasedなら取り消して再計算します。必要支出への分類訂正なら自由予算の前回の反映も戻します。eventsに記載された実績を二重に計上しません。
+購入結果はpurchase_updatesへ該当IDとoutcome=purchased/not_purchased/needs_classification/classification_required/unansweredを返します。「予定どおり」は予定額を実額にします。分類は自由支出=free、生活上の必要支出=necessary、不明=unknownです。実際に購入したことと実額が判明し、分類だけが不明ならneeds_classificationで実額を保存し、現在残高は分類待ちでも直ちに計算してchangesへ返します。自由予算の反映だけを分類確定まで保留します。未購入のamountはnullです。
+まだ実際に購入したか不明で分類だけを質問する場合はclassification_required,amount=null,classification=unknownです。予定額を確認済みの実額にしてはいけません。通常の回答や質問で実績を推測しません。
+回答対象が不明なときはpurchase_target_unclear=trueとし、purchase_updates=[]、purchase_change=nullで対象だけを質問します。複数のどの購入も実績・分類・残高反映を変更しません。対象が明確ならpurchase_target_unclear=falseです。
+auto_confirm_idsは2回目にも答えず別の話を続けた、実額がまだ不明な予定の候補です。この全IDについて、回答が結果を伝えていればその結果、別の話ならunansweredを返します。unansweredは予定額を推定実額として現在残高へ反映します。分類が不明でもunanswered,amount=予定額,classification=unknownを返し、現在残高は計算して保存し、自由予算だけを保留して分類を質問します。この自動候補にclassification_required,amount=nullを返して残高反映を先延ばししません。eventsのunansweredは本人申告と区別した推定計上です。対象不明の質問を返すときは候補IDも確定しません。既知の実額がある分類待ちはauto_confirm_idsには入りません。分類だけの回答ではその既知実額を保持し、予定額へ戻しません。
+purchasesとeventsのbalance_applied_amountは現在残高へ反映済みの実額、free_budget_applied_amountは自由予算へ反映済みの実額です。プログラムはこの保存メタデータに金額を転記しますが金融計算はしません。新しい実額が判明した場合や実額訂正では、反映済み額との差をあなたが計算して現在残高を更新します。分類待ちでも現在残高を更新し、自由予算だけ保留します。分類確定時は実額が変わっていなければ現在残高を再減額せず、自由支出なら自由予算だけ反映します。必要支出なら自由予算は減らしません。自由/必要分類の訂正は前の自由予算反映をあなたが戻して適切に更新します。未購入への訂正は反映済み額を戻して再計算します。イベントを二重に計上しません。知らない元残高・予算は捏造しません。
+changesのbasisは購入に伴う反映/訂正計算=purchase、利用者が明示した新しい残高・予算等の申告/訂正=user_report、それ以外の記憶=memoryです。分類確定と同時に本人が新しい残高を述べた場合は、その基準時点と購入の包含をあなたが解釈し、user_reportで現在残高を保存できます。分類だけ確定した場合にpurchaseを理由として現在残高を二度減らしません。計算に用いた実額・分類・基準時点をreasonへ書きます。
 認証情報、パスワード、口座番号・カード番号の全桁を要求・復元・出力・保存しないでください。`
 
 func (c *client) Advise(ctx context.Context, input consultation.Input) (consultation.Reply, error) {
@@ -41,13 +44,13 @@ func chatSchema() map[string]any {
 		"id": text(), "operation": map[string]any{"type": "string", "enum": []string{"add", "set", "cancel"}}, "description": map[string]any{"type": []string{"string", "null"}}, "amount": nullableInt(),
 	}}
 	outcome := map[string]any{"type": "object", "additionalProperties": false, "required": []string{"id", "outcome", "amount", "classification"}, "properties": map[string]any{
-		"id": text(), "outcome": map[string]any{"type": "string", "enum": []string{"purchased", "not_purchased", "needs_classification", "unanswered"}}, "amount": nullableInt(), "classification": map[string]any{"type": "string", "enum": []string{"free", "necessary", "unknown"}},
+		"id": text(), "outcome": map[string]any{"type": "string", "enum": []string{"purchased", "not_purchased", "needs_classification", "classification_required", "unanswered"}}, "amount": nullableInt(), "classification": map[string]any{"type": "string", "enum": []string{"free", "necessary", "unknown"}},
 	}}
-	change := map[string]any{"type": "object", "additionalProperties": false, "required": []string{"key", "value", "kind", "period", "operation"}, "properties": map[string]any{
-		"key": text(), "value": text(), "kind": map[string]any{"type": "string", "enum": []string{"fact", "inference"}}, "period": text(), "operation": map[string]any{"type": "string", "enum": []string{"set", "forget"}},
+	change := map[string]any{"type": "object", "additionalProperties": false, "required": []string{"key", "value", "kind", "period", "operation", "basis"}, "properties": map[string]any{
+		"basis": map[string]any{"type": "string", "enum": []string{"purchase", "user_report", "memory"}}, "key": text(), "value": text(), "kind": map[string]any{"type": "string", "enum": []string{"fact", "inference"}}, "period": text(), "operation": map[string]any{"type": "string", "enum": []string{"set", "forget"}},
 	}}
-	return map[string]any{"type": "object", "additionalProperties": false, "required": []string{"status", "answer", "reason", "assumptions", "question", "purchase_change", "purchase_updates", "changes", "strictness"}, "properties": map[string]any{
-		"status":           map[string]any{"type": "string", "enum": []string{"answered", "provisional", "needs_information", "unavailable"}},
-		"purchase_updates": map[string]any{"type": "array", "items": outcome}, "answer": text(), "reason": text(), "assumptions": text(), "question": text(), "purchase_change": purchase, "strictness": nullableInt(), "changes": map[string]any{"type": "array", "items": change},
+	return map[string]any{"type": "object", "additionalProperties": false, "required": []string{"status", "answer", "reason", "assumptions", "question", "purchase_change", "purchase_updates", "purchase_target_unclear", "changes", "strictness"}, "properties": map[string]any{
+		"status":                  map[string]any{"type": "string", "enum": []string{"answered", "provisional", "needs_information", "unavailable"}},
+		"purchase_target_unclear": map[string]any{"type": "boolean"}, "purchase_updates": map[string]any{"type": "array", "items": outcome}, "answer": text(), "reason": text(), "assumptions": text(), "question": text(), "purchase_change": purchase, "strictness": nullableInt(), "changes": map[string]any{"type": "array", "items": change},
 	}}
 }

@@ -141,7 +141,7 @@ func (r *Repository) SaveChatTurn(ctx context.Context, state consultation.State,
 		if p.RecordedAt <= forgottenCutoff(state) {
 			continue
 		}
-		if p.Status == "purchase_confirmation_pending" {
+		if p.Status == "purchase_confirmation_pending" || p.Status == "classification_required" {
 			at, e := time.Parse(time.RFC3339, p.RecordedAt)
 			if e != nil {
 				return consultation.Thread{}, e
