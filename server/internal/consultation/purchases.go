@@ -169,8 +169,15 @@ func validatePurchases(r Reply, in Input) error {
 	for _, u := range r.PurchaseUpdates {
 		for _, p := range in.Purchases {
 			if p.ID == u.ID && u.Outcome != "classification_required" {
-				if u.Outcome != "needs_classification" && u.Classification != "unknown" && (u.Classification == "free" || budgetApplied(p) != nil) && !(u.Outcome == "not_purchased" && budgetApplied(p) == nil) {
-					budgetNeeded = true
+				if u.Outcome != "needs_classification" && (u.Classification != "unknown" || u.Outcome == "not_purchased") {
+					var target *int64
+					if u.Classification == "free" && u.Outcome != "not_purchased" {
+						target = u.Amount
+					}
+					applied := budgetApplied(p)
+					if (target == nil) != (applied == nil) || (target != nil && applied != nil && *target != *applied) {
+						budgetNeeded = true
+					}
 				}
 				applied := balanceApplied(p)
 				if (u.Amount != nil && (applied == nil || *applied != *u.Amount)) || (u.Outcome == "not_purchased" && applied != nil) {
@@ -273,7 +280,7 @@ func validatePurchases(r Reply, in Input) error {
 			needed := false
 			if f.Key == "current_balance" {
 				needed = balanceNeeded
-			} else if u.Outcome != "needs_classification" && u.Outcome != "classification_required" && u.Classification != "unknown" {
+			} else if u.Outcome != "needs_classification" && u.Outcome != "classification_required" && (u.Classification != "unknown" || u.Outcome == "not_purchased") {
 				needed = budgetNeeded
 			}
 			if u.Outcome == "not_purchased" && balanceApplied(p) == nil && budgetApplied(p) == nil {
@@ -373,7 +380,7 @@ func applyPurchases(state *State, thread *Thread, r Reply, in Input, timestamp s
 					appliedBalance = u.Amount
 					basis = c.Basis
 				}
-				if c.Key == "monthly_free_budget" && u.Outcome != "needs_classification" && u.Outcome != "classification_required" && u.Classification != "unknown" {
+				if c.Key == "monthly_free_budget" && u.Outcome != "needs_classification" && u.Outcome != "classification_required" && (u.Classification != "unknown" || u.Outcome == "not_purchased") {
 					if u.Classification == "free" && u.Outcome != "not_purchased" {
 						appliedBudget = u.Amount
 					} else {
