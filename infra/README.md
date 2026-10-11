@@ -5,10 +5,12 @@
 ## アーキテクチャ
 
 ```text
-Internet → ALB:80 → ECS Fargate (private subnet, :8080)
-                         ├─ RDS PostgreSQL 16 (private subnet, :5432)
-                         └─ NAT Gateway → OpenAI Responses API / PagerDuty Events API
+Internet → ALB:80 → ECS Fargate (public subnet, public IP, :8080)
+                         ├─ RDS PostgreSQL 16 (isolated subnet, :5432)
+                         └─ Internet Gateway → OpenAI Responses API / PagerDuty Events API
 ```
+
+VPCは2つのAZに公開サブネットとDB用の隔離サブネットを作り、NAT Gatewayは作りません。ALBとECSは公開サブネットに置きます。ECSには外向き通信のためパブリックIPを付けますが、ECSの受信はALBのSecurity GroupからTCP 8080だけ、RDSの受信はECSのSecurity GroupからTCP 5432だけを許可します。RDSにはパブリックIPとインターネットへの経路を設けません。ECSへ直接接続できないことは、配備後に実環境でも確認する必要があります。
 
 CDKの`DockerImageAsset`は`server/`のDockerfileをx86_64 Linux向けにビルドします。ローカルDocker Composeと同じPostgreSQL adapterを使い、ECSにはRDSの接続情報を環境変数とSecrets Manager経由で渡します。
 
@@ -83,4 +85,4 @@ curl -i "http://ALB_DNS_NAME/health"
 
 未デプロイ環境向けのdev構成です。RDS、ECR、Secretは`cdk destroy`で削除対象です。データを保持する環境ではRDSのRemovalPolicy、バックアップ保持、deletion protectionを見直してください。
 
-本番化にはHTTPS/ACM、認証・認可、レート制限、監視、RDSバックアップ、復旧手順、Auto Scalingが必要です。
+本番化にはHTTPS/ACM、認証・認可、レート制限、監視、RDSバックアップ、復旧手順、Auto Scalingが必要です。パブリックIPを持つECSの受信ルールを不用意に広げないでください。

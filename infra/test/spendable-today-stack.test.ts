@@ -18,14 +18,32 @@ describe('SpendableTodayStack', () => {
     });
   });
 
-  test('runs one private Fargate task without a public IP', () => {
+  test('uses public task subnets without a NAT gateway and isolates the database', () => {
     const t = template();
+    t.resourceCountIs('AWS::EC2::NatGateway', 0);
+    t.resourceCountIs('AWS::EC2::EIP', 0);
+
+    const subnets = t.findResources('AWS::EC2::Subnet');
+    const publicSubnetIds = Object.keys(subnets).filter(id => id.includes('PublicSubnet'));
+    const databaseSubnetIds = Object.keys(subnets).filter(id => id.includes('DatabaseSubnet'));
+    expect(publicSubnetIds).toHaveLength(2);
+    expect(databaseSubnetIds).toHaveLength(2);
+
     t.hasResourceProperties('AWS::ECS::Service', {
       DesiredCount: 1,
       NetworkConfiguration: {
-        AwsvpcConfiguration: { AssignPublicIp: 'DISABLED' },
+        AwsvpcConfiguration: {
+          AssignPublicIp: 'ENABLED',
+          Subnets: Match.arrayWith(publicSubnetIds.map(id => ({ Ref: id }))),
+        },
       },
     });
+    t.hasResourceProperties('AWS::RDS::DBSubnetGroup', {
+      SubnetIds: Match.arrayWith(databaseSubnetIds.map(id => ({ Ref: id }))),
+    });
+    const publicRoutes = t.findResources('AWS::EC2::Route');
+    expect(Object.keys(publicRoutes)).toHaveLength(2);
+    expect(Object.keys(publicRoutes).every(routeId => routeId.includes('PublicSubnet'))).toBe(true);
   });
 
   test('uses private PostgreSQL and does not create an EFS or S3 data store', () => {
@@ -56,15 +74,32 @@ describe('SpendableTodayStack', () => {
         ]),
       })]),
     });
-    t.hasResourceProperties('AWS::EC2::SecurityGroupIngress', {
-      FromPort: 8080,
-      ToPort: 8080,
-      SourceSecurityGroupId: Match.anyValue(),
-    });
-    t.hasResourceProperties('AWS::EC2::SecurityGroupIngress', {
-      FromPort: 5432,
-      ToPort: 5432,
-      SourceSecurityGroupId: Match.anyValue(),
-    });
+    const groups = t.findResources('AWS::EC2::SecurityGroup');
+    const groupId = (description: string): string => {
+      const ids = Object.keys(groups).filter(id => groups[id].Properties.GroupDescription === description);
+      expect(ids).toHaveLength(1);
+      return ids[0];
+    };
+    const albGroupId = groupId('Internet HTTP ingress and ECS-only egress for the ALB');
+    const ecsGroupId = groupId('ALB-only ingress for the Go API tasks');
+    const databaseGroupId = groupId('ECS-only PostgreSQL ingress');
+    expect(groups[ecsGroupId].Properties.SecurityGroupIngress).toBeUndefined();
+    expect(groups[databaseGroupId].Properties.SecurityGroupIngress).toBeUndefined();
+    const ingressRules = Object.values(t.findResources('AWS::EC2::SecurityGroupIngress'));
+    expect(ingressRules).toHaveLength(2);
+    expect(ingressRules.map(rule => rule.Properties)).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        GroupId: { 'Fn::GetAtt': [ecsGroupId, 'GroupId'] },
+        SourceSecurityGroupId: { 'Fn::GetAtt': [albGroupId, 'GroupId'] },
+        FromPort: 8080,
+        ToPort: 8080,
+      }),
+      expect.objectContaining({
+        GroupId: { 'Fn::GetAtt': [databaseGroupId, 'GroupId'] },
+        SourceSecurityGroupId: { 'Fn::GetAtt': [ecsGroupId, 'GroupId'] },
+        FromPort: 5432,
+        ToPort: 5432,
+      }),
+    ]));
   });
 });
