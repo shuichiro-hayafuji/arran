@@ -38,21 +38,6 @@ class SettingsScreen extends ConsumerWidget {
           child: Column(
             children: [
               ListTile(
-                leading: const Icon(Icons.person_outline),
-                title: const Text('プロフィールを編集'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => context.push('/profile'),
-              ),
-              const Divider(height: 1),
-              ListTile(
-                leading: const Icon(Icons.psychology_outlined),
-                title: const Text('AIが参照するメモリ'),
-                subtitle: const Text('確認・編集・削除'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => context.push('/memories'),
-              ),
-              const Divider(height: 1),
-              ListTile(
                 leading: const Icon(Icons.upload_file_outlined),
                 title: const Text('CSVをインポート'),
                 trailing: const Icon(Icons.chevron_right),

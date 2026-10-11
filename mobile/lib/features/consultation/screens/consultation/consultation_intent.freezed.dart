@@ -55,12 +55,13 @@ extension ConsultationIntentPatterns on ConsultationIntent {
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( SubmitConsultation value)?  submit,TResult Function( ContinueConsultation value)?  continueWith,TResult Function( ClearConsultation value)?  clear,required TResult orElse(),}){
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( SubmitConsultation value)?  submit,TResult Function( ContinueConsultation value)?  continueWith,TResult Function( SelectConsultation value)?  select,TResult Function( ClearConsultation value)?  clear,required TResult orElse(),}){
 final _that = this;
 switch (_that) {
 case SubmitConsultation() when submit != null:
 return submit(_that);case ContinueConsultation() when continueWith != null:
-return continueWith(_that);case ClearConsultation() when clear != null:
+return continueWith(_that);case SelectConsultation() when select != null:
+return select(_that);case ClearConsultation() when clear != null:
 return clear(_that);case _:
   return orElse();
 
@@ -79,12 +80,13 @@ return clear(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( SubmitConsultation value)  submit,required TResult Function( ContinueConsultation value)  continueWith,required TResult Function( ClearConsultation value)  clear,}){
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( SubmitConsultation value)  submit,required TResult Function( ContinueConsultation value)  continueWith,required TResult Function( SelectConsultation value)  select,required TResult Function( ClearConsultation value)  clear,}){
 final _that = this;
 switch (_that) {
 case SubmitConsultation():
 return submit(_that);case ContinueConsultation():
-return continueWith(_that);case ClearConsultation():
+return continueWith(_that);case SelectConsultation():
+return select(_that);case ClearConsultation():
 return clear(_that);}
 }
 /// A variant of `map` that fallback to returning `null`.
@@ -99,12 +101,13 @@ return clear(_that);}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( SubmitConsultation value)?  submit,TResult? Function( ContinueConsultation value)?  continueWith,TResult? Function( ClearConsultation value)?  clear,}){
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( SubmitConsultation value)?  submit,TResult? Function( ContinueConsultation value)?  continueWith,TResult? Function( SelectConsultation value)?  select,TResult? Function( ClearConsultation value)?  clear,}){
 final _that = this;
 switch (_that) {
 case SubmitConsultation() when submit != null:
 return submit(_that);case ContinueConsultation() when continueWith != null:
-return continueWith(_that);case ClearConsultation() when clear != null:
+return continueWith(_that);case SelectConsultation() when select != null:
+return select(_that);case ClearConsultation() when clear != null:
 return clear(_that);case _:
   return null;
 
@@ -122,11 +125,12 @@ return clear(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( String message,  int? plannedAmount)?  submit,TResult Function( int id,  String message,  int? plannedAmount)?  continueWith,TResult Function()?  clear,required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( String message,  int? plannedAmount)?  submit,TResult Function( int id,  String message,  int? plannedAmount)?  continueWith,TResult Function( Consultation consultation)?  select,TResult Function()?  clear,required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case SubmitConsultation() when submit != null:
 return submit(_that.message,_that.plannedAmount);case ContinueConsultation() when continueWith != null:
-return continueWith(_that.id,_that.message,_that.plannedAmount);case ClearConsultation() when clear != null:
+return continueWith(_that.id,_that.message,_that.plannedAmount);case SelectConsultation() when select != null:
+return select(_that.consultation);case ClearConsultation() when clear != null:
 return clear();case _:
   return orElse();
 
@@ -145,11 +149,12 @@ return clear();case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( String message,  int? plannedAmount)  submit,required TResult Function( int id,  String message,  int? plannedAmount)  continueWith,required TResult Function()  clear,}) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( String message,  int? plannedAmount)  submit,required TResult Function( int id,  String message,  int? plannedAmount)  continueWith,required TResult Function( Consultation consultation)  select,required TResult Function()  clear,}) {final _that = this;
 switch (_that) {
 case SubmitConsultation():
 return submit(_that.message,_that.plannedAmount);case ContinueConsultation():
-return continueWith(_that.id,_that.message,_that.plannedAmount);case ClearConsultation():
+return continueWith(_that.id,_that.message,_that.plannedAmount);case SelectConsultation():
+return select(_that.consultation);case ClearConsultation():
 return clear();}
 }
 /// A variant of `when` that fallback to returning `null`
@@ -164,11 +169,12 @@ return clear();}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( String message,  int? plannedAmount)?  submit,TResult? Function( int id,  String message,  int? plannedAmount)?  continueWith,TResult? Function()?  clear,}) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( String message,  int? plannedAmount)?  submit,TResult? Function( int id,  String message,  int? plannedAmount)?  continueWith,TResult? Function( Consultation consultation)?  select,TResult? Function()?  clear,}) {final _that = this;
 switch (_that) {
 case SubmitConsultation() when submit != null:
 return submit(_that.message,_that.plannedAmount);case ContinueConsultation() when continueWith != null:
-return continueWith(_that.id,_that.message,_that.plannedAmount);case ClearConsultation() when clear != null:
+return continueWith(_that.id,_that.message,_that.plannedAmount);case SelectConsultation() when select != null:
+return select(_that.consultation);case ClearConsultation() when clear != null:
 return clear();case _:
   return null;
 
@@ -309,6 +315,72 @@ null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as int,null == message ? _self.message : message // ignore: cast_nullable_to_non_nullable
 as String,freezed == plannedAmount ? _self.plannedAmount : plannedAmount // ignore: cast_nullable_to_non_nullable
 as int?,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class SelectConsultation extends ConsultationIntent {
+  const SelectConsultation(this.consultation): super._();
+  
+
+ final  Consultation consultation;
+
+/// Create a copy of ConsultationIntent
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$SelectConsultationCopyWith<SelectConsultation> get copyWith => _$SelectConsultationCopyWithImpl<SelectConsultation>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is SelectConsultation&&(identical(other.consultation, consultation) || other.consultation == consultation));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,consultation);
+
+@override
+String toString() {
+  return 'ConsultationIntent.select(consultation: $consultation)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $SelectConsultationCopyWith<$Res> implements $ConsultationIntentCopyWith<$Res> {
+  factory $SelectConsultationCopyWith(SelectConsultation value, $Res Function(SelectConsultation) _then) = _$SelectConsultationCopyWithImpl;
+@useResult
+$Res call({
+ Consultation consultation
+});
+
+
+
+
+}
+/// @nodoc
+class _$SelectConsultationCopyWithImpl<$Res>
+    implements $SelectConsultationCopyWith<$Res> {
+  _$SelectConsultationCopyWithImpl(this._self, this._then);
+
+  final SelectConsultation _self;
+  final $Res Function(SelectConsultation) _then;
+
+/// Create a copy of ConsultationIntent
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? consultation = null,}) {
+  return _then(SelectConsultation(
+null == consultation ? _self.consultation : consultation // ignore: cast_nullable_to_non_nullable
+as Consultation,
   ));
 }
 

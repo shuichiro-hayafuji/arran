@@ -71,6 +71,8 @@ void main() {
     expect(find.text('インポート前プレビュー'), findsOneWidget);
     expect(find.text('件数: 2件'), findsOneWidget);
 
+    await tester.ensureVisible(find.byKey(const ValueKey('commit-import')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('commit-import')));
     await tester.pumpAndSettle();
     expect(find.text('2件を保存しました'), findsOneWidget);
@@ -84,12 +86,16 @@ void main() {
     await pumpFeature(tester, fakes, const ConsultationScreen());
     await tester.pumpAndSettle();
 
+    await tester.enterText(
+      find.byKey(const ValueKey('consultation-message')),
+      '2万円のイヤホンを買おうか迷っている',
+    );
     await tester.tap(find.byKey(const ValueKey('submit-consultation')));
     await tester.pumpAndSettle();
 
-    expect(fakes.lastConsultationMessage, contains('飲みに行こう'));
-    expect(find.byKey(const ValueKey('ai-recommendation')), findsOneWidget);
-    expect(find.text('今回は見送ることをおすすめします。'), findsOneWidget);
+    expect(fakes.lastConsultationMessage, contains('2万円のイヤホン'));
+    expect(find.byKey(const ValueKey('consultation-amount')), findsNothing);
+    expect(find.text('今回は見送ることをおすすめします。'), findsWidgets);
   });
 
   testWidgets('consultation result is recorded', (tester) async {
@@ -97,11 +103,67 @@ void main() {
     await pumpFeature(tester, fakes, const ResultScreen(consultationId: 1));
     await tester.pumpAndSettle();
 
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('save-consultation-result')),
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
     await tester.tap(find.byKey(const ValueKey('save-consultation-result')));
     await tester.pumpAndSettle();
 
     expect(fakes.lastResultStatus, 'skipped');
   });
+  testWidgets('chat keeps text after failure at narrow width and large text', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          consultationRepositoryProvider.overrideWithValue(
+            FailingConsultationRepository(),
+          ),
+        ],
+        child: MaterialApp(
+          home: Scaffold(
+            body: MediaQuery(
+              data: const MediaQueryData(textScaler: TextScaler.linear(2)),
+              child: const ConsultationScreen(),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    const message = '残高はおおよそ5万円です。長い相談文でも入力を残してください。';
+    await tester.enterText(
+      find.byKey(const ValueKey('consultation-message')),
+      message,
+    );
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('submit-consultation')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('submit-consultation')));
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const ValueKey('consultation-message')))
+          .controller!
+          .text,
+      message,
+    );
+    expect(tester.takeException(), isNull);
+  });
+}
+
+class FailingConsultationRepository extends FakeConsultationRepository {
+  @override
+  Future<Consultation> start(String message, int? amount) async =>
+      throw StateError('offline');
 }
 
 Future<void> pumpFeature(
@@ -117,7 +179,7 @@ Future<void> pumpFeature(
         memoryRepositoryProvider.overrideWithValue(fakes.memories),
         transactionsRepositoryProvider.overrideWithValue(fakes.transactions),
       ],
-      child: MaterialApp(home: child),
+      child: MaterialApp(home: Scaffold(body: child)),
     ),
   );
 }
