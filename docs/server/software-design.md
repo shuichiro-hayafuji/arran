@@ -1,5 +1,12 @@
 # Server Software詳細設計
 
+## #110の新しいチャット経路と旧経路
+
+新しい相談APIは`handler → application.SendChat → consultation.Service`で進行し、`consultation`がAgent・Repository Port、記憶の関連性検索、会話・購入確認待ちの保存を所有する。OpenAI Adapterをappから注入し、金額の抽出・計算・解釈・助言はLLMへ委ねる。Applicationの用途別Repository、利用者の所有者境界、月次相談上限・通知・token利用量の保存は維持する。上限後は会話を保存して助言を利用できない理由を返し、金融判定を代用しない。
+
+以下の既存Agent・Goの金融判定・決定論的fallbackの図と説明は旧相談ユースケース、月次レビュー、旧結果記録の経路に適用する。新しいチャット相談APIの金融責務は[業務ルール](business.md)、[構成](architecture.md)、[保存・検証資料](../../server/docs/chat-consultation.md)を正とする。
+
+
 この文書は、Go server内部のpackage、Port、Adapterの依存関係と、その設計理由を説明します。System ArchitectureとSoftware Architectureの選定理由は[ADR-0001](../adr/0001-server-modular-monolith-hexagonal.md)、変更時に守るルールは[サーバーのアーキテクチャ](architecture.md)を正本とします。
 
 ## この文書の読み方

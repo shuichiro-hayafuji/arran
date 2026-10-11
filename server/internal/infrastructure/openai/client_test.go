@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/shuichiro-hayafuji/arran_agent"
+	"github.com/shuichirohayafuji/spendable-today/server/internal/consultation"
 )
 
 func TestParseResponseOutput(t *testing.T) {
@@ -189,4 +190,38 @@ type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (function roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
 	return function(request)
+}
+
+func TestChatAdviceUsesFreeResponseSchemaAndNoProfileVerdict(t *testing.T) {
+	client := NewOpenAIClient("test-key", "test-model", "medium")
+	client.client = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		var payload map[string]any
+		if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
+			t.Fatal(err)
+		}
+		if payload["store"] != false {
+			t.Fatal("store must be false")
+		}
+		input := payload["input"].(string)
+		if strings.Contains(input, "verdict") || strings.Contains(input, "dashboard") || strings.Contains(input, "profile") {
+			t.Fatalf("legacy financial judgement entered context: %s", input)
+		}
+		schema := payload["text"].(map[string]any)["format"].(map[string]any)["schema"].(map[string]any)
+		props := schema["properties"].(map[string]any)
+		purchase := props["purchase_change"].(map[string]any)
+		if len(purchase["required"].([]any)) != 3 {
+			t.Fatal("purchase change schema is incomplete")
+		}
+		if _, ok := props["planned_amount"]; ok {
+			t.Fatal("redundant planned amount model output")
+		}
+		if _, ok := props["recommendation"]; ok {
+			t.Fatal("fixed recommendation contract must not be used")
+		}
+		return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"output":[{"content":[{"type":"output_text","text":"{\"status\":\"provisional\",\"answer\":\"概算で考えてみます\",\"reason\":\"収入が不明\",\"assumptions\":\"今月の情報と仮定\",\"question\":\"\",\"purchase_change\":null,\"changes\":[],\"strictness\":null}"}]}]}`))}, nil
+	})}
+	result, err := client.Advise(context.Background(), consultation.Input{Message: "買い物の相談", Strictness: 5})
+	if err != nil || result.Status != "provisional" || result.PlannedAmount != nil {
+		t.Fatalf("chat response: %#v %v", result, err)
+	}
 }

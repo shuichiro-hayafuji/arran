@@ -71,6 +71,26 @@ type Transaction struct {
     def test_allowed_dependencies_and_transaction_fields_pass(self):
         self.assertEqual(self.check(self.fixture())[0], "PASS")
 
+    def test_consultation_core_cannot_import_adapters(self):
+        for imported in ("internal/infrastructure/openai", "internal/infrastructure/persistence/postgres", "internal/handler"):
+            with self.subTest(imported=imported):
+                root = self.fixture()
+                self.write(root, "server/internal/consultation/chat.go", f'package consultation\nimport "{INTERNAL_PREFIX}{imported.removeprefix("internal/")}"\n')
+                result, output = self.check(root)
+                self.assertEqual(result, "FAIL")
+                self.assertIn("A-S", output)
+
+    def test_chat_transaction_rejects_merchant_and_raw_fields(self):
+        for extra in ("Merchant string", "RawData map[string]any", "ImportedAt string"):
+            root = self.fixture()
+            self.write(root, "server/internal/consultation/chat.go", "package consultation\ntype Transaction struct {\n Date string\n Amount int64\n Category string\n" + extra + "\n}\n")
+            result, output = self.check(root)
+            self.assertEqual(result, "FAIL")
+            self.assertIn("B-S08", output)
+        root = self.fixture()
+        self.write(root, "server/internal/consultation/chat.go", "package consultation\ntype Transaction struct {\n Date string\n Amount int64\n Category string\n}\n")
+        self.assertEqual(self.check(root)[0], "PASS")
+
     def test_comments_and_raw_strings_do_not_create_imports(self):
         root = self.fixture()
         self.write(root, "server/internal/domain/domain.go", '''package domain

@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/shuichirohayafuji/spendable-today/server/internal/auth"
+	"github.com/shuichirohayafuji/spendable-today/server/internal/consultation"
 	"github.com/shuichirohayafuji/spendable-today/server/internal/domain"
 	"github.com/shuichirohayafuji/spendable-today/server/internal/identity"
 )
@@ -314,6 +315,7 @@ func TestPostgresOwnershipAndSessions(t *testing.T) {
 			emptyMeasuredCost,
 		)
 	}
+	t.Cleanup(func() { verifyPostgresChat(t, r, ca, cb) })
 	if _, err = r.GetProfile(ca); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("legacy data exposed: %v", err)
 	}
@@ -435,6 +437,119 @@ func TestPostgresOwnershipAndSessions(t *testing.T) {
 		allowed, err := r.AllowLogin(ctx, "ip-key", "username-key")
 		if err != nil || allowed != (i < 5) {
 			t.Fatalf("rate limit %d: %v %v", i, allowed, err)
+		}
+	}
+}
+
+// Called by the existing PostgreSQL harness so new chat guarantees cannot be silently skipped.
+func verifyPostgresChat(t *testing.T, r *Repository, owner, other context.Context) {
+	t.Helper()
+	state, err := r.LoadChatState(owner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state.Strictness = 8
+	state.Facts = []consultation.Fact{{Key: "current_balance", Value: "50000円", Kind: "fact", Period: "2026-10", RecordedAt: "2026-10-12T00:00:00Z", Active: true}}
+	thread := consultation.Thread{CreatedAt: "2026-10-12T00:00:00Z", Messages: []consultation.Message{{Role: "user", Content: "残高は5万円", CreatedAt: "2026-10-12T00:00:00Z"}}, Reply: consultation.Reply{Status: "provisional", Answer: "暫定回答"}, Source: "openai"}
+	saved, err := r.SaveChatTurn(owner, state, thread)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = r.LoadChatThread(other, saved.ID); !errors.Is(err, consultation.ErrNotFound) {
+		t.Fatalf("chat leaked to another owner: %v", err)
+	}
+	if _, err = r.SaveChatTurn(other, state, saved); err == nil {
+		t.Fatal("cross-owner chat update succeeded")
+	}
+	restored, err := r.LoadChatThread(owner, saved.ID)
+	if err != nil || restored.Messages[0].Content != "残高は5万円" {
+		t.Fatalf("chat restore: %#v %v", restored, err)
+	}
+	fresh, err := r.LoadChatState(owner)
+	if err != nil || fresh.Strictness != 8 || fresh.Facts[0].Period != "2026-10" {
+		t.Fatalf("chat state restore: %#v %v", fresh, err)
+	}
+	if _, err = r.SaveChatTurn(owner, state, saved); !errors.Is(err, consultation.ErrConflict) {
+		t.Fatalf("stale state overwrite: %v", err)
+	}
+	fresh.Strictness = 3
+	saved.Reply.Answer = "訂正後"
+	if _, err = r.SaveChatTurn(owner, fresh, saved); err != nil {
+		t.Fatal(err)
+	}
+	var answer string
+	if err = r.db.QueryRowContext(owner, "SELECT ai_recommendation FROM consultations WHERE user_id=:user_id AND id=?", saved.ID).Scan(&answer); err != nil || answer != "訂正後" {
+		t.Fatalf("summary synchronization: %s %v", answer, err)
+	}
+	verifyChatContextOwnership(t, r, owner, other, saved.ID)
+}
+
+func verifyChatContextOwnership(t *testing.T, r *Repository, owner, other context.Context, ownThreadID int64) {
+	t.Helper()
+	row := domain.Transaction{TransactionDate: "2026-10-12", Amount: 500, TransactionType: "expense", Category: "趣味", Fingerprint: "chat-expense-owner", Description: "private merchant", SourceAccountName: "private account", RawData: map[string]any{"line": "private raw"}, ImportedAt: "2026-10-12T00:00:00Z"}
+	if _, err := r.ImportTransactions(owner, []domain.Transaction{row}); err != nil {
+		t.Fatal(err)
+	}
+	row.Amount, row.Category, row.Fingerprint = 777, "private other owner", "chat-expense-other"
+	if _, err := r.ImportTransactions(other, []domain.Transaction{row}); err != nil {
+		t.Fatal(err)
+	}
+	transactions, coverage, err := r.LoadChatTransactions(owner, 100, "")
+	if err != nil || !coverage.Partial {
+		t.Fatalf("transaction context: %#v %v", coverage, err)
+	}
+	found := false
+	for _, transaction := range transactions {
+		if transaction.Amount == 500 {
+			found = true
+		}
+		if transaction.Amount == 777 || strings.Contains(transaction.Category, "private") {
+			t.Fatal("other owner CSV context leaked")
+		}
+	}
+	if !found {
+		t.Fatal("confirmed CSV missing from chat context")
+	}
+	transactions, _, err = r.LoadChatTransactions(owner, 100, "2026-10-12T00:00:01Z")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, transaction := range transactions {
+		if transaction.Amount == 500 {
+			t.Fatal("old CSV resurrected forgotten context")
+		}
+	}
+	state, err := r.LoadChatState(other)
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherThread, err := r.SaveChatTurn(other, state, consultation.Thread{CreatedAt: "2026-10-12T00:00:00Z", Messages: []consultation.Message{{Role: "user", Content: "other owner conversation", CreatedAt: "2026-10-12T00:00:00Z"}}, Reply: consultation.Reply{Status: "answered", Answer: "other owner advice"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	threads, err := r.ListRecentChatThreads(owner, 0, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found = false
+	for _, thread := range threads {
+		if thread.ID == ownThreadID {
+			found = true
+		}
+		if thread.ID == otherThread.ID {
+			t.Fatal("other owner past consultation leaked")
+		}
+	}
+	if !found {
+		t.Fatal("own previous consultation absent")
+	}
+	threads, err = r.ListRecentChatThreads(owner, ownThreadID, 1)
+	if err != nil || len(threads) > 1 {
+		t.Fatalf("bounded threads = %d %v", len(threads), err)
+	}
+	for _, thread := range threads {
+		if thread.ID == ownThreadID {
+			t.Fatal("current thread was fetched as past advice")
 		}
 	}
 }

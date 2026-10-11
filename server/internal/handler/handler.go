@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/shuichirohayafuji/spendable-today/server/internal/application"
+	"github.com/shuichirohayafuji/spendable-today/server/internal/consultation"
 	"github.com/shuichirohayafuji/spendable-today/server/internal/domain"
 )
 
@@ -187,8 +188,9 @@ func (h *handler) startConsultation(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &request) {
 		return
 	}
-	consultation, err := h.application.StartConsultation(
+	consultation, err := h.application.SendChat(
 		r.Context(),
+		0,
 		request.Message,
 		request.PlannedAmount,
 	)
@@ -211,7 +213,7 @@ func (h *handler) continueConsultation(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &request) {
 		return
 	}
-	consultation, err := h.application.ContinueConsultation(
+	consultation, err := h.application.SendChat(
 		r.Context(),
 		id,
 		request.Message,
@@ -250,7 +252,7 @@ func (h *handler) updateConsultationResult(
 
 func (h *handler) listConsultations(w http.ResponseWriter, r *http.Request) {
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	items, err := h.application.ListConsultations(r.Context(), limit)
+	items, err := h.application.ListChats(r.Context(), limit)
 	if err != nil {
 		writeServiceError(w, err)
 		return
@@ -263,7 +265,7 @@ func (h *handler) getConsultation(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	consultation, err := h.application.GetConsultation(r.Context(), id)
+	consultation, err := h.application.GetChat(r.Context(), id)
 	if err != nil {
 		writeServiceError(w, err)
 		return
@@ -394,6 +396,8 @@ func ensureEOF(decoder *json.Decoder) error {
 
 func writeServiceError(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, consultation.ErrConflict):
+		writeError(w, http.StatusConflict, "conversation_changed", "会話が更新されました。読み直して再試行してください。")
 	case application.IsNotFound(err):
 		writeError(w, http.StatusNotFound, "not_found", "対象データがありません。")
 	case isUserError(err):
