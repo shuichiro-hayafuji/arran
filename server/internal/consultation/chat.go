@@ -222,6 +222,11 @@ func (s Service) Send(ctx context.Context, id int64, message string) (Thread, er
 		}
 	} else {
 		for _, change := range reply.Changes {
+			// A model echo is not a fresh financial observation. Retain its original
+			// provenance rather than refreshing the amount's timestamp.
+			if financialKey(change.Key) && change.Operation == "set" && change.Basis != "user_report" && unchangedFinancialFact(state.Facts, change) {
+				continue
+			}
 			for i := range state.Facts {
 				if state.Facts[i].Key == change.Key {
 					state.Facts[i].Active = false

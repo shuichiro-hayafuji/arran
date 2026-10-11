@@ -165,6 +165,14 @@ func validatePurchases(r Reply, in Input) error {
 	if r.PurchaseTargetUnclear && (r.Question == "" || len(r.PurchaseUpdates) > 0 || r.PurchaseChange != nil) {
 		return errors.New("unclear target requires a question without purchase mutations")
 	}
+	for _, c := range r.Changes {
+		if !financialKey(c.Key) || c.Operation != "set" || c.Basis == "user_report" || unchangedFinancialFact(in.Facts, c) {
+			continue
+		}
+		if r.PurchaseTargetUnclear || (c.Basis == "purchase" && len(r.PurchaseUpdates) == 0) || (c.Basis == "memory" && r.PurchaseChange != nil) {
+			return errors.New("purchase-derived financial changes require an identified purchase outcome; explicit user reports remain separate")
+		}
+	}
 	balanceNeeded, budgetNeeded := false, false
 	for _, u := range r.PurchaseUpdates {
 		for _, p := range in.Purchases {
@@ -292,7 +300,7 @@ func validatePurchases(r Reply, in Input) error {
 					continue
 				}
 				found = true
-				if ((f.Key == "current_balance" && !balanceNeeded) || (f.Key == "monthly_free_budget" && !budgetNeeded)) && c.Value != f.Value && c.Basis != "user_report" {
+				if ((f.Key == "current_balance" && !balanceNeeded) || (f.Key == "monthly_free_budget" && !budgetNeeded)) && (c.Value != f.Value || c.Period != f.Period) && c.Basis != "user_report" {
 					return errors.New("payment already applied; only an explicit user balance correction can change the balance")
 				}
 			}
@@ -311,6 +319,19 @@ func validatePurchases(r Reply, in Input) error {
 		return errors.New("ambiguous purchase cancellation")
 	}
 	return nil
+}
+
+func financialKey(key string) bool {
+	return key == "current_balance" || key == "monthly_free_budget"
+}
+
+func unchangedFinancialFact(facts []Fact, change Change) bool {
+	for _, fact := range facts {
+		if fact.Active && fact.Key == change.Key && fact.Value == change.Value && fact.Period == change.Period {
+			return true
+		}
+	}
+	return false
 }
 
 func applyPurchases(state *State, thread *Thread, r Reply, in Input, timestamp string) {

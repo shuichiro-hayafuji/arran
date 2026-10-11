@@ -182,3 +182,38 @@ func TestFirstConfirmationAnswerOnlyReasksUnansweredPurchases(t *testing.T) {
 		})
 	}
 }
+
+func TestFinancialNoopEchoPreservesOriginalProvenance(t *testing.T) {
+	ctx := identity.WithUser(context.Background(), 1)
+	repo := openRepo(t, filepath.Join(t.TempDir(), "echo.db"))
+	now := time.Date(2026, 10, 12, 0, 0, 0, 0, time.UTC)
+	first := reply("answered", fact("current_balance", "50000円", "2026-10"), fact("monthly_free_budget", "20000円", "2026-10"))
+	a := &scriptedAgent{replies: []consultation.Reply{first}}
+	s := consultation.Service{Repository: repo, Agent: a, Now: func() time.Time { return now }}
+	thread, err := s.Send(ctx, 0, "残高5万円、自由予算2万円")
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, _ := repo.LoadChatState(ctx)
+	now = now.Add(time.Hour)
+	echo := reply("needs_information", fact("current_balance", "50000円", "2026-10"), fact("monthly_free_budget", "20000円", "2026-10"))
+	echo.Question = "どの購入ですか？"
+	echo.PurchaseTargetUnclear = true
+	for i := range echo.Changes {
+		echo.Changes[i].Basis = "purchase"
+	}
+	a.replies = append(a.replies, echo)
+	_, err = s.Send(ctx, thread.ID, "その購入について")
+	if err != nil {
+		t.Fatal(err)
+	}
+	after, _ := repo.LoadChatState(ctx)
+	if len(after.Facts) != len(before.Facts) {
+		t.Fatal("no-op echo created financial history")
+	}
+	for i, f := range after.Facts {
+		if f.RecordedAt != before.Facts[i].RecordedAt || f.Source != before.Facts[i].Source || !f.Active {
+			t.Fatal("no-op echo refreshed financial provenance")
+		}
+	}
+}
