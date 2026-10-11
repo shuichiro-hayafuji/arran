@@ -45,6 +45,7 @@ infra/ Docker / ECS Fargate / RDS PostgreSQL
 
 - [対象者と支出相談の体験](product/target-users.md)
 - [初版の提供範囲](product/initial-release-scope.md)
+- [チャット主体の初回相談と購入実績確認](product/first-consultation-onboarding.md)
 - [チャット主体の支出相談要件](product/chat-advice-requirements.md)
 
 ## 補助資料
