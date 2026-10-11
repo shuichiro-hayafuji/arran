@@ -60,6 +60,27 @@ func (r *Repository) SaveChatTurn(ctx context.Context, state consultation.State,
 	}
 	defer tx.Rollback()
 	query := func(q string) string { return chatQuery(ctx, q) }
+	requestRef, hasRequest := consultation.RequestReferenceFrom(ctx)
+	requestCancelled := false
+	var requestExpiry int64
+	if hasRequest {
+		var status string
+		var expires int64
+		if err = tx.QueryRowContext(ctx, query("SELECT status,expires_at,cancel_requested FROM chat_requests WHERE user_id=:user_id AND request_id=? FOR UPDATE"), requestRef.ID).Scan(&status, &expires, &requestCancelled); err != nil {
+			return consultation.Thread{}, err
+		}
+		requestExpiry = expires
+		if status != "processing" || time.Now().UnixMilli() >= expires {
+			return consultation.Thread{}, consultation.ErrRequestFinished
+		}
+		if requestCancelled && !requestRef.AllowCancelled {
+			return consultation.Thread{}, consultation.ErrRequestCancelled
+		}
+		if requestRef.AllowCancelled && thread.Reply.Status != "unavailable" {
+			return consultation.Thread{}, consultation.ErrRequestCancelled
+		}
+	}
+
 	if _, err = tx.ExecContext(ctx, query("INSERT INTO chat_states(user_id,version,payload) VALUES(:user_id,0,'{}') ON CONFLICT(user_id) DO NOTHING")); err != nil {
 		return consultation.Thread{}, err
 	}
@@ -171,6 +192,19 @@ func (r *Repository) SaveChatTurn(ctx context.Context, state consultation.State,
 			return consultation.Thread{}, e
 		}
 		if _, err = tx.ExecContext(ctx, query("UPDATE chat_threads SET version=?,payload=? WHERE user_id=:user_id AND consultation_id=?"), original.Version, string(encoded), original.ID); err != nil {
+			return consultation.Thread{}, err
+		}
+	}
+	if hasRequest {
+		if time.Now().UnixMilli() >= requestExpiry {
+			return consultation.Thread{}, consultation.ErrRequestFinished
+		}
+		status := "completed"
+		if requestCancelled {
+			status = "cancelled"
+		}
+		_, err = tx.ExecContext(ctx, query("UPDATE chat_requests SET status=?,result_json=?,error_code='' WHERE user_id=:user_id AND request_id=? AND status='processing'"), status, string(threadJSON), requestRef.ID)
+		if err != nil {
 			return consultation.Thread{}, err
 		}
 	}

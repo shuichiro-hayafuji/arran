@@ -25,17 +25,24 @@ var jst = time.FixedZone("Asia/Tokyo", 9*60*60)
 func IsNotFound(err error) bool { return errors.Is(err, domain.ErrNotFound) }
 
 type Application struct {
-	chat              consultation.Service
-	repository        Repository
-	consultationAgent ConsultationAgent
-	fallbackAgent     ConsultationAgent
-	reviewAgent       ReviewAgent
-	fallbackReview    ReviewAgent
-	memoryAgent       MemoryAgent
-	fallbackMemory    MemoryAgent
-	adminNotifier     AdminNotifier
-	environment       string
-	now               func() time.Time
+	requests           consultation.RequestRepository
+	requestBudget      time.Duration
+	requestSaveReserve time.Duration
+	requestsContext    context.Context
+	requestsWG         sync.WaitGroup
+	requestsMu         sync.Mutex
+	requestsStopping   bool
+	chat               consultation.Service
+	repository         Repository
+	consultationAgent  ConsultationAgent
+	fallbackAgent      ConsultationAgent
+	reviewAgent        ReviewAgent
+	fallbackReview     ReviewAgent
+	memoryAgent        MemoryAgent
+	fallbackMemory     MemoryAgent
+	adminNotifier      AdminNotifier
+	environment        string
+	now                func() time.Time
 
 	previewMu sync.Mutex
 	previews  map[string]cachedPreview
@@ -117,18 +124,22 @@ type Repository interface {
 }
 
 type Config struct {
-	ChatAgent         consultation.Agent
-	ChatRepository    consultation.Repository
-	Repository        Repository
-	ConsultationAgent ConsultationAgent
-	FallbackAgent     ConsultationAgent
-	ReviewAgent       ReviewAgent
-	FallbackReview    ReviewAgent
-	MemoryAgent       MemoryAgent
-	FallbackMemory    MemoryAgent
-	AdminNotifier     AdminNotifier
-	Environment       string
-	Now               func() time.Time
+	RequestRepository  consultation.RequestRepository
+	RequestBudget      time.Duration
+	RequestSaveReserve time.Duration
+	RequestContext     context.Context
+	ChatAgent          consultation.Agent
+	ChatRepository     consultation.Repository
+	Repository         Repository
+	ConsultationAgent  ConsultationAgent
+	FallbackAgent      ConsultationAgent
+	ReviewAgent        ReviewAgent
+	FallbackReview     ReviewAgent
+	MemoryAgent        MemoryAgent
+	FallbackMemory     MemoryAgent
+	AdminNotifier      AdminNotifier
+	Environment        string
+	Now                func() time.Time
 }
 
 func New(config Config) *Application {
@@ -137,7 +148,17 @@ func New(config Config) *Application {
 		now = time.Now
 	}
 
+	if config.RequestBudget == 0 {
+		config.RequestBudget = 28 * time.Second
+	}
+	if config.RequestSaveReserve == 0 {
+		config.RequestSaveReserve = 5 * time.Second
+	}
+	if config.RequestContext == nil {
+		config.RequestContext = context.Background()
+	}
 	return &Application{
+		requests: config.RequestRepository, requestBudget: config.RequestBudget, requestSaveReserve: config.RequestSaveReserve, requestsContext: config.RequestContext,
 		chat:              consultation.Service{Repository: config.ChatRepository, Agent: config.ChatAgent, Now: now},
 		repository:        config.Repository,
 		consultationAgent: config.ConsultationAgent,

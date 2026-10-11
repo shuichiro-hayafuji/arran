@@ -55,14 +55,16 @@ extension ConsultationIntentPatterns on ConsultationIntent {
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( SubmitConsultation value)?  submit,TResult Function( ContinueConsultation value)?  continueWith,TResult Function( SelectConsultation value)?  select,TResult Function( ClearConsultation value)?  clear,required TResult orElse(),}){
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( SubmitConsultation value)?  submit,TResult Function( ContinueConsultation value)?  continueWith,TResult Function( SelectConsultation value)?  select,TResult Function( ClearConsultation value)?  clear,TResult Function( RecoverConsultationRequest value)?  recoverRequest,TResult Function( CancelConsultationRequest value)?  cancelRequest,required TResult orElse(),}){
 final _that = this;
 switch (_that) {
 case SubmitConsultation() when submit != null:
 return submit(_that);case ContinueConsultation() when continueWith != null:
 return continueWith(_that);case SelectConsultation() when select != null:
 return select(_that);case ClearConsultation() when clear != null:
-return clear(_that);case _:
+return clear(_that);case RecoverConsultationRequest() when recoverRequest != null:
+return recoverRequest(_that);case CancelConsultationRequest() when cancelRequest != null:
+return cancelRequest(_that);case _:
   return orElse();
 
 }
@@ -80,14 +82,16 @@ return clear(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( SubmitConsultation value)  submit,required TResult Function( ContinueConsultation value)  continueWith,required TResult Function( SelectConsultation value)  select,required TResult Function( ClearConsultation value)  clear,}){
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( SubmitConsultation value)  submit,required TResult Function( ContinueConsultation value)  continueWith,required TResult Function( SelectConsultation value)  select,required TResult Function( ClearConsultation value)  clear,required TResult Function( RecoverConsultationRequest value)  recoverRequest,required TResult Function( CancelConsultationRequest value)  cancelRequest,}){
 final _that = this;
 switch (_that) {
 case SubmitConsultation():
 return submit(_that);case ContinueConsultation():
 return continueWith(_that);case SelectConsultation():
 return select(_that);case ClearConsultation():
-return clear(_that);}
+return clear(_that);case RecoverConsultationRequest():
+return recoverRequest(_that);case CancelConsultationRequest():
+return cancelRequest(_that);}
 }
 /// A variant of `map` that fallback to returning `null`.
 ///
@@ -101,14 +105,16 @@ return clear(_that);}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( SubmitConsultation value)?  submit,TResult? Function( ContinueConsultation value)?  continueWith,TResult? Function( SelectConsultation value)?  select,TResult? Function( ClearConsultation value)?  clear,}){
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( SubmitConsultation value)?  submit,TResult? Function( ContinueConsultation value)?  continueWith,TResult? Function( SelectConsultation value)?  select,TResult? Function( ClearConsultation value)?  clear,TResult? Function( RecoverConsultationRequest value)?  recoverRequest,TResult? Function( CancelConsultationRequest value)?  cancelRequest,}){
 final _that = this;
 switch (_that) {
 case SubmitConsultation() when submit != null:
 return submit(_that);case ContinueConsultation() when continueWith != null:
 return continueWith(_that);case SelectConsultation() when select != null:
 return select(_that);case ClearConsultation() when clear != null:
-return clear(_that);case _:
+return clear(_that);case RecoverConsultationRequest() when recoverRequest != null:
+return recoverRequest(_that);case CancelConsultationRequest() when cancelRequest != null:
+return cancelRequest(_that);case _:
   return null;
 
 }
@@ -125,13 +131,15 @@ return clear(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( String message,  int? plannedAmount)?  submit,TResult Function( int id,  String message,  int? plannedAmount)?  continueWith,TResult Function( Consultation consultation)?  select,TResult Function()?  clear,required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( String message,  int? plannedAmount)?  submit,TResult Function( int id,  String message,  int? plannedAmount)?  continueWith,TResult Function( Consultation consultation)?  select,TResult Function()?  clear,TResult Function()?  recoverRequest,TResult Function()?  cancelRequest,required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case SubmitConsultation() when submit != null:
 return submit(_that.message,_that.plannedAmount);case ContinueConsultation() when continueWith != null:
 return continueWith(_that.id,_that.message,_that.plannedAmount);case SelectConsultation() when select != null:
 return select(_that.consultation);case ClearConsultation() when clear != null:
-return clear();case _:
+return clear();case RecoverConsultationRequest() when recoverRequest != null:
+return recoverRequest();case CancelConsultationRequest() when cancelRequest != null:
+return cancelRequest();case _:
   return orElse();
 
 }
@@ -149,13 +157,15 @@ return clear();case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( String message,  int? plannedAmount)  submit,required TResult Function( int id,  String message,  int? plannedAmount)  continueWith,required TResult Function( Consultation consultation)  select,required TResult Function()  clear,}) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( String message,  int? plannedAmount)  submit,required TResult Function( int id,  String message,  int? plannedAmount)  continueWith,required TResult Function( Consultation consultation)  select,required TResult Function()  clear,required TResult Function()  recoverRequest,required TResult Function()  cancelRequest,}) {final _that = this;
 switch (_that) {
 case SubmitConsultation():
 return submit(_that.message,_that.plannedAmount);case ContinueConsultation():
 return continueWith(_that.id,_that.message,_that.plannedAmount);case SelectConsultation():
 return select(_that.consultation);case ClearConsultation():
-return clear();}
+return clear();case RecoverConsultationRequest():
+return recoverRequest();case CancelConsultationRequest():
+return cancelRequest();}
 }
 /// A variant of `when` that fallback to returning `null`
 ///
@@ -169,13 +179,15 @@ return clear();}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( String message,  int? plannedAmount)?  submit,TResult? Function( int id,  String message,  int? plannedAmount)?  continueWith,TResult? Function( Consultation consultation)?  select,TResult? Function()?  clear,}) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( String message,  int? plannedAmount)?  submit,TResult? Function( int id,  String message,  int? plannedAmount)?  continueWith,TResult? Function( Consultation consultation)?  select,TResult? Function()?  clear,TResult? Function()?  recoverRequest,TResult? Function()?  cancelRequest,}) {final _that = this;
 switch (_that) {
 case SubmitConsultation() when submit != null:
 return submit(_that.message,_that.plannedAmount);case ContinueConsultation() when continueWith != null:
 return continueWith(_that.id,_that.message,_that.plannedAmount);case SelectConsultation() when select != null:
 return select(_that.consultation);case ClearConsultation() when clear != null:
-return clear();case _:
+return clear();case RecoverConsultationRequest() when recoverRequest != null:
+return recoverRequest();case CancelConsultationRequest() when cancelRequest != null:
+return cancelRequest();case _:
   return null;
 
 }
@@ -411,6 +423,70 @@ int get hashCode => runtimeType.hashCode;
 @override
 String toString() {
   return 'ConsultationIntent.clear()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
+
+
+class RecoverConsultationRequest extends ConsultationIntent {
+  const RecoverConsultationRequest(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is RecoverConsultationRequest);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+  return 'ConsultationIntent.recoverRequest()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
+
+
+class CancelConsultationRequest extends ConsultationIntent {
+  const CancelConsultationRequest(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is CancelConsultationRequest);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+  return 'ConsultationIntent.cancelRequest()';
 }
 
 

@@ -15,6 +15,60 @@ tags:
   - name: reviews
   - name: memories
 paths:
+  /consultation-requests/{request_id}:
+    parameters:
+      - in: path
+        name: request_id
+        required: true
+        schema: { type: string, minLength: 16, maxLength: 100, pattern: '^[A-Za-z0-9_-]+$' }
+    post:
+      tags: [consultations]
+      summary: Accept or retrieve an owner-scoped logical chat submission
+      description: Same ID and normalized payload retrieves the receipt. Different payload or another active submission returns 409. Processing continues after HTTP disconnect, bounded by 28 seconds including preparation and saving.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ChatRequestInput' }
+      responses:
+        '202':
+          description: Durable receipt, possibly already terminal on retry
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChatRequestReceipt' }
+        '400': { description: Invalid input; no acceptance }
+        '401': { description: Invalid or expired session }
+        '404': { description: Consultation not owned by this user; no acceptance }
+        '409': { description: Logical ID payload mismatch or active request }
+        '503': { description: Service stopping; retain the logical ID and query after restart }
+        '500': { description: Acceptance could not be confirmed; query using the same ID }
+    get:
+      tags: [consultations]
+      summary: Read the exact saved result for this logical submission
+      responses:
+        '200':
+          description: Receipt, with immutable saved result when completed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChatRequestReceipt' }
+        '401': { description: Invalid or expired session }
+        '404': { description: No receipt owned by this user }
+        '503': { description: Service stopping; retain the logical ID and query after restart }
+        '500': { description: Result temporarily unavailable }
+    delete:
+      tags: [consultations]
+      summary: Cancel before commit, or return the committed result
+      description: Unknown IDs receive a cancelled tombstone and cannot later execute. Cancellation winning the save lock prevents financial changes. A completed request remains completed.
+      responses:
+        '200':
+          description: Cancellation receipt or previously committed result
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChatRequestReceipt' }
+        '400': { description: Invalid logical ID }
+        '401': { description: Invalid or expired session }
+        '503': { description: Service stopping; retain the logical ID and query after restart }
+        '500': { description: Cancellation not confirmed }
   /auth/login:
     post:
       security: []
@@ -368,6 +422,27 @@ components:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
   schemas:
+    ChatRequestInput:
+      type: object
+      additionalProperties: false
+      required: [message]
+      properties:
+        consultation_id: { type: integer, format: int64, minimum: 0, default: 0 }
+        message: { type: string, minLength: 1, description: Trimmed UTF-8 input plus optional amount sentence must be at most 16000 bytes }
+        planned_amount: { type: integer, format: int64, minimum: 0, nullable: true }
+    ChatRequestReceipt:
+      type: object
+      required: [request_id, status, expires_at, cancel_requested, error_code, result]
+      properties:
+        request_id: { type: string }
+        status: { type: string, enum: [processing, completed, cancelled, failed] }
+        expires_at: { type: string, format: date-time }
+        cancel_requested: { type: boolean }
+        error_code: { type: string, description: Empty on success; failure reason on terminal failed or cancelled tombstone }
+        result:
+          allOf: [{ $ref: '#/components/schemas/Consultation' }]
+          nullable: true
+
     AuthUser:
       type: object
       required: [id, username]

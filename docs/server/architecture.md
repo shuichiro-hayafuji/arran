@@ -12,7 +12,7 @@
 - A-S10: HTTPをInbound Adapter、PostgreSQL・Agent・OpenAIをOutbound Adapter、`app`をComposition Rootとする。具体Adapterの選択と生成をApplication Coreへ置かない。
 - A-S11: Goの外枠は`cmd`・`internal`・`docs`・`scripts`を必要に応じて使う。公開ライブラリがない状態で`pkg`を作らず、`src`やアーキテクチャ用語だけの多重階層を設けない。詳細は [ADR-0001](../adr/0001-server-modular-monolith-hexagonal.md) を参照する。
 - A-S12: PostgreSQLは共有してもテーブルの論理的な所有者を業務モジュールごとに定める。他モジュールのデータは公開ユースケース、読取Port、または用途を明示したRead Modelを介して扱い、任意の直接更新を追加しない。
-- A-S13: 利用者が直ちに結果を必要とする処理は同期呼出しを基本とする。イベント・非同期ジョブは、即時応答が不要で、再試行・負荷分離・確実な配送の要件がある処理へ限定し、EDAやEvent Sourcingを既定にしない。
+- A-S13: 利用者が直ちに結果を必要とする処理は同期呼出しを基本とする。イベント・非同期ジョブは、即時応答が不要で、再試行・負荷分離・確実な配送の要件がある処理へ限定し、EDAやEvent Sourcingを既定にしない。 相談の論理受付は通信切断後も保存結果を確定し、同一送信の重複を防ぐ必要があるため例外として非同期で実行する。applicationが28秒の絶対期限・取消し・receiptを進行し、consultationのPortとSQL Adapterで原子的保存を保証する。新しい配備単位や無期限queueは追加しない。詳細は[受付と保存結果](../../server/docs/consultation-requests.md)を参照。
 - A-S14: 業務package間の依存は一方向に保つ。相互参照が必要な場合は利用側の読取Portと用途別の型を使い、外側のAdapterを`app`から注入する。循環importを避ける目的だけで業務モデルを`shared`へ集めない。
 
 ## 採用方針と移行の位置づけ

@@ -146,3 +146,5 @@ ApiClient/interceptorはHTTP・認証・エラー変換、app/routerはgo_router
 - 通常の認証付き通信はauthorizedApiClientProvider、ログインや明示したトークンの失効はpublicApiClientProviderから注入する。後者の401と対象トークンの照合は呼び出し元が管理する。
 - sessionのEX-M01は独自Dioを許可しない。画面のProviderScopeより長い寿命が必要なら、既存のアプリ寿命Containerから共通Providerを利用する。寿命の違いを理由に通信設定を複製しない。
 - [チェックtool](../../tools/CHECKS.md) のmobile-architectureを実行する。構成変更が必要なら理由・影響、ルール、検出範囲と回帰テストを同時に更新し、違反を通すだけの除外を追加しない。
+
+相談の送信・結果照会・取消しをRepositoryで扱い、ViewModelが最大45秒の待機と未確定IDの復元を進行する。未確定入力は既存セッション内の安全なストレージで保持し、セッション切替後の応答と復元を遮断する。 詳細は[相談の受付と保存結果](../../server/docs/consultation-requests.md)を参照。
