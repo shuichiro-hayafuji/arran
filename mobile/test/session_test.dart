@@ -64,10 +64,7 @@ void main() {
         ),
       ),
     );
-    final controller = SessionController(
-      storage,
-      apiClient: ApiClient(Dio()),
-    );
+    final controller = SessionController(storage, apiClient: ApiClient(Dio()));
     await controller.initialize();
     expect(controller.token, 'saved');
     controller.dispose();
@@ -79,10 +76,7 @@ void main() {
         ),
       ),
     );
-    final expired = SessionController(
-      storage,
-      apiClient: ApiClient(Dio()),
-    );
+    final expired = SessionController(storage, apiClient: ApiClient(Dio()));
     await expired.initialize();
     expect(expired.loggedIn, isFalse);
     expect(storage.value, isNull);

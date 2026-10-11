@@ -209,7 +209,8 @@ paths:
         '200': { description: 相談一覧, content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: '#/components/schemas/Consultation' } } } } } } }
     post:
       tags: [consultations]
-      summary: 支出相談を開始
+      summary: チャットだけで支出相談を開始
+      description: プロフィールとCSVは必須ではありません。モデル失敗時も相談と履歴を保存します。planned_amountは旧クライアント互換の補足情報です。
       requestBody:
         required: true
         content:
@@ -221,6 +222,7 @@ paths:
                 message: { type: string }
                 planned_amount: { type: integer, format: int64, minimum: 0, nullable: true }
       responses:
+        '409': { description: 保存中に会話または記憶が更新されたため再読込が必要 }
         '401': { description: Invalid or expired bearer session }
         '503': { description: Authentication database unavailable }
         '201': { description: 相談結果, content: { application/json: { schema: { $ref: '#/components/schemas/Consultation' } } } }
@@ -239,7 +241,7 @@ paths:
   /consultations/{id}/messages:
     post:
       tags: [consultations]
-      summary: 相談に追加情報を送信
+      summary: 同じ相談へ補足・訂正・再試行を送信
       parameters:
         - { $ref: '#/components/parameters/Id' }
       requestBody:
@@ -253,6 +255,7 @@ paths:
                 message: { type: string }
                 planned_amount: { type: integer, format: int64, minimum: 0, nullable: true }
       responses:
+        '409': { description: 保存中に会話または記憶が更新されたため再読込が必要 }
         '401': { description: Invalid or expired bearer session }
         '503': { description: Authentication database unavailable }
         '200': { description: 更新後の相談, content: { application/json: { schema: { $ref: '#/components/schemas/Consultation' } } } }
@@ -453,10 +456,33 @@ components:
         current_situation: { type: string }
         alternative: { type: string }
         final_question: { type: string }
-        status: { type: string }
+        status: { type: string, description: 新しい相談はanswered・provisional・needs_information・unavailable。旧相談には旧ステータスが残ります。 }
         response_source: { type: string }
         needs_follow_up: { type: boolean }
         follow_up_question: { type: string }
+        pending_purchase:
+          type: object
+          nullable: true
+          description: LLMが抽出した商品と購入確認待ちの予定。金額の補足・訂正では商品を保持し、同額の商品変更は更新、明示的な取り消しは解除する。支出・残高への反映は行わない。
+          required: [description, amount, recorded_at, status]
+          properties:
+            description: { type: string }
+            amount: { type: integer, format: int64 }
+            recorded_at: { type: string, format: date-time }
+            status: { type: string, enum: [purchase_confirmation_pending] }
+        messages:
+          type: array
+          nullable: true
+          description: 保存した会話履歴。旧相談は空またはnull。
+          items:
+            type: object
+            required: [role, content, created_at]
+            properties:
+              role: { type: string, enum: [user, assistant] }
+              content: { type: string }
+              reason: { type: string }
+              assumptions: { type: string }
+              created_at: { type: string, format: date-time }
     ConsultationResultUpdate:
       type: object
       properties:

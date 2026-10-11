@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/shuichirohayafuji/spendable-today/server/internal/consultation"
 	"github.com/shuichirohayafuji/spendable-today/server/internal/csvimport"
 	"github.com/shuichirohayafuji/spendable-today/server/internal/domain"
 	"github.com/shuichirohayafuji/spendable-today/server/internal/identity"
@@ -24,6 +25,7 @@ var jst = time.FixedZone("Asia/Tokyo", 9*60*60)
 func IsNotFound(err error) bool { return errors.Is(err, domain.ErrNotFound) }
 
 type Application struct {
+	chat              consultation.Service
 	repository        Repository
 	consultationAgent ConsultationAgent
 	fallbackAgent     ConsultationAgent
@@ -115,6 +117,8 @@ type Repository interface {
 }
 
 type Config struct {
+	ChatAgent         consultation.Agent
+	ChatRepository    consultation.Repository
 	Repository        Repository
 	ConsultationAgent ConsultationAgent
 	FallbackAgent     ConsultationAgent
@@ -132,7 +136,9 @@ func New(config Config) *Application {
 	if now == nil {
 		now = time.Now
 	}
+
 	return &Application{
+		chat:              consultation.Service{Repository: config.ChatRepository, Agent: config.ChatAgent, Now: now},
 		repository:        config.Repository,
 		consultationAgent: config.ConsultationAgent,
 		fallbackAgent:     config.FallbackAgent,

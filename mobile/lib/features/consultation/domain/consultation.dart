@@ -1,5 +1,21 @@
+class ChatMessage {
+  const ChatMessage({
+    this.reason = '',
+    this.assumptions = '',
+    required this.role,
+    required this.content,
+    required this.createdAt,
+  });
+  final String reason;
+  final String assumptions;
+  final String role;
+  final String content;
+  final String createdAt;
+}
+
 class Consultation {
   const Consultation({
+    this.messages = const [],
     required this.id,
     required this.createdAt,
     required this.userMessage,
@@ -21,6 +37,7 @@ class Consultation {
     required this.followUpQuestion,
   });
 
+  final List<ChatMessage> messages;
   final int id;
   final String createdAt;
   final String userMessage;
