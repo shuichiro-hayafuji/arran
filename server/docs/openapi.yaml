@@ -176,9 +176,6 @@ paths:
                 file: { type: string, format: binary }
                 mapping: { type: string, description: JSON形式のCSVMapping }
                 source: { type: string }
-              balance_applied_amount: { type: integer, format: int64, nullable: true }
-              free_budget_applied_amount: { type: integer, format: int64, nullable: true }
-              balance_basis: { type: string, description: purchase・user_report。旧イベントは空文字。 }
                 source_account_name: { type: string }
       responses:
         '401': { description: Invalid or expired bearer session }
