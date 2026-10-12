@@ -17,3 +17,5 @@
 相談の論理送信は総期限28秒、最大2回修正、金融変更なしのfallback、所有者ごとの受付・結果照会・明示取消しで結果を確定する。切断を新規相談の再実行に変えず、保存と月次予約を原子的に扱う。 詳細は[相談の受付と保存結果](../../server/docs/consultation-requests.md)を参照。
 
 B-S08/B-S10の購入とCSVの照合では、最初の同一性は本人がsame/distinctを確認する。銀行原記録と最新購入訂正を保持し、金融包含不明の実績は残高・自由予算を勝手に変更しない。限定ref・包含状態・CSV tripletによるLLM再計算と版付きreceipt保存、購入日不明・推定・矛盾を区別した統合件数は[照合契約](../../server/docs/purchase-csv-reconciliation.md)に従う。銀行識別子・摘要・口座をPurchase/Factへコピーしてモデルへ送る迂回も禁止する。
+
+CSV取込の訂正・取消・復活は銀行原記録と全行evidenceを保持し、有効投影だけを変更する。本人の購入や残高を自動取消・返金しない。方向付きtripletの限定金融保留、本人両基準によるbaseline採用、部分coverage・忘却・owner境界は[取込管理契約](../../server/docs/csv-import-management.md)に従う。

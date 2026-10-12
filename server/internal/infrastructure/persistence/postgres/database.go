@@ -70,6 +70,7 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 		{version: 11, file: "011_chat_requests.sql"},
 		{version: 12, file: "012_csv_identity.sql"},
 		{version: 13, file: "013_purchase_csv_reconciliation.sql"},
+		{version: 14, file: "014_import_management.sql"},
 	} {
 		var applied bool
 		if err = tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE version=$1)", migration.version).Scan(&applied); err != nil {

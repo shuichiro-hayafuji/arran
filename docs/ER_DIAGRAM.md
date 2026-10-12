@@ -1,6 +1,6 @@
 # ER図
 
-PostgreSQLの`001_init.sql`から`012_csv_identity.sql`までを適用した後の物理スキーマです。認証・運用設定・家計データ・相談データに分けて示します。実DBを読み取った図ではなく、リポジトリ内のDDLに基づきます。
+PostgreSQLの`001_init.sql`から`014_import_management.sql`までを適用した後の物理スキーマです。認証・運用設定・家計データ・相談データに分けて示します。実DBを読み取った図ではなく、リポジトリ内のDDLに基づきます。
 
 正本: [PostgreSQL migration](../server/internal/infrastructure/persistence/postgres/)
 
@@ -125,6 +125,11 @@ erDiagram
         text updated_at "更新日時・RFC 3339"
     }
     transactions {
+        text effective_date "NULL可・訂正投影"
+        bigint effective_amount "NULL可・0以上"
+        text effective_category "NULL可・訂正投影"
+        bigint revision "default 0"
+        boolean legacy_retained "旧不明証拠保護"
         bigint id PK "自動採番"
         bigint user_id FK, UK "NULL可・U1の一部"
         text transaction_date "取引日"
@@ -373,3 +378,80 @@ erDiagram
 ```
 
 DBはowner付き明細FK、対応ref複合FK、sameのowner/transactionおよびowner/purchaseのpartial uniqueを保証する。購入IDはJSON内正本のためDBのPurchase FKを捏造せず、所有者・購入snapshot・state versionをtx内で検証する。旧銀行原記録とCSV alias/file-row対応は変更しない。金融結果のrevision履歴を保持し、購入訂正で対応を削除しない。SQLiteは既存設計と同様users FKを持たず、全操作にowner条件を適用する。
+
+## 取込履歴・訂正・取消（014）
+
+```mermaid
+erDiagram
+    users ||--o{ csv_import_batches : "所有者"
+    users ||--o{ csv_mutations : "所有者"
+    csv_import_batches ||--o{ csv_import_evidence : "owner付きbatch FK"
+    transactions ||--o{ csv_import_evidence : "owner付き銀行FK"
+    csv_mutations ||--o{ transaction_change_events : "owner付きmutation FK"
+    csv_mutations ||--o{ csv_financial_receipts : "owner付きmutation FK"
+    csv_financial_receipts ||--o{ csv_financial_items : "owner付きref FK"
+    transactions ||--o{ csv_financial_items : "owner付き銀行FK"
+    csv_import_batches {
+        bigint user_id PK, FK, UK "UK1 owner/commit_key"
+        text id PK
+        text commit_key UK "UK1"
+        text file_key
+        text source_scope
+        text account_scope
+        text metadata "必要なfilename/encoding/mapping JSON"
+        text status "active/cancelled"
+        bigint version "default 1"
+        text recorded_at "旧日時不明は空"
+        text result "保存結果JSON"
+        boolean legacy
+    }
+    csv_import_evidence {
+        bigint user_id PK, FK
+        text batch_id PK, FK
+        integer row_number PK
+        text transaction_type PK
+        bigint transaction_id FK
+        text observation "入力全行の原観測JSON"
+    }
+    csv_mutations {
+        bigint user_id PK, FK
+        text id PK
+        text payload_digest
+        text kind
+        text target
+        text recorded_at
+        text result
+    }
+    transaction_change_events {
+        bigint user_id PK, FK
+        text id PK
+        text mutation_id FK
+        text kind
+        text target
+        text recorded_at
+        text before_state
+        text after_state
+    }
+    csv_financial_receipts {
+        bigint user_id PK, FK
+        text ref PK
+        text mutation_id FK
+        text operation "expense/income方向付き"
+        text before_data "triplet JSON"
+        text after_data "triplet JSON"
+        integer included_count
+        integer omitted_count
+        text status "pending/needs_information/applied/baseline_adopted"
+        boolean balance_resolved
+        boolean budget_resolved
+        text recorded_at
+        bigint state_version
+    }
+    csv_financial_items {
+        bigint user_id PK, FK
+        text ref PK, FK
+        bigint transaction_id PK, FK
+    }
+```
+
+`effective_transactions`は原行を削除せず、effective値とactive evidence/legacy_retainedを読むview。全件重複取込にもevidenceを記録する。DBはowner付きFK/主キーと非負訂正額を保証し、同論理IDのpayload、対象version/snapshot、状態version、他active evidence保護はtx内で検証する。銀行identity aliases/file rowsの制約は継続。旧file-row単位が証明できる履歴だけを日時不明で移行し、不明単位は保護する。金融完了は通常chatのSaveChatTurn/receiptと同じtxに保存し、LLMへローカルFKや銀行識別子を送らない。SQLite008はusers FKを持たない既存方式を維持し、新しいremember規則はmerchant_rules_ownedのowner/merchant主キーへ分離する。

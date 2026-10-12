@@ -23,6 +23,7 @@ type ImportIdentityConflict struct {
 }
 
 type ImportPreview struct {
+	ReactivationIDs         []int64                  `json:"reactivation_ids"`
 	ReconciliationConflicts []ReconciliationConflict `json:"reconciliation_conflicts"`
 	IdentityConflicts       []ImportIdentityConflict `json:"identity_conflicts"`
 	IdentityNotice          string                   `json:"identity_notice"`
@@ -40,6 +41,9 @@ type ImportPreview struct {
 }
 
 type ImportCommitResult struct {
-	ImportedCount  int `json:"imported_count"`
-	DuplicateCount int `json:"duplicate_count"`
+	FinancialPending int    `json:"financial_pending"`
+	ImportID         string `json:"import_id"`
+	ReactivatedCount int    `json:"reactivated_count"`
+	ImportedCount    int    `json:"imported_count"`
+	DuplicateCount   int    `json:"duplicate_count"`
 }

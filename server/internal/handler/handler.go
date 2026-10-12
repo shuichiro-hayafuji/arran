@@ -34,7 +34,14 @@ func New(apiApplication *application.Application) http.Handler {
 	mux.HandleFunc("POST /purchases/{id}/csv-distinct", handler.distinctPurchaseCSV)
 	mux.HandleFunc("GET /purchases/{id}/csv-candidates", handler.purchaseCSVCandidates)
 	mux.HandleFunc("POST /transactions/{id}/reconciliation", handler.resolvePurchaseCSV)
+	mux.HandleFunc("GET /imports", handler.importHistory)
+	mux.HandleFunc("GET /imports/{id}", handler.importDetails)
+	mux.HandleFunc("POST /imports/{id}/cancel-preview", handler.importDetails)
+	mux.HandleFunc("POST /imports/{id}/{action}", handler.mutateImport)
+	mux.HandleFunc("GET /mutations/{id}", handler.csvMutation)
+	mux.HandleFunc("GET /changes/{id}", handler.changeAudit)
 	mux.HandleFunc("GET /transactions", handler.listTransactions)
+	mux.HandleFunc("GET /transactions/{id}", handler.transactionDetails)
 	mux.HandleFunc("PATCH /transactions/{id}", handler.updateTransaction)
 	mux.HandleFunc("GET /dashboard/monthly", handler.dashboard)
 	mux.HandleFunc("POST /consultation-requests/{request_id}", handler.submitChatRequest)
@@ -86,7 +93,7 @@ func (h *handler) previewImport(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_csv", "CSVファイルを読み取れません。")
 		return
 	}
-	file, _, err := r.FormFile("file")
+	file, header, err := r.FormFile("file")
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "file_required", "CSVファイルを選択してください。")
 		return
@@ -124,7 +131,7 @@ func (h *handler) previewImport(w http.ResponseWriter, r *http.Request) {
 		mapping,
 		r.FormValue("source"),
 		r.FormValue("source_account_name"),
-		decisions, reconciliationDecisions,
+		decisions, reconciliationDecisions, domain.ImportPreviewOptions{FileName: header.Filename, ConfirmReactivation: r.FormValue("confirm_reactivation") == "true"},
 	)
 	if err != nil {
 		writeServiceError(w, err)
@@ -170,24 +177,26 @@ func (h *handler) updateTransaction(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	var request struct {
-		Category         string `json:"category"`
-		RememberMerchant bool   `json:"remember_merchant"`
-	}
+	var request domain.MutationInput
 	if !decodeJSON(w, r, &request) {
 		return
 	}
-	transaction, err := h.application.UpdateTransactionCategory(
-		r.Context(),
-		id,
-		request.Category,
-		request.RememberMerchant,
-	)
+	if request.ID == "" && request.Amount == nil && request.Date == nil && request.Category != nil {
+		out, err := h.application.UpdateTransactionCategory(r.Context(), id, *request.Category, request.Remember)
+		if err != nil {
+			writeServiceError(w, err)
+			return
+		}
+		writeJSON(w, 200, out)
+		return
+	}
+	request.Action = "correct"
+	out, err := h.application.MutateCSV(r.Context(), strconv.FormatInt(id, 10), request)
 	if err != nil {
 		writeServiceError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, transaction)
+	writeJSON(w, 200, out)
 }
 
 func (h *handler) dashboard(w http.ResponseWriter, r *http.Request) {

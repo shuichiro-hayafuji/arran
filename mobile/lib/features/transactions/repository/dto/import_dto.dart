@@ -82,6 +82,7 @@ class CsvMappingDto {
 
 class ImportPreviewDto {
   const ImportPreviewDto({
+    this.reactivationIds = const [],
     this.identityConflicts = const [],
     this.reconciliationConflicts = const [],
     this.identityNotice = "",
@@ -100,6 +101,7 @@ class ImportPreviewDto {
 
   factory ImportPreviewDto.fromJson(Map<String, dynamic> json) =>
       ImportPreviewDto(
+        reactivationIds: (json["reactivation_ids"] as List? ?? []).cast<int>(),
         reconciliationConflicts: parseMaps(
           json["reconciliation_conflicts"],
         ).map(purchaseCsvConflictFromJson).toList(),
@@ -133,6 +135,7 @@ class ImportPreviewDto {
         warnings: parseStrings(json['warnings']),
       );
 
+  final List<int> reactivationIds;
   final List<ImportIdentityConflict> identityConflicts;
   final List<PurchaseCsvConflict> reconciliationConflicts;
   final String identityNotice;
@@ -149,6 +152,7 @@ class ImportPreviewDto {
   final List<String> warnings;
 
   ImportPreview toDomain() => ImportPreview(
+    reactivationIds: List.unmodifiable(reactivationIds),
     identityConflicts: identityConflicts,
     reconciliationConflicts: reconciliationConflicts,
     identityNotice: identityNotice,
@@ -175,20 +179,31 @@ class ImportPreviewDto {
 
 class ImportCommitResultDto {
   const ImportCommitResultDto({
+    this.importId = "",
+    this.reactivatedCount = 0,
+    this.financialPending = 0,
     required this.importedCount,
     required this.duplicateCount,
   });
 
   factory ImportCommitResultDto.fromJson(Map<String, dynamic> json) =>
       ImportCommitResultDto(
+        importId: json["import_id"] as String? ?? "",
+        reactivatedCount: json["reactivated_count"] as int? ?? 0,
+        financialPending: json["financial_pending"] as int? ?? 0,
         importedCount: parseInt(json['imported_count']),
         duplicateCount: parseInt(json['duplicate_count']),
       );
 
+  final String importId;
+  final int reactivatedCount, financialPending;
   final int importedCount;
   final int duplicateCount;
 
   ImportCommitResult toDomain() => ImportCommitResult(
+    importId: importId,
+    reactivatedCount: reactivatedCount,
+    financialPending: financialPending,
     importedCount: importedCount,
     duplicateCount: duplicateCount,
   );
@@ -196,6 +211,7 @@ class ImportCommitResultDto {
 
 class ImportPreviewRequestDto {
   const ImportPreviewRequestDto({
+    this.confirmReactivation = false,
     required this.filePath,
     required this.fileName,
     required this.source,
@@ -205,6 +221,7 @@ class ImportPreviewRequestDto {
     this.reconciliationDecisions = const [],
   });
 
+  final bool confirmReactivation;
   final String filePath;
   final String fileName;
   final String source;
@@ -216,6 +233,7 @@ class ImportPreviewRequestDto {
   FormData toFormData() => FormData.fromMap({
     'file': MultipartFile.fromFileSync(filePath, filename: fileName),
     'source': source,
+    'confirm_reactivation': confirmReactivation.toString(),
     'source_account_name': accountName,
     'reconciliation_decisions': jsonEncode(
       reconciliationDecisions.map(purchaseCsvDecisionToJson).toList(),

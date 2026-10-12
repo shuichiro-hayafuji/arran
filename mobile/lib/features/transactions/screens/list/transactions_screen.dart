@@ -48,6 +48,10 @@ class TransactionsScreen extends ConsumerWidget {
                     ),
                   ),
                 ),
+                TextButton(
+                  onPressed: () => context.push('/imports'),
+                  child: const Text('取込履歴'),
+                ),
                 FilledButton.icon(
                   onPressed: () => context.push('/import'),
                   icon: const Icon(Icons.add),

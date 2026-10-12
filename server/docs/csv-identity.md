@@ -51,3 +51,7 @@ Importerで収支・出現順・厳密摘要・文字コード・実在ID列、S
 ## チャット購入との照合
 
 CSV同士の同一性とチャット購入の同一性は別の確認。前者を解決した後、reconciliation_conflictsがあれば本人にsame/distinctを示し、同じ保存txで対応を保持する。再取込で確定済み対応と最新購入訂正を保持し、原明細を金額差の架空支出へ変換しない。[購入・CSV照合契約](purchase-csv-reconciliation.md)を参照。
+
+## 訂正・取消後のidentity
+
+原銀行identity/aliases/file-rowは取込管理の取消・訂正で変更しない。有効投影の最新日付/額を古いCSVで上書きせず、取消済み同IDは明示再有効化で新batch evidenceへ結ぶ。全重複取込も証拠を記録して他の取込の取消から保護する。[履歴・金融保留](csv-import-management.md)を参照。

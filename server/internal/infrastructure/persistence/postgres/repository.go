@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -241,8 +242,8 @@ func (r *Repository) ListTransactions(
 	query := `
 		SELECT id, transaction_date, description, normalized_merchant, amount,
 		       transaction_type, category, source, source_account_name,
-		       fingerprint, imported_at, raw_data_json
-		FROM transactions WHERE user_id = :user_id
+		       fingerprint, imported_at, raw_data_json, revision
+		FROM effective_transactions WHERE user_id = :user_id
 	`
 	args := []any{}
 	if month != "" {
@@ -274,32 +275,19 @@ func (r *Repository) UpdateTransactionCategory(
 	category string,
 	rememberMerchant bool,
 ) (domain.Transaction, error) {
-	result, err := r.db.ExecContext(ctx, `
-		UPDATE transactions SET category = ? WHERE user_id = :user_id AND id = ?
-	`, category, id)
+	t, err := r.GetTransaction(ctx, id)
 	if err != nil {
 		return domain.Transaction{}, err
 	}
-	affected, _ := result.RowsAffected()
-	if affected == 0 {
-		return domain.Transaction{}, domain.ErrNotFound
-	}
-	transaction, err := r.GetTransaction(ctx, id)
+	state, err := r.LoadChatState(ctx)
 	if err != nil {
 		return domain.Transaction{}, err
 	}
-	if rememberMerchant {
-		if _, err := r.db.ExecContext(ctx, `
-			INSERT INTO merchant_rules(user_id, normalized_merchant, category, updated_at)
-			VALUES(:user_id, ?, ?, ?)
-			ON CONFLICT(user_id, normalized_merchant) DO UPDATE SET
-				category = excluded.category,
-				updated_at = excluded.updated_at
-		`, transaction.NormalizedMerchant, category, time.Now().UTC().Format(time.RFC3339)); err != nil {
-			return domain.Transaction{}, err
-		}
+	_, err = r.MutateCSV(ctx, fmt.Sprint(id), domain.MutationInput{ID: managementID(), Action: "correct", Version: t.Revision, StateVersion: state.Version, Category: &category, Remember: rememberMerchant})
+	if err != nil {
+		return domain.Transaction{}, err
 	}
-	return transaction, nil
+	return r.GetTransaction(ctx, id)
 }
 
 func (r *Repository) GetTransaction(
@@ -309,8 +297,8 @@ func (r *Repository) GetTransaction(
 	row := r.db.QueryRowContext(ctx, `
 		SELECT id, transaction_date, description, normalized_merchant, amount,
 		       transaction_type, category, source, source_account_name,
-		       fingerprint, imported_at, raw_data_json
-		FROM transactions WHERE user_id = :user_id AND id = ?
+		       fingerprint, imported_at, raw_data_json, revision
+		FROM effective_transactions WHERE user_id = :user_id AND id = ?
 	`, id)
 	transaction, err := scanTransaction(row)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -345,7 +333,7 @@ func (r *Repository) MonthlyDashboard(
 ) (domain.Dashboard, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT category, COALESCE(SUM(amount), 0)
-		FROM transactions
+		FROM effective_transactions
 		WHERE user_id = :user_id AND transaction_type = 'expense'
 		  AND substr(transaction_date, 1, 7) = ?
 		GROUP BY category
@@ -639,7 +627,7 @@ func scanTransaction(row scanner) (domain.Transaction, error) {
 		&transaction.NormalizedMerchant, &transaction.Amount,
 		&transaction.TransactionType, &transaction.Category, &transaction.Source,
 		&transaction.SourceAccountName, &transaction.Fingerprint,
-		&transaction.ImportedAt, &rawJSON,
+		&transaction.ImportedAt, &rawJSON, &transaction.Revision,
 	)
 	if err != nil {
 		return domain.Transaction{}, err
