@@ -174,7 +174,8 @@ paths:
               required: [file]
               properties:
                 file: { type: string, format: binary }
-                mapping: { type: string, description: JSON形式のCSVMapping }
+                mapping: { type: string, description: JSON形式のCSVMapping。任意のtransaction_id_columnは利用者が選ぶ安定明細ID列 }
+                identity_decisions: { type: string, description: ImportIdentityDecisionのJSON配列。sameには候補snapshotが必要 }
                 source: { type: string }
                 source_account_name: { type: string }
       responses:
@@ -478,6 +479,22 @@ components:
         source: { type: string }
         source_account_name: { type: string }
         imported_at: { type: string, format: date-time }
+    ImportIdentityDecision:
+      type: object
+      required: [row, action]
+      properties:
+        row: { type: integer, minimum: 2 }
+        action: { type: string, enum: [same, distinct] }
+        transaction_id: { type: integer, format: int64, description: sameの既存候補ID。distinctは0 }
+        snapshot: { type: string, description: sameに必要な候補snapshot }
+    ImportIdentityConflict:
+      type: object
+      required: [row, transaction, candidates, candidate_snapshots]
+      properties:
+        row: { type: integer }
+        transaction: { $ref: '#/components/schemas/Transaction' }
+        candidates: { type: array, items: { $ref: '#/components/schemas/Transaction' } }
+        candidate_snapshots: { type: object, additionalProperties: { type: string }, description: 候補ID文字列からsnapshotへの対応 }
     CSVMapping:
       type: object
       properties:
@@ -486,10 +503,13 @@ components:
         amount_column: { type: string }
         debit_column: { type: string }
         credit_column: { type: string }
+        transaction_id_column: { type: string, description: 実在する安定明細ID列を明示指定。取込元/口座も必須 }
     ImportPreview:
       type: object
       properties:
-        preview_id: { type: string }
+        identity_notice: { type: string }
+        identity_conflicts: { type: array, items: { $ref: '#/components/schemas/ImportIdentityConflict' } }
+        preview_id: { type: string, description: 未解決identity_conflictsがある場合は空で確定不可 }
         detected_encoding: { type: string }
         headers: { type: array, items: { type: string } }
         mapping: { $ref: '#/components/schemas/CSVMapping' }

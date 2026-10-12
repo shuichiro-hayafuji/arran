@@ -3,6 +3,8 @@ import 'transaction_item.dart';
 
 class ImportPreview {
   const ImportPreview({
+    this.identityConflicts = const [],
+    this.identityNotice = "",
     required this.previewId,
     required this.detectedEncoding,
     required this.headers,
@@ -16,6 +18,8 @@ class ImportPreview {
     required this.warnings,
   });
 
+  final List<ImportIdentityConflict> identityConflicts;
+  final String identityNotice;
   final String previewId;
   final String detectedEncoding;
   final List<String> headers;
@@ -27,4 +31,30 @@ class ImportPreview {
   final int expenseTotal;
   final List<TransactionItem> rows;
   final List<String> warnings;
+}
+
+class ImportIdentityDecision {
+  const ImportIdentityDecision({
+    required this.row,
+    required this.action,
+    this.transactionId = 0,
+    this.snapshot = "",
+  });
+  final int row;
+  final String action;
+  final int transactionId;
+  final String snapshot;
+}
+
+class ImportIdentityConflict {
+  const ImportIdentityConflict({
+    required this.row,
+    required this.transaction,
+    required this.candidates,
+    this.candidateSnapshots = const {},
+  });
+  final int row;
+  final TransactionItem transaction;
+  final List<TransactionItem> candidates;
+  final Map<int, String> candidateSnapshots;
 }

@@ -24,6 +24,10 @@ final importControllerProvider =
 @freezed
 abstract class ImportState with _$ImportState {
   const factory ImportState({
+    @Default("manual_csv") String source,
+    @Default("個人") String accountName,
+    @Default(<ImportIdentityDecision>[])
+    List<ImportIdentityDecision> identityDecisions,
     String? filePath,
     String? fileName,
     ImportPreview? preview,
@@ -32,6 +36,9 @@ abstract class ImportState with _$ImportState {
     String? error,
   }) = _ImportState;
 
+  String get source;
+  String get accountName;
+  List<ImportIdentityDecision> get identityDecisions;
   String? get filePath;
   String? get fileName;
   ImportPreview? get preview;
@@ -54,6 +61,10 @@ class ImportViewModel extends MviViewModel<ImportState, ImportIntent> {
         return selectAndPreview(filePath: path, fileName: name);
       case ApplyImportMapping(mapping: final mapping):
         return remap(mapping);
+      case SetImportSource(source: final source, accountName: final account):
+        return setSource(source, account);
+      case ResolveImportIdentities(decisions: final decisions):
+        return resolve(decisions);
       case CommitImport():
         return commit();
       case ResetImport():
@@ -67,7 +78,11 @@ class ImportViewModel extends MviViewModel<ImportState, ImportIntent> {
     required String fileName,
     CsvMapping? mapping,
   }) async {
+    if (state.loading) return;
     state = state.copyWith(
+      identityDecisions: [],
+      preview: null,
+      commitResult: null,
       filePath: filePath,
       fileName: fileName,
       loading: true,
@@ -78,7 +93,14 @@ class ImportViewModel extends MviViewModel<ImportState, ImportIntent> {
   }
 
   Future<void> remap(CsvMapping mapping) async {
-    state = state.copyWith(loading: true, error: null);
+    if (state.loading) return;
+    state = state.copyWith(
+      identityDecisions: [],
+      preview: null,
+      commitResult: null,
+      loading: true,
+      error: null,
+    );
     await _preview(mapping);
     if (!mounted) return;
   }
@@ -90,8 +112,9 @@ class ImportViewModel extends MviViewModel<ImportState, ImportIntent> {
           .previewImport(
             filePath: state.filePath!,
             fileName: state.fileName!,
-            source: 'manual_csv',
-            accountName: '個人',
+            source: state.source,
+            accountName: state.accountName,
+            identityDecisions: state.identityDecisions,
             mapping: mapping,
           );
       if (!mounted) return;
@@ -102,7 +125,46 @@ class ImportViewModel extends MviViewModel<ImportState, ImportIntent> {
     }
   }
 
+  Future<void> setSource(String source, String account) async {
+    if (state.loading) return;
+    if (source.trim().isEmpty || account.trim().isEmpty) {
+      state = state.copyWith(error: "取込元と口座名を入力してください。");
+      return;
+    }
+    final mapping = state.preview?.mapping;
+    state = state.copyWith(
+      source: source.trim(),
+      accountName: account.trim(),
+      preview: null,
+      commitResult: null,
+      identityDecisions: [],
+      error: null,
+    );
+    if (state.filePath != null) {
+      state = state.copyWith(loading: true);
+      await _preview(mapping);
+    }
+  }
+
+  Future<void> resolve(List<ImportIdentityDecision> decisions) async {
+    if (state.loading || state.preview == null) return;
+    final mapping = state.preview!.mapping;
+    state = state.copyWith(
+      identityDecisions: List.unmodifiable(
+        {
+          for (final d in state.identityDecisions) d.row: d,
+          for (final d in decisions) d.row: d,
+        }.values,
+      ),
+      loading: true,
+      error: null,
+      commitResult: null,
+    );
+    await _preview(mapping);
+  }
+
   Future<void> commit() async {
+    if (state.loading) return;
     final preview = state.preview;
     if (preview == null || preview.previewId.isEmpty) {
       state = state.copyWith(error: '有効なプレビューがありません。');

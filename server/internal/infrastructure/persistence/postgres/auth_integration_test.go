@@ -486,6 +486,8 @@ func verifyPostgresChat(t *testing.T, r *Repository, owner, other context.Contex
 	verifyPurchaseReminders(t, r, owner, other)
 	verifyLegacyPurchaseReminder(t, r, owner)
 	verifyRequestReceipts(t, r, owner, other)
+	verifyCSVIdentities(t, r, owner, other)
+	verifyCSVMigration(t, r)
 }
 
 func verifyPurchaseReminders(t *testing.T, r *Repository, owner, other context.Context) {

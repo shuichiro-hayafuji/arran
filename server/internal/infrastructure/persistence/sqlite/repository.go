@@ -226,53 +226,6 @@ func (r *Repository) PutProfile(ctx context.Context, profile domain.Profile) err
 	return err
 }
 
-func (r *Repository) ImportTransactions(
-	ctx context.Context,
-	transactions []domain.Transaction,
-) (domain.ImportCommitResult, error) {
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return domain.ImportCommitResult{}, err
-	}
-	defer tx.Rollback()
-
-	result := domain.ImportCommitResult{}
-	for _, transaction := range transactions {
-		rawJSON, _ := json.Marshal(transaction.RawData)
-		execResult, err := tx.ExecContext(ctx, `
-			INSERT OR IGNORE INTO transactions(
-				transaction_date, description, normalized_merchant, amount,
-				transaction_type, category, source, source_account_name,
-				fingerprint, imported_at, raw_data_json
-			) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		`, transaction.TransactionDate, transaction.Description,
-			transaction.NormalizedMerchant, transaction.Amount,
-			transaction.TransactionType, transaction.Category, transaction.Source,
-			transaction.SourceAccountName, transaction.Fingerprint,
-			transaction.ImportedAt, string(rawJSON))
-		if err != nil {
-			return domain.ImportCommitResult{}, err
-		}
-		affected, _ := execResult.RowsAffected()
-		if affected == 0 {
-			result.DuplicateCount++
-		} else {
-			id, err := execResult.LastInsertId()
-			if err != nil {
-				return domain.ImportCommitResult{}, err
-			}
-			if _, err := tx.ExecContext(ctx, "INSERT INTO chat_transaction_owners(transaction_id,user_id) VALUES(?,?)", id, identity.UserID(ctx)); err != nil {
-				return domain.ImportCommitResult{}, err
-			}
-			result.ImportedCount++
-		}
-	}
-	if err := tx.Commit(); err != nil {
-		return domain.ImportCommitResult{}, err
-	}
-	return result, nil
-}
-
 func (r *Repository) ListTransactions(
 	ctx context.Context,
 	month string,
@@ -282,11 +235,11 @@ func (r *Repository) ListTransactions(
 		SELECT id, transaction_date, description, normalized_merchant, amount,
 		       transaction_type, category, source, source_account_name,
 		       fingerprint, imported_at, raw_data_json
-		FROM transactions
+		FROM transactions WHERE user_id=?
 	`
-	args := []any{}
+	args := []any{identity.UserID(ctx)}
 	if month != "" {
-		query += " WHERE substr(transaction_date, 1, 7) = ?"
+		query += " AND substr(transaction_date, 1, 7) = ?"
 		args = append(args, month)
 	}
 	query += " ORDER BY transaction_date DESC, id DESC LIMIT ?"
@@ -315,8 +268,8 @@ func (r *Repository) UpdateTransactionCategory(
 	rememberMerchant bool,
 ) (domain.Transaction, error) {
 	result, err := r.db.ExecContext(ctx, `
-		UPDATE transactions SET category = ? WHERE id = ?
-	`, category, id)
+		UPDATE transactions SET category = ? WHERE id = ? AND user_id=?
+	`, category, id, identity.UserID(ctx))
 	if err != nil {
 		return domain.Transaction{}, err
 	}
@@ -350,8 +303,8 @@ func (r *Repository) GetTransaction(
 		SELECT id, transaction_date, description, normalized_merchant, amount,
 		       transaction_type, category, source, source_account_name,
 		       fingerprint, imported_at, raw_data_json
-		FROM transactions WHERE id = ?
-	`, id)
+		FROM transactions WHERE id = ? AND user_id=?
+	`, id, identity.UserID(ctx))
 	transaction, err := scanTransaction(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.Transaction{}, domain.ErrNotFound
@@ -386,11 +339,11 @@ func (r *Repository) MonthlyDashboard(
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT category, COALESCE(SUM(amount), 0)
 		FROM transactions
-		WHERE transaction_type = 'expense'
+		WHERE user_id=? AND transaction_type = 'expense'
 		  AND substr(transaction_date, 1, 7) = ?
 		GROUP BY category
 		ORDER BY SUM(amount) DESC
-	`, month)
+	`, identity.UserID(ctx), month)
 	if err != nil {
 		return domain.Dashboard{}, err
 	}

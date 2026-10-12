@@ -1,6 +1,6 @@
 # ER図
 
-PostgreSQLの`001_init.sql`から`011_chat_requests.sql`までを適用した後の物理スキーマです。認証・運用設定・家計データ・相談データに分けて示します。実DBを読み取った図ではなく、リポジトリ内のDDLに基づきます。
+PostgreSQLの`001_init.sql`から`012_csv_identity.sql`までを適用した後の物理スキーマです。認証・運用設定・家計データ・相談データに分けて示します。実DBを読み取った図ではなく、リポジトリ内のDDLに基づきます。
 
 正本: [PostgreSQL migration](../server/internal/infrastructure/persistence/postgres/)
 
@@ -135,7 +135,11 @@ erDiagram
         text category "カテゴリ"
         text source "取込元"
         text source_account_name "取込元口座名"
-        text fingerprint UK "U1の一部・重複判定用"
+        text fingerprint UK "U1の一部・csv2識別キー"
+        integer identity_version "1または2"
+        text legacy_fingerprint "旧キー引継ぎ時の元キー"
+        text provider_transaction_id "明示割当で検証した安定明細ID"
+        text import_file_key "CSV recordsのhash"
         text imported_at "取込日時・RFC 3339"
         text raw_data_json "元データ・JSON"
     }
@@ -297,3 +301,40 @@ erDiagram
 ```
 
 処理中statusだけを対象とするuser_idの部分一意索引で同時受付を1件に制限する。相談IDは結果JSON内のsnapshotに含み、独立FKではない。
+
+## CSV確認結果
+
+```mermaid
+erDiagram
+    users ||--o{ csv_identity_file_rows : "行対応の所有者"
+    transactions ||--o{ csv_identity_file_rows : "所有者付き参照"
+    csv_identity_file_rows ||--o{ csv_identity_aliases : "scope付き行対応"
+    csv_identity_file_rows {
+        bigint user_id PK, FK
+        text file_key PK
+        text source_scope PK
+        text account_scope PK
+        text transaction_type PK
+        int row_number PK
+        bigint transaction_id FK
+    }
+    users ||--o{ csv_identity_aliases : "確認の所有者"
+    transactions ||--o{ csv_identity_aliases : "所有者付き参照"
+    csv_identity_aliases {
+        bigint user_id PK, FK
+        text row_key PK
+        int row_number FK
+        text source_scope FK
+        text account_scope FK
+        text transaction_type FK
+        text file_key
+        bigint transaction_id FK
+        text decision_action "sameまたはdistinct"
+        text incoming_snapshot
+        text candidate_snapshot
+    }
+```
+
+`transactions(id,user_id)`の複合一意性とFKで所有者を一致させる。行対応は`PRIMARY KEY(user_id,file_key,source_scope,account_scope,transaction_type,row_number)`で行から明細、`UNIQUE(user_id,file_key,source_scope,account_scope,transaction_type,transaction_id)`で明細から行を一意にする。aliasは全scope・行番号・明細IDの複合FKで対応を参照する。同じ物理行の別strategyキーは複数保持でき、別行への二重割当と同じ行への二重計上はDB制約で拒否する。source/account scopeは大小文字を統一する。commitの所有者直列化とsnapshot検証はアプリ側txの追加保証として行う。
+
+行対応は新規追加・明示sameだけでなく、既存fingerprint/aliasによる重複除外でも同じtxで保存する。別fileの安定IDが同じだった場合も新しいfileの行対応を保持する。previewでは双方の対応を検証するが保存はしない。

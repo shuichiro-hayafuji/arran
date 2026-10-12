@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/csv"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"regexp"
@@ -82,9 +83,14 @@ func Parse(data []byte, options Options) (ParseResult, error) {
 		return ParseResult{}, fmt.Errorf("ヘッダーがありません")
 	}
 	mapping := options.Mapping
+	if mapping.TransactionIDColumn != "" && (strings.TrimSpace(options.Source) == "" || strings.TrimSpace(options.SourceAccountName) == "") {
+		return ParseResult{}, fmt.Errorf("取引IDを使う場合は取込元と口座名を指定してください")
+	}
 	if mapping.DateColumn == "" && mapping.DescriptionColumn == "" &&
 		mapping.AmountColumn == "" && mapping.DebitColumn == "" {
+		selectedIDColumn := mapping.TransactionIDColumn
 		mapping = DetectColumns(headers)
+		mapping.TransactionIDColumn = selectedIDColumn
 	}
 	needsMapping := mapping.DateColumn == "" || mapping.DescriptionColumn == "" ||
 		(mapping.AmountColumn == "" && mapping.DebitColumn == "" && mapping.CreditColumn == "")
@@ -104,6 +110,11 @@ func Parse(data []byte, options Options) (ParseResult, error) {
 		return ParseResult{}, err
 	}
 
+	encodedRecords, _ := json.Marshal(records)
+	fileSum := sha256.Sum256(encodedRecords)
+	fileKey := hex.EncodeToString(fileSum[:])
+	occurrences := map[string]int{}
+	providerContents := map[string]string{}
 	for rowIndex, record := range records[1:] {
 		raw := make(map[string]any, len(headers))
 		for index, header := range headers {
@@ -126,6 +137,25 @@ func Parse(data []byte, options Options) (ParseResult, error) {
 				result.Warnings,
 				fmt.Sprintf("%d行目: %s", rowIndex+2, warning),
 			)
+		}
+		transaction.IdentityVersion = 2
+		transaction.ImportFileKey = fileKey
+		transaction.ImportRow = rowIndex + 2
+		content := IdentityContent(transaction)
+		occurrences[content]++
+		transaction.Occurrence = occurrences[content]
+		if indexes.transactionID >= 0 {
+			if indexes.transactionID >= len(record) || strings.TrimSpace(record[indexes.transactionID]) == "" {
+				return ParseResult{}, fmt.Errorf("%d行目: 指定された取引IDが空です", rowIndex+2)
+			}
+			transaction.ProviderTransactionID = strings.TrimSpace(record[indexes.transactionID])
+		}
+		transaction.Fingerprint = IdentityFingerprint(transaction)
+		if transaction.ProviderTransactionID != "" {
+			if _, ok := providerContents[transaction.Fingerprint]; ok {
+				return ParseResult{}, fmt.Errorf("CSV内で同じ取引IDが繰り返されています。取引ID列と重複行を確認してください")
+			}
+			providerContents[transaction.Fingerprint] = content
 		}
 		result.Transactions = append(result.Transactions, transaction)
 	}
@@ -246,7 +276,7 @@ func Categorize(merchant string, merchantRules map[string]string) string {
 }
 
 type columnIndexes struct {
-	date, description, amount, debit, credit int
+	date, description, amount, debit, credit, transactionID int
 }
 
 func mappingIndexes(headers []string, mapping domain.CSVMapping) (columnIndexes, error) {
@@ -254,11 +284,15 @@ func mappingIndexes(headers []string, mapping domain.CSVMapping) (columnIndexes,
 		return slices.Index(headers, name)
 	}
 	indexes := columnIndexes{
-		date:        indexOf(mapping.DateColumn),
-		description: indexOf(mapping.DescriptionColumn),
-		amount:      indexOf(mapping.AmountColumn),
-		debit:       indexOf(mapping.DebitColumn),
-		credit:      indexOf(mapping.CreditColumn),
+		date:          indexOf(mapping.DateColumn),
+		description:   indexOf(mapping.DescriptionColumn),
+		amount:        indexOf(mapping.AmountColumn),
+		debit:         indexOf(mapping.DebitColumn),
+		credit:        indexOf(mapping.CreditColumn),
+		transactionID: indexOf(mapping.TransactionIDColumn),
+	}
+	if mapping.TransactionIDColumn != "" && indexes.transactionID < 0 {
+		return columnIndexes{}, fmt.Errorf("指定された取引ID列がありません")
 	}
 	if indexes.date < 0 || indexes.description < 0 {
 		return columnIndexes{}, fmt.Errorf("指定された日付または摘要列がありません")
@@ -407,4 +441,20 @@ func abs(value int64) int64 {
 		return -value
 	}
 	return value
+}
+
+// Exact record identity is separate from merchant classification normalization.
+func IdentityContent(t domain.Transaction) string {
+	value, _ := json.Marshal([]any{t.TransactionDate, t.Amount, t.TransactionType, t.Description, t.Source, t.SourceAccountName})
+	return string(value)
+}
+func IdentityFingerprint(t domain.Transaction) string {
+	var value []byte
+	if t.ProviderTransactionID != "" {
+		value, _ = json.Marshal([]any{"provider", t.Source, t.SourceAccountName, t.TransactionType, t.ProviderTransactionID})
+	} else {
+		value, _ = json.Marshal([]any{"file", t.ImportFileKey, IdentityContent(t), t.Occurrence})
+	}
+	sum := sha256.Sum256(value)
+	return "csv2:" + hex.EncodeToString(sum[:])
 }
