@@ -1,6 +1,6 @@
 # ER図
 
-PostgreSQLの`001_init.sql`から`008_monthly_costs.sql`までを適用した後の物理スキーマです。認証・運用設定・家計データ・相談データに分けて示します。実DBを読み取った図ではなく、リポジトリ内のDDLに基づきます。
+PostgreSQLの`001_init.sql`から`010_purchase_schedule.sql`までを適用した後の物理スキーマです。認証・運用設定・家計データ・相談データに分けて示します。実DBを読み取った図ではなく、リポジトリ内のDDLに基づきます。
 
 正本: [PostgreSQL migration](../server/internal/infrastructure/persistence/postgres/)
 
@@ -232,6 +232,37 @@ erDiagram
 | 月次レビュー | `(user_id, month)`の一意制約はなく、同じ月のレビューを複数回保存できる |
 
 複合FKはPostgreSQL既定のMATCH SIMPLEです。会話の`user_id`がNULLの場合、複合FKの照合は行われませんが、単列FKによる相談の存在確認は残ります。APIは新しい会話に認証済みユーザーのIDを設定します。
+
+## チャットと購入確認
+
+```mermaid
+erDiagram
+    users ||--o| chat_states : "利用者状態"
+    users ||--o{ chat_threads : "所有するチャット"
+    consultations ||--o| chat_threads : "相談と所有者を参照"
+    users ||--o{ chat_purchase_schedule : "確認予定"
+    consultations ||--o{ chat_purchase_schedule : "相談と所有者を参照"
+    chat_states {
+        bigint user_id PK,FK
+        bigint version
+        text payload "記憶・複数購入・訂正イベントJSON"
+    }
+    chat_threads {
+        bigint consultation_id PK,FK
+        bigint user_id FK
+        bigint version
+        text payload "会話と購入投影JSON"
+    }
+    chat_purchase_schedule {
+        bigint user_id PK,FK "複合主キー"
+        text purchase_id PK "複合主キー"
+        bigint consultation_id FK
+        text due_at "RFC 3339 UTC"
+        boolean first_sent
+    }
+```
+
+`chat_threads`は相談単列FKと`(consultation_id,user_id)`の複合FKを持ち、どちらも相談削除時にCASCADEする。`chat_purchase_schedule`も所有者付き相談複合FKを持ちCASCADEする。全列はNOT NULLで、期限表には`(first_sent,due_at)`索引がある。購入IDは利用者状態JSON内の項目IDであり独立テーブルのFKではない。
 
 ## DB制約とアプリケーションの責務
 

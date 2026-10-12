@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"log"
 	"net/http"
 	"time"
 
@@ -23,6 +24,8 @@ import (
 type App struct {
 	Server     *http.Server
 	repository *postgres.Repository
+	stopWorker context.CancelFunc
+	workerDone chan struct{}
 }
 
 func New(ctx context.Context, cfg config.Config) (*App, error) {
@@ -48,6 +51,14 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 		MemoryAgent: agents, FallbackMemory: fallbackAgent, AdminNotifier: adminNotifier,
 		Environment: cfg.Environment})
 
+	workerCtx, stopWorker := context.WithCancel(ctx)
+	workerDone := make(chan struct{})
+	worker := consultation.ReminderWorker{Repository: repo, Deliver: func(ctx context.Context, id int64) error {
+		deliveryCtx, cancel := context.WithTimeout(identity.WithUser(ctx, id), 10*time.Second)
+		defer cancel()
+		return (consultation.Service{Repository: repo}).DeliverDue(deliveryCtx)
+	}, OnError: func(error) { log.Print("purchase confirmation delivery failed; will retry") }}
+	go func() { defer close(workerDone); worker.Run(workerCtx) }()
 	return &App{
 		Server: &http.Server{
 			Addr:              cfg.APIAddr,
@@ -57,7 +68,7 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 			WriteTimeout:      30 * time.Second,
 			IdleTimeout:       60 * time.Second,
 		},
-		repository: repo,
+		repository: repo, stopWorker: stopWorker, workerDone: workerDone,
 	}, nil
 }
 
@@ -75,6 +86,8 @@ func usageRecorder(repository interface {
 }
 
 func (a *App) Close() error {
+	a.stopWorker()
+	<-a.workerDone
 	return a.repository.Close()
 }
 

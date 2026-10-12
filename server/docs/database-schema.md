@@ -30,6 +30,9 @@ psql "$DATABASE_URL" -c '\\dt'
 | `merchant_rules` | 加盟店正規化名とカテゴリのローカル規則 | `(user_id, normalized_merchant)` 一意 |
 | `consultations` | 支出相談、助言、verdict、支出後結果 | `id` は `BIGSERIAL` |
 | `consultation_messages` | 相談に紐づく会話 | `consultation_id` 外部キー、親削除時に連鎖削除 |
+| `chat_states` | 利用者ごとの会話記憶と複数購入・訂正履歴JSON | `user_id`主キー・外部キー、version |
+| `chat_threads` | 原チャットの会話と購入投影JSON | `consultation_id`主キー、所有者付き複合FK |
+| `chat_purchase_schedule` | 6時間後の確認対象検索 | `(user_id,purchase_id)`主キー、所有者付き相談FK、期限・送信済み索引 |
 | `memories` | 再利用する判断傾向 | `id` は `BIGSERIAL` |
 | `monthly_reviews` | 月次レビューと候補JSON | `id` は `BIGSERIAL` |
 
@@ -109,3 +112,9 @@ docker compose down -v
 ```
 
 `internal/infrastructure/persistence/sqlite` と `server/migrations/` は既存のRepositoryテストを維持するために残しています。ローカルAPIとAWS配備で使うDBはPostgreSQLであり、新しいアプリケーションデータをSQLiteへ保存しません。
+
+## 購入確認の保存
+
+010 migrationで`chat_purchase_schedule`を追加する。利用者の`chat_states.payload.purchases`が履歴の正本であり、予定額、実額、分類、確認日時、残高・自由予算へ反映済みの実額、更新根拠、変更前のイベントを保持する。期限索引は保存時に同じtransactionで再構成する。009の旧予定は最初の所有者状態読取で取り込み、引継ぎ前の旧予定もworkerが検索する。相談を削除すると期限索引もCASCADEで削除する。所有者未割当の旧相談は取り込まない。
+
+確認workerとモデル応答は利用者状態のversionとrow lockで直列化し、原チャットへの複数更新を原子的に保存する。SQLiteは004のテストスキーマを使い、本番保証は専用PostgreSQLで別に検証する。実績反映の金融計算はLLMが担い、SQL・Goでは金額を再計算しない。

@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -482,6 +483,94 @@ func verifyPostgresChat(t *testing.T, r *Repository, owner, other context.Contex
 		t.Fatalf("summary synchronization: %s %v", answer, err)
 	}
 	verifyChatContextOwnership(t, r, owner, other, saved.ID)
+	verifyPurchaseReminders(t, r, owner, other)
+	verifyLegacyPurchaseReminder(t, r, owner)
+}
+
+func verifyPurchaseReminders(t *testing.T, r *Repository, owner, other context.Context) {
+	t.Helper()
+	now := time.Date(2027, 1, 2, 0, 0, 0, 0, time.UTC)
+	state, err := r.LoadChatState(owner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ids []int64
+	for i := 0; i < 2; i++ {
+		state.Purchases = append(state.Purchases, consultation.Purchase{ID: fmt.Sprintf("integration:%d", i), Description: fmt.Sprintf("商品%d", i), Amount: int64(1000 + i), RecordedAt: now.Format(time.RFC3339), Status: "purchase_confirmation_pending"})
+		thread, e := r.SaveChatTurn(owner, state, consultation.Thread{CreatedAt: now.Format(time.RFC3339), Messages: []consultation.Message{{Role: "user", Content: "購入相談", CreatedAt: now.Format(time.RFC3339)}}, Reply: consultation.Reply{Status: "answered", Answer: "相談を保存しました"}})
+		if e != nil {
+			t.Fatal(e)
+		}
+		ids = append(ids, thread.ID)
+		state, err = r.LoadChatState(owner)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	owners, err := r.DuePurchaseOwners(context.Background(), now.Add(6*time.Hour-time.Second))
+	if err != nil || len(owners) != 0 {
+		t.Fatalf("early owners=%v err=%v", owners, err)
+	}
+	owners, err = r.DuePurchaseOwners(context.Background(), now.Add(6*time.Hour))
+	if err != nil || len(owners) != 1 || owners[0] != identity.UserID(owner) {
+		t.Fatalf("due owners=%v err=%v", owners, err)
+	}
+	otherState, err := r.LoadChatState(other)
+	if err != nil || len(otherState.Purchases) != 0 {
+		t.Fatalf("owner purchases leaked: %+v %v", otherState.Purchases, err)
+	}
+	// A failure while projecting the other original transcript rolls back both
+	// reminder state and the already-written triggering thread.
+	_, err = r.db.DB.ExecContext(owner, fmt.Sprintf(`CREATE FUNCTION reject_purchase_projection() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.consultation_id=%d THEN RAISE EXCEPTION 'test projection failure'; END IF; RETURN NEW; END $$; CREATE TRIGGER reject_purchase_projection BEFORE UPDATE ON chat_threads FOR EACH ROW EXECUTE FUNCTION reject_purchase_projection()`, ids[0]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := consultation.Service{Repository: r, Now: func() time.Time { return now.Add(6 * time.Hour) }}
+	if err = service.DeliverDue(owner); err == nil {
+		t.Fatal("projection failure not propagated")
+	}
+	state, err = r.LoadChatState(owner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range state.Purchases {
+		if p.FirstAskedAt != "" {
+			t.Fatal("partial reminder committed")
+		}
+	}
+	if _, err = r.db.DB.ExecContext(owner, "DROP TRIGGER reject_purchase_projection ON chat_threads; DROP FUNCTION reject_purchase_projection()"); err != nil {
+		t.Fatal(err)
+	}
+	var wg sync.WaitGroup
+	errorsCh := make(chan error, 2)
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func() { defer wg.Done(); errorsCh <- service.DeliverDue(owner) }()
+	}
+	wg.Wait()
+	close(errorsCh)
+	for e := range errorsCh {
+		if e != nil && !errors.Is(e, consultation.ErrConflict) {
+			t.Fatalf("parallel worker=%v", e)
+		}
+	}
+	if err = service.DeliverDue(owner); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range ids {
+		thread, e := r.LoadChatThread(owner, id)
+		if e != nil || len(thread.Messages) != 2 || !strings.Contains(thread.Messages[1].Content, "1回目") {
+			t.Fatalf("reminder=%+v err=%v", thread, e)
+		}
+	}
+	owners, err = r.DuePurchaseOwners(context.Background(), now.Add(24*time.Hour))
+	if err != nil || len(owners) != 0 {
+		t.Fatalf("sent purchase due again: %v %v", owners, err)
+	}
+	// PostgreSQL rejects a schedule tied to another owner's consultation.
+	if _, err = r.db.DB.ExecContext(owner, "INSERT INTO chat_purchase_schedule(user_id,purchase_id,consultation_id,due_at,first_sent) VALUES($1,'foreign',$2,$3,false)", identity.UserID(other), ids[0], now.Format(time.RFC3339)); err == nil {
+		t.Fatal("cross-owner schedule accepted")
+	}
 }
 
 func verifyChatContextOwnership(t *testing.T, r *Repository, owner, other context.Context, ownThreadID int64) {
@@ -551,5 +640,72 @@ func verifyChatContextOwnership(t *testing.T, r *Repository, owner, other contex
 		if thread.ID == ownThreadID {
 			t.Fatal("current thread was fetched as past advice")
 		}
+	}
+}
+
+func verifyLegacyPurchaseReminder(t *testing.T, r *Repository, owner context.Context) {
+	t.Helper()
+	state, err := r.LoadChatState(owner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	timestamp := "2027-02-01T00:00:00Z"
+	thread, err := r.SaveChatTurn(owner, state, consultation.Thread{CreatedAt: timestamp, Messages: []consultation.Message{{Role: "user", Content: "旧予定", CreatedAt: timestamp}}, Reply: consultation.Reply{Status: "answered", Answer: "旧助言"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	thread.PendingPurchase = &consultation.PendingPurchase{Description: "旧イヤホン", Amount: 20000, RecordedAt: timestamp, Status: "purchase_confirmation_pending"}
+	payload, err := json.Marshal(thread)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = r.db.DB.ExecContext(owner, "UPDATE chat_threads SET payload=$1 WHERE consultation_id=$2 AND user_id=$3", string(payload), thread.ID, identity.UserID(owner)); err != nil {
+		t.Fatal(err)
+	}
+	state, err = r.LoadChatState(owner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state.PurchasesMigrated = false
+	state.Purchases = nil
+	payload, err = json.Marshal(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = r.db.DB.ExecContext(owner, "UPDATE chat_states SET payload=$1 WHERE user_id=$2", string(payload), identity.UserID(owner)); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2027, 2, 1, 6, 0, 0, 0, time.UTC)
+	owners, err := r.DuePurchaseOwners(context.Background(), now)
+	if err != nil || len(owners) != 1 {
+		t.Fatalf("legacy not found by worker: %v %v", owners, err)
+	}
+	service := consultation.Service{Repository: r, Now: func() time.Time { return now }}
+	if err = service.DeliverDue(owner); err != nil {
+		t.Fatal(err)
+	}
+	state, err = r.LoadChatState(owner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, p := range state.Purchases {
+		if p.ConsultationID == thread.ID && p.Description == "旧イヤホン" && p.Amount == 20000 && p.FirstAskedAt != "" {
+			found = true
+		}
+	}
+	if !found || !state.PurchasesMigrated {
+		t.Fatal("legacy purchase failed to migrate")
+	}
+	before, err := r.LoadChatThread(owner, thread.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = service.DeliverDue(owner); err != nil {
+		t.Fatal(err)
+	}
+	after, err := r.LoadChatThread(owner, thread.ID)
+	if err != nil || len(before.Messages) != len(after.Messages) {
+		t.Fatal("legacy reminder repeated")
 	}
 }
