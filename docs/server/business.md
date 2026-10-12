@@ -19,3 +19,5 @@
 B-S08/B-S10の購入とCSVの照合では、最初の同一性は本人がsame/distinctを確認する。銀行原記録と最新購入訂正を保持し、金融包含不明の実績は残高・自由予算を勝手に変更しない。限定ref・包含状態・CSV tripletによるLLM再計算と版付きreceipt保存、購入日不明・推定・矛盾を区別した統合件数は[照合契約](../../server/docs/purchase-csv-reconciliation.md)に従う。銀行識別子・摘要・口座をPurchase/Factへコピーしてモデルへ送る迂回も禁止する。
 
 CSV取込の訂正・取消・復活は銀行原記録と全行evidenceを保持し、有効投影だけを変更する。本人の購入や残高を自動取消・返金しない。方向付きtripletの限定金融保留、本人両基準によるbaseline採用、部分coverage・忘却・owner境界は[取込管理契約](../../server/docs/csv-import-management.md)に従う。
+
+CSV列名・日付・合成CP932の限定対応と、実銀行出自未確認・独自形式・プレビュー再起動等の未完了範囲は[形式の対応範囲](../../server/docs/csv-format-coverage.md)を参照する。残高は自動取引額候補にしない。

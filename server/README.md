@@ -319,3 +319,5 @@ PostgreSQLデータはComposeの`spendable-today-postgres` volumeに保存され
 - プロフィールや相談結果などの永続データはPostgreSQLに保存されます。
 - DBセッション認証・ユーザー分離・バージョン管理されたマイグレーションを実装しています。[方式比較・ユーザー登録・既存データ移行](docs/authentication.md)を参照してください。既存データは所有者を明示的に割り当てるまでAPIから見えません。
 - `.env.example`ではなく、機密値を含めない`config.example`を設定例として管理します。
+
+CSVの列名・年先頭日付対応と合成CP932 fixtureの出自、実銀行検証の未完了範囲は[CSV形式の対応範囲](docs/csv-format-coverage.md)を参照してください。

@@ -259,6 +259,8 @@ class _MappingForm extends StatefulWidget {
   State<_MappingForm> createState() => _MappingFormState();
 }
 
+enum _AmountMode { single, split }
+
 class _MappingFormState extends State<_MappingForm> {
   late String? _date = _valid(widget.preview.mapping.dateColumn);
   late String? _description = _valid(widget.preview.mapping.descriptionColumn);
@@ -269,7 +271,25 @@ class _MappingFormState extends State<_MappingForm> {
     widget.preview.mapping.transactionIdColumn,
   );
 
-  String? _valid(String value) => value.isEmpty ? null : value;
+  late _AmountMode _mode = _amount != null
+      ? _AmountMode.single
+      : (_debit != null || _credit != null
+            ? _AmountMode.split
+            : _AmountMode.single);
+
+  String? _valid(String value) =>
+      value.isNotEmpty && widget.preview.headers.contains(value) ? value : null;
+
+  @override
+  void didUpdateWidget(covariant _MappingForm oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _date = _valid(_date ?? '');
+    _description = _valid(_description ?? '');
+    _amount = _valid(_amount ?? '');
+    _debit = _valid(_debit ?? '');
+    _credit = _valid(_credit ?? '');
+    _transactionId = _valid(_transactionId ?? '');
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -297,27 +317,50 @@ class _MappingFormState extends State<_MappingForm> {
               headers: headers,
               onChanged: (value) => setState(() => _description = value),
             ),
-            _ColumnDropdown(
-              label: '金額列（または下の入出金列）',
-              value: _amount,
-              headers: headers,
-              optional: true,
-              onChanged: (value) => setState(() => _amount = value),
+            const Text('残高ではなく、その取引の金額が入った列を選んでください。'),
+            DropdownButtonFormField<_AmountMode>(
+              key: const ValueKey('mapping-amount-mode'),
+              isExpanded: true,
+              initialValue: _mode,
+              decoration: const InputDecoration(labelText: '金額の列の使い方'),
+              items: const [
+                DropdownMenuItem(
+                  value: _AmountMode.single,
+                  child: Text('金額1列'),
+                ),
+                DropdownMenuItem(
+                  value: _AmountMode.split,
+                  child: Text('出金・入金の別列'),
+                ),
+              ],
+              onChanged: (mode) {
+                if (mode != null) setState(() => _mode = mode);
+              },
             ),
-            _ColumnDropdown(
-              label: '出金列',
-              value: _debit,
-              headers: headers,
-              optional: true,
-              onChanged: (value) => setState(() => _debit = value),
-            ),
-            _ColumnDropdown(
-              label: '入金列',
-              value: _credit,
-              headers: headers,
-              optional: true,
-              onChanged: (value) => setState(() => _credit = value),
-            ),
+            AppSpace.syM,
+            if (_mode == _AmountMode.single)
+              _ColumnDropdown(
+                label: '金額列',
+                value: _amount,
+                headers: headers,
+                onChanged: (value) => setState(() => _amount = value),
+              )
+            else ...[
+              _ColumnDropdown(
+                label: '出金列',
+                value: _debit,
+                headers: headers,
+                optional: true,
+                onChanged: (value) => setState(() => _debit = value),
+              ),
+              _ColumnDropdown(
+                label: '入金列',
+                value: _credit,
+                headers: headers,
+                optional: true,
+                onChanged: (value) => setState(() => _credit = value),
+              ),
+            ],
             _ColumnDropdown(
               label: '安定した明細ID列（取込元が付けたIDがある場合のみ）',
               value: _transactionId,
@@ -331,16 +374,24 @@ class _MappingFormState extends State<_MappingForm> {
               onPressed:
                   _date == null ||
                       _description == null ||
-                      (_amount == null && _debit == null && _credit == null)
+                      (_mode == _AmountMode.single
+                          ? _amount == null
+                          : (_debit == null && _credit == null))
                   ? null
                   : () => widget.onSubmit(
                       CsvMapping(
                         transactionIdColumn: _transactionId ?? '',
                         dateColumn: _date!,
                         descriptionColumn: _description!,
-                        amountColumn: _amount ?? '',
-                        debitColumn: _debit ?? '',
-                        creditColumn: _credit ?? '',
+                        amountColumn: _mode == _AmountMode.single
+                            ? _amount ?? ''
+                            : '',
+                        debitColumn: _mode == _AmountMode.split
+                            ? _debit ?? ''
+                            : '',
+                        creditColumn: _mode == _AmountMode.split
+                            ? _credit ?? ''
+                            : '',
                       ),
                     ),
               child: const Text('この列でプレビュー'),
@@ -372,6 +423,8 @@ class _ColumnDropdown extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: DropdownButtonFormField<String>(
+        key: ValueKey((label, value, headers.join('\u0000'))),
+        isExpanded: true,
         initialValue: value,
         decoration: InputDecoration(labelText: label),
         items: [
