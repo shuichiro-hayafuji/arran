@@ -32,6 +32,7 @@ abstract interface class TransactionsRepository {
     required String source,
     required String accountName,
     CsvMapping? mapping,
+    List<ImportIdentityDecision> identityDecisions = const [],
   });
   Future<ImportCommitResult> commitImport(String previewId);
 }
@@ -72,12 +73,14 @@ class TransactionsRepositoryImpl implements TransactionsRepository {
     required String source,
     required String accountName,
     CsvMapping? mapping,
+    List<ImportIdentityDecision> identityDecisions = const [],
   }) async {
     final request = ImportPreviewRequestDto(
       filePath: filePath,
       fileName: fileName,
       source: source,
       accountName: accountName,
+      identityDecisions: identityDecisions,
       mapping: mapping,
     );
     final response = await _client.post(

@@ -68,13 +68,48 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 	if err != nil {
 		return err
 	}
-	_, err = db.ExecContext(ctx, string(sqlBytes))
-	return err
+	if _, err = db.ExecContext(ctx, string(sqlBytes)); err != nil {
+		return err
+	}
+	return migrateCSVIdentity(ctx, db)
 }
 
 func ValidatePath(path string) error {
 	if strings.TrimSpace(path) == "" {
 		return fmt.Errorf("database path is empty")
+	}
+	return nil
+}
+
+func migrateCSVIdentity(ctx context.Context, db *sql.DB) error {
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	if _, err = conn.ExecContext(ctx, "PRAGMA foreign_keys=OFF"); err != nil {
+		return err
+	}
+	defer conn.ExecContext(context.WithoutCancel(ctx), "PRAGMA foreign_keys=ON")
+	if _, err = conn.ExecContext(ctx, "BEGIN IMMEDIATE"); err != nil {
+		return err
+	}
+	defer conn.ExecContext(context.WithoutCancel(ctx), "ROLLBACK")
+	var count int
+	if err = conn.QueryRowContext(ctx, "SELECT count(*) FROM schema_migrations WHERE version=6").Scan(&count); err != nil {
+		return err
+	}
+	if count == 0 {
+		contents, e := migrations.Files.ReadFile("006_csv_identity.sql")
+		if e != nil {
+			return e
+		}
+		if _, err = conn.ExecContext(ctx, string(contents)); err != nil {
+			return err
+		}
+	}
+	if _, err = conn.ExecContext(ctx, "COMMIT"); err != nil {
+		return err
 	}
 	return nil
 }

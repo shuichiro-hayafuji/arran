@@ -100,12 +100,20 @@ func (h *handler) previewImport(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	var decisions []domain.ImportIdentityDecision
+	if encoded := r.FormValue("identity_decisions"); encoded != "" {
+		if err := json.Unmarshal([]byte(encoded), &decisions); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_identity_decisions", "明細の確認指定が不正です。")
+			return
+		}
+	}
 	preview, err := h.application.PreviewImport(
 		r.Context(),
 		data,
 		mapping,
 		r.FormValue("source"),
 		r.FormValue("source_account_name"),
+		decisions,
 	)
 	if err != nil {
 		writeServiceError(w, err)
