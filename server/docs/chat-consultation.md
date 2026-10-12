@@ -113,3 +113,11 @@ PR #114のa67f552を隔離コピーし、既存設定の`gpt-5-mini` / `medium`�
 追加で、専用PostgreSQLの合成アカウントと隔離したHTTPサーバーを使い、実モデルの初回購入相談を確認した。未認証401、ログイン200、相談POST 201、購入予定20,000円の保存、GET 200とPOST全項目の一致、ログアウト204、失効後401はPASS。実ユーザーの認証情報は変更せず、検証用パスワード・トークンは出力・保存していない。これは初回のHTTP経路1ケースで、実機と全代表ケースのHTTP E2Eは引き続き未確認。
 
 モバイルの送信・切断復帰・取消しは[相談の受付と保存結果](consultation-requests.md)を参照。旧同期APIの結果待ちから論理受付へ切り替え、金融解釈・計算の責務は維持する。
+
+## 購入とCSVの照合入力
+
+詳細は[照合契約](purchase-csv-reconciliation.md)。通常取引DTOの日付・金額・カテゴリは維持する。sameと確認済みのCSVを通常transactionsから除外し、transaction_coverage.linked_excludedを返す。限定reconciliation_contextにはref/purchase_id/csv triplet/prior_inclusion/balance_resolved/budget_resolvedだけを追加する。CSV snapshot・銀行ID・口座・摘要はモデルへ送らない。既存20件の購入待ち、6件の履歴、6イベント、16KBの購入送信上限を維持し、contextはその取得対象だけに絞る。
+
+モデル出力のpurchase_updatesはpurchase_date（本人が明示したYYYY-MM-DDまたはnull）とamount_basis（reported/estimated/unchanged）を持つ。reconciliation_updatesは提示済refとapplied/needs_informationだけ。金融changes.basisにreconciliationを追加し、本人申告user_reportと区別する。分類freeで実額既知なら残高と自由予算の両方の包含が解決するまでappliedを拒否する。反映済み側の二重減額を拒否し、本人の新しい基準は許可する。CSV先行のreconciliation_required_idsは金融反映を保留して同一性を本人へ確認する。
+
+忘却cutoffは通常tripletだけでなく要求ID、候補一覧、照合contextにも適用する。CSV同士のaliasと原記録は保持し、古いCSVの存在で新購入を保留しない。制御モデル回帰ではSQLiteのlinked CSV除外SELECT接続漏れを検出し、両adapterで同じ入力境界を固定した。

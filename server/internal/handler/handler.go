@@ -30,6 +30,10 @@ func New(apiApplication *application.Application) http.Handler {
 	mux.HandleFunc("PUT /profile", handler.putProfile)
 	mux.HandleFunc("POST /transactions/import/preview", handler.previewImport)
 	mux.HandleFunc("POST /transactions/import/commit", handler.commitImport)
+	mux.HandleFunc("GET /expenses/count", handler.expenseCount)
+	mux.HandleFunc("POST /purchases/{id}/csv-distinct", handler.distinctPurchaseCSV)
+	mux.HandleFunc("GET /purchases/{id}/csv-candidates", handler.purchaseCSVCandidates)
+	mux.HandleFunc("POST /transactions/{id}/reconciliation", handler.resolvePurchaseCSV)
 	mux.HandleFunc("GET /transactions", handler.listTransactions)
 	mux.HandleFunc("PATCH /transactions/{id}", handler.updateTransaction)
 	mux.HandleFunc("GET /dashboard/monthly", handler.dashboard)
@@ -107,13 +111,20 @@ func (h *handler) previewImport(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	preview, err := h.application.PreviewImport(
+	var reconciliationDecisions []domain.ReconciliationDecision
+	if encoded := r.FormValue("reconciliation_decisions"); encoded != "" {
+		if err := json.Unmarshal([]byte(encoded), &reconciliationDecisions); err != nil {
+			writeError(w, 400, "invalid_reconciliation", "購入照合の指定が不正です")
+			return
+		}
+	}
+	preview, err := h.application.PreviewReconciledImport(
 		r.Context(),
 		data,
 		mapping,
 		r.FormValue("source"),
 		r.FormValue("source_account_name"),
-		decisions,
+		decisions, reconciliationDecisions,
 	)
 	if err != nil {
 		writeServiceError(w, err)

@@ -24,6 +24,7 @@ class IdentityRepository extends FakeTransactionsRepository {
     required String accountName,
     CsvMapping? mapping,
     List<ImportIdentityDecision> identityDecisions = const [],
+    List<PurchaseCsvDecision> reconciliationDecisions = const [],
   }) async {
     this.source = source;
     account = accountName;

@@ -14,20 +14,23 @@ import (
 
 // Purchase is owned by the consultation module. Events retain every posted outcome.
 type Purchase struct {
-	ID                      string          `json:"id"`
-	ConsultationID          int64           `json:"consultation_id"`
-	Description             string          `json:"description"`
-	Amount                  int64           `json:"amount"`
-	RecordedAt              string          `json:"recorded_at"`
-	Status                  string          `json:"status"`
-	FirstAskedAt            string          `json:"first_asked_at"`
-	SecondAskedAt           string          `json:"second_asked_at"`
-	ActualAmount            *int64          `json:"actual_amount"`
-	Classification          string          `json:"classification"`
-	AccountingTracked       bool            `json:"accounting_tracked"`
-	BalanceAppliedAmount    *int64          `json:"balance_applied_amount"`
-	FreeBudgetAppliedAmount *int64          `json:"free_budget_applied_amount"`
-	Events                  []PurchaseEvent `json:"events"`
+	ActualAmountBasis        string          `json:"actual_amount_basis"`
+	CSVReconciliationPending bool            `json:"csv_reconciliation_pending"`
+	PurchaseDate             string          `json:"purchase_date"`
+	ID                       string          `json:"id"`
+	ConsultationID           int64           `json:"consultation_id"`
+	Description              string          `json:"description"`
+	Amount                   int64           `json:"amount"`
+	RecordedAt               string          `json:"recorded_at"`
+	Status                   string          `json:"status"`
+	FirstAskedAt             string          `json:"first_asked_at"`
+	SecondAskedAt            string          `json:"second_asked_at"`
+	ActualAmount             *int64          `json:"actual_amount"`
+	Classification           string          `json:"classification"`
+	AccountingTracked        bool            `json:"accounting_tracked"`
+	BalanceAppliedAmount     *int64          `json:"balance_applied_amount"`
+	FreeBudgetAppliedAmount  *int64          `json:"free_budget_applied_amount"`
+	Events                   []PurchaseEvent `json:"events"`
 }
 type PurchaseEvent struct {
 	BalanceAppliedAmount    *int64 `json:"balance_applied_amount"`
@@ -40,14 +43,16 @@ type PurchaseEvent struct {
 	Source                  string `json:"source"`
 }
 type PurchaseUpdate struct {
-	ID             string `json:"id"`
-	Outcome        string `json:"outcome"`
-	Amount         *int64 `json:"amount"`
-	Classification string `json:"classification"`
+	AmountBasis    string  `json:"amount_basis"`
+	PurchaseDate   *string `json:"purchase_date"`
+	ID             string  `json:"id"`
+	Outcome        string  `json:"outcome"`
+	Amount         *int64  `json:"amount"`
+	Classification string  `json:"classification"`
 }
 
 func pending(p Purchase) bool {
-	return p.Status == "purchase_confirmation_pending" || (p.Status == "needs_classification" || p.Status == "classification_required")
+	return p.CSVReconciliationPending || p.Status == "purchase_confirmation_pending" || (p.Status == "needs_classification" || p.Status == "classification_required")
 }
 
 // LegacyPurchases imports old single-purchase threads once, including before any UI use.
@@ -74,7 +79,7 @@ type PurchaseCoverage struct {
 	Omitted      int  `json:"omitted"`
 }
 
-func modelPurchases(state State, message string, currentID int64) ([]Purchase, PurchaseCoverage) {
+func modelPurchases(state State, message string, currentID int64, forced ...string) ([]Purchase, PurchaseCoverage) {
 	coverage := PurchaseCoverage{PendingLimit: 20, HistoryLimit: 6, EventLimit: 6, ByteLimit: 16000}
 	type candidate struct {
 		p    Purchase
@@ -87,8 +92,13 @@ func modelPurchases(state State, message string, currentID int64) ([]Purchase, P
 			continue
 		}
 		rank := 0
+		for _, id := range forced {
+			if p.ID == id {
+				rank += 100
+			}
+		}
 		if pending(p) {
-			rank = 20
+			rank += 20
 		}
 		if currentID != 0 && p.ConsultationID == currentID {
 			rank += 10
@@ -117,6 +127,7 @@ func modelPurchases(state State, message string, currentID int64) ([]Purchase, P
 		p.BalanceAppliedAmount = balanceApplied(p)
 		p.FreeBudgetAppliedAmount = budgetApplied(p)
 		p.AccountingTracked = true
+		p.ActualAmountBasis = ActualAmountProvenance(p)
 		if (pending(p) && pendingCount == coverage.PendingLimit) || (!pending(p) && historyCount == coverage.HistoryLimit) {
 			coverage.Omitted++
 			continue
@@ -175,8 +186,22 @@ func validatePurchases(r Reply, in Input) error {
 	}
 	balanceNeeded, budgetNeeded := false, false
 	for _, u := range r.PurchaseUpdates {
+		if u.AmountBasis != "" && u.AmountBasis != "reported" && u.AmountBasis != "estimated" && u.AmountBasis != "unchanged" {
+			return errors.New("invalid actual amount basis")
+		}
+		if u.PurchaseDate != nil && *u.PurchaseDate != "" {
+			if _, err := time.Parse("2006-01-02", *u.PurchaseDate); err != nil {
+				return errors.New("invalid explicit purchase date")
+			}
+		}
 		for _, p := range in.Purchases {
-			if p.ID == u.ID && u.Outcome != "classification_required" {
+			if p.ID == u.ID && u.AmountBasis == "unchanged" && !sameAmount(p.ActualAmount, u.Amount) {
+				return errors.New("unchanged actual amount differs from saved actual")
+			}
+			if p.ID == u.ID && u.Outcome == "unanswered" && u.AmountBasis != "" && u.AmountBasis != "estimated" {
+				return errors.New("unanswered actual amount must remain estimated")
+			}
+			if p.ID == u.ID && u.Outcome != "classification_required" && !containsPurchaseID(in.ReconciliationRequiredIDs, u.ID) {
 				if u.Outcome != "needs_classification" && (u.Classification != "unknown" || u.Outcome == "not_purchased") {
 					var target *int64
 					if u.Classification == "free" && u.Outcome != "not_purchased" {
@@ -281,6 +306,9 @@ func validatePurchases(r Reply, in Input) error {
 		}
 		// The model computes money. This validates which bookkeeping operation is
 		// needed and which amount was already applied, without computing a balance.
+		if containsPurchaseID(in.ReconciliationRequiredIDs, u.ID) && u.Amount != nil {
+			continue
+		}
 		for _, f := range in.Facts {
 			if f.Key != "current_balance" && f.Key != "monthly_free_budget" {
 				continue
@@ -391,9 +419,13 @@ func applyPurchases(state *State, thread *Thread, r Reply, in Input, timestamp s
 			if p.ID != u.ID {
 				continue
 			}
+			p.ActualAmountBasis = ActualAmountProvenance(*p)
 			appliedBalance, appliedBudget := balanceApplied(*p), budgetApplied(*p)
 			basis := ""
 			for _, c := range r.Changes {
+				if containsPurchaseID(in.ReconciliationRequiredIDs, u.ID) && u.Amount != nil {
+					continue
+				}
 				if c.Operation != "set" {
 					continue
 				}
@@ -414,7 +446,19 @@ func applyPurchases(state *State, thread *Thread, r Reply, in Input, timestamp s
 			p.FreeBudgetAppliedAmount = appliedBudget
 			p.Events = append(p.Events, PurchaseEvent{Outcome: u.Outcome, Amount: u.Amount, Classification: u.Classification, RecordedAt: timestamp, Source: fmt.Sprintf("chat:%d", thread.ID), BalanceAppliedAmount: appliedBalance, FreeBudgetAppliedAmount: appliedBudget, BalanceBasis: basis})
 			if u.Outcome != "classification_required" {
+				if u.AmountBasis != "unchanged" {
+					if u.AmountBasis != "" {
+						p.ActualAmountBasis = u.AmountBasis
+					} else if u.Outcome == "unanswered" {
+						p.ActualAmountBasis = "estimated"
+					} else {
+						p.ActualAmountBasis = "reported"
+					}
+				}
 				p.ActualAmount = u.Amount
+			}
+			if u.PurchaseDate != nil {
+				p.PurchaseDate = *u.PurchaseDate
 			}
 			p.Classification = u.Classification
 			p.Status = u.Outcome
@@ -603,6 +647,12 @@ func postedAmount(p Purchase) *int64 {
 }
 
 func samePostedOutcome(p Purchase, u PurchaseUpdate) bool {
+	if (u.PurchaseDate != nil && *u.PurchaseDate != p.PurchaseDate) || (u.AmountBasis != "" && u.AmountBasis != "unchanged" && u.AmountBasis != p.ActualAmountBasis) {
+		return false
+	}
+	if p.CSVReconciliationPending && p.BalanceAppliedAmount == nil {
+		return false
+	}
 	if u.Outcome == "needs_classification" || u.Outcome == "classification_required" || p.Status == "needs_classification" || p.Status == "classification_required" {
 		return false
 	}
@@ -637,4 +687,41 @@ func budgetApplied(p Purchase) *int64 {
 
 func unconfirmed(p Purchase) bool {
 	return p.ActualAmount == nil && (p.Status == "purchase_confirmation_pending" || p.Status == "classification_required")
+}
+
+func containsPurchaseID(ids []string, id string) bool {
+	for _, v := range ids {
+		if v == id {
+			return true
+		}
+	}
+	return false
+}
+
+// ActualAmountProvenance retains legacy unanswered estimates through classification-only
+// events. Only a changed amount or explicit reported basis establishes new provenance.
+func ActualAmountProvenance(p Purchase) string {
+	if p.ActualAmountBasis != "" {
+		return p.ActualAmountBasis
+	}
+	if p.ActualAmount == nil {
+		return ""
+	}
+	basis := "reported"
+	var previous *int64
+	for _, event := range p.Events {
+		if event.Amount == nil {
+			continue
+		}
+		if event.Outcome == "unanswered" {
+			basis = "estimated"
+		} else if previous == nil || !sameAmount(previous, event.Amount) {
+			basis = "reported"
+		}
+		previous = event.Amount
+	}
+	if previous != nil && !sameAmount(previous, p.ActualAmount) {
+		return "reported"
+	}
+	return basis
 }

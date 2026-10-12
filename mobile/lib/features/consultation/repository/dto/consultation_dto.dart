@@ -4,6 +4,7 @@ import '../../domain/consultation.dart';
 class ConsultationDto {
   const ConsultationDto({
     this.messages = const [],
+    this.purchases = const [],
     required this.id,
     required this.createdAt,
     required this.userMessage,
@@ -27,6 +28,15 @@ class ConsultationDto {
 
   factory ConsultationDto.fromJson(Map<String, dynamic> json) =>
       ConsultationDto(
+        purchases: parseMaps(json['purchases'])
+            .map(
+              (p) => ChatPurchase(
+                id: p['id'] as String,
+                description: p['description'] as String? ?? '',
+                csvPending: p['csv_reconciliation_pending'] as bool? ?? false,
+              ),
+            )
+            .toList(),
         messages: parseMaps(json['messages'])
             .map(
               (message) => ChatMessage(
@@ -60,6 +70,7 @@ class ConsultationDto {
       );
 
   final List<ChatMessage> messages;
+  final List<ChatPurchase> purchases;
   final int id;
   final String createdAt;
   final String userMessage;

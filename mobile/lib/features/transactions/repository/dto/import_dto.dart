@@ -6,7 +6,34 @@ import '../../../../shared/utils/json_parsing.dart';
 import '../../domain/csv_mapping.dart';
 import '../../domain/import_commit_result.dart';
 import '../../domain/import_preview.dart';
+import '../../domain/expense_count.dart';
 import 'transaction_item_dto.dart';
+
+class ExpenseCountDto {
+  const ExpenseCountDto(
+    this.confirmed,
+    this.estimated,
+    this.undated,
+    this.unresolved,
+    this.pending,
+  );
+  factory ExpenseCountDto.fromJson(Map<String, dynamic> json) =>
+      ExpenseCountDto(
+        parseInt(json['confirmed']),
+        parseInt(json['estimated']),
+        parseInt(json['undated']),
+        parseInt(json['unresolved']),
+        parseInt(json['pending_recalculation']),
+      );
+  final int confirmed, estimated, undated, unresolved, pending;
+  ExpenseCount toDomain() => ExpenseCount(
+    confirmed: confirmed,
+    estimated: estimated,
+    undated: undated,
+    unresolved: unresolved,
+    pendingRecalculation: pending,
+  );
+}
 
 class CsvMappingDto {
   const CsvMappingDto({
@@ -56,6 +83,7 @@ class CsvMappingDto {
 class ImportPreviewDto {
   const ImportPreviewDto({
     this.identityConflicts = const [],
+    this.reconciliationConflicts = const [],
     this.identityNotice = "",
     required this.previewId,
     required this.detectedEncoding,
@@ -72,6 +100,9 @@ class ImportPreviewDto {
 
   factory ImportPreviewDto.fromJson(Map<String, dynamic> json) =>
       ImportPreviewDto(
+        reconciliationConflicts: parseMaps(
+          json["reconciliation_conflicts"],
+        ).map(purchaseCsvConflictFromJson).toList(),
         identityConflicts: parseMaps(json["identity_conflicts"])
             .map(
               (value) => ImportIdentityConflict(
@@ -103,6 +134,7 @@ class ImportPreviewDto {
       );
 
   final List<ImportIdentityConflict> identityConflicts;
+  final List<PurchaseCsvConflict> reconciliationConflicts;
   final String identityNotice;
   final String previewId;
   final String detectedEncoding;
@@ -118,6 +150,7 @@ class ImportPreviewDto {
 
   ImportPreview toDomain() => ImportPreview(
     identityConflicts: identityConflicts,
+    reconciliationConflicts: reconciliationConflicts,
     identityNotice: identityNotice,
     previewId: previewId,
     detectedEncoding: detectedEncoding,
@@ -169,6 +202,7 @@ class ImportPreviewRequestDto {
     required this.accountName,
     required this.mapping,
     this.identityDecisions = const [],
+    this.reconciliationDecisions = const [],
   });
 
   final String filePath;
@@ -177,11 +211,15 @@ class ImportPreviewRequestDto {
   final String accountName;
   final CsvMapping? mapping;
   final List<ImportIdentityDecision> identityDecisions;
+  final List<PurchaseCsvDecision> reconciliationDecisions;
 
   FormData toFormData() => FormData.fromMap({
     'file': MultipartFile.fromFileSync(filePath, filename: fileName),
     'source': source,
     'source_account_name': accountName,
+    'reconciliation_decisions': jsonEncode(
+      reconciliationDecisions.map(purchaseCsvDecisionToJson).toList(),
+    ),
     'identity_decisions': jsonEncode(
       identityDecisions
           .map(
@@ -198,3 +236,34 @@ class ImportPreviewRequestDto {
       'mapping': jsonEncode(CsvMappingDto.fromDomain(mapping!).toJson()),
   });
 }
+
+PurchaseCsvConflict purchaseCsvConflictFromJson(Map<String, dynamic> json) =>
+    PurchaseCsvConflict(
+      row: parseInt(json['row']),
+      transaction: TransactionItemDto.fromJson(
+        parseMap(json['transaction']),
+      ).toDomain(),
+      stateVersion: parseInt(json['state_version']),
+      candidates: parseMaps(json['candidates'])
+          .map(
+            (c) => PurchaseCsvCandidate(
+              id: c['id'] as String,
+              description: c['description'] as String? ?? '',
+              amount:
+                  parseNullableInt(c['actual_amount']) ??
+                  parseInt(c['planned_amount']),
+              recordedAt: c['recorded_at'] as String? ?? '',
+              purchaseDate: c['purchase_date'] as String? ?? '',
+              status: c['status'] as String? ?? '',
+              snapshot: c['snapshot'] as String,
+            ),
+          )
+          .toList(),
+    );
+Map<String, dynamic> purchaseCsvDecisionToJson(PurchaseCsvDecision d) => {
+  'row': d.row,
+  'action': d.action,
+  'purchase_id': d.purchaseId,
+  'snapshot': d.snapshot,
+  'state_version': d.stateVersion,
+};

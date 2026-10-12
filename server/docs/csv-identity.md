@@ -47,3 +47,7 @@ PostgreSQLは所有者ごとのadvisory lockで確定を直列化し、同一候
 ## 検証
 
 Importerで収支・出現順・厳密摘要・文字コード・実在ID列、SQL adapterで異ファイル拒否/明示確認/alias/旧row IDと分類保持/同一候補二重選択/並行確定/候補変更rollback/所有者、両DBのmigration失敗rollback・同時適用・再起動を確認する。HTTPで未回答のpreview_idなし、snapshot確認後の確定、同CSV再取込を検証する。モバイルのDTOと確認画面は制御Repositoryで検証し、実機は別途確認する。
+
+## チャット購入との照合
+
+CSV同士の同一性とチャット購入の同一性は別の確認。前者を解決した後、reconciliation_conflictsがあれば本人にsame/distinctを示し、同じ保存txで対応を保持する。再取込で確定済み対応と最新購入訂正を保持し、原明細を金額差の架空支出へ変換しない。[購入・CSV照合契約](purchase-csv-reconciliation.md)を参照。

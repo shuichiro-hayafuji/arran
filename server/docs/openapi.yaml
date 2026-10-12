@@ -175,6 +175,7 @@ paths:
               properties:
                 file: { type: string, format: binary }
                 mapping: { type: string, description: JSON形式のCSVMapping。任意のtransaction_id_columnは利用者が選ぶ安定明細ID列 }
+                reconciliation_decisions: { type: string, description: 'ReconciliationDecision JSON array; unresolved purchase identity prevents commit' }
                 identity_decisions: { type: string, description: ImportIdentityDecisionのJSON配列。sameには候補snapshotが必要 }
                 source: { type: string }
                 source_account_name: { type: string }
@@ -396,6 +397,68 @@ paths:
         '401': { description: Invalid or expired bearer session }
         '503': { description: Authentication database unavailable }
         '204': { description: 削除完了 }
+  /expenses/count:
+    get:
+      tags: [transactions]
+      summary: Owner integrated expense counts; existing dashboard amounts unchanged
+      parameters:
+        - { in: query, name: month, schema: { type: string }, description: YYYY-MM optional; undated and unresolved remain global }
+      responses:
+        '200':
+          description: Dated and undated counts; estimated is a subset of confirmed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ExpenseCount' }
+        '400': { description: Invalid month }
+        '401': { description: Invalid or expired bearer session }
+  /purchases/{id}/csv-candidates:
+    get:
+      tags: [consultations]
+      summary: Owner scoped local CSV identity choices; at most 100 rows
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: Candidate snapshots for explicit same or distinct
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/ReconciliationConflict' } }
+        '404': { description: Unknown or forgotten purchase }
+        '401': { description: Invalid or expired bearer session }
+  /transactions/{id}/reconciliation:
+    post:
+      tags: [transactions]
+      summary: Save explicit purchase identity; financial reflection occurs in next chat
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer, format: int64 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReconciliationDecision' }
+      responses:
+        '200': { description: Identity saved; financial_status pending_next_chat }
+        '400': { description: Invalid or conflicting choice }
+        '404': { description: Unknown owner scoped record }
+        '409': { description: State or purchase snapshot changed }
+        '401': { description: Invalid or expired bearer session }
+  /purchases/{id}/csv-distinct:
+    post:
+      tags: [consultations]
+      summary: Mark all current CSV candidates distinct from this purchase atomically
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReconciliationDecision' }
+      responses:
+        '200': { description: Identity saved; next chat may finish pending financial reflection }
+        '400': { description: Invalid choice or candidate count exceeds 1000 }
+        '404': { description: Unknown purchase }
+        '409': { description: State or purchase snapshot changed }
+        '401': { description: Invalid or expired bearer session }
 components:
   securitySchemes:
     bearerAuth:
@@ -507,6 +570,7 @@ components:
     ImportPreview:
       type: object
       properties:
+        reconciliation_conflicts: { type: array, items: { $ref: '#/components/schemas/ReconciliationConflict' } }
         identity_notice: { type: string }
         identity_conflicts: { type: array, items: { $ref: '#/components/schemas/ImportIdentityConflict' } }
         preview_id: { type: string, description: 未解決identity_conflictsがある場合は空で確定不可 }
@@ -595,6 +659,9 @@ components:
         status: { type: string, enum: [purchase_confirmation_pending, needs_classification, classification_required, purchased, not_purchased, unanswered, cancelled] }
         first_asked_at: { type: string, description: 未確認は空文字 }
         second_asked_at: { type: string, description: 未確認は空文字 }
+        purchase_date: { type: string, description: 'Explicit purchase date YYYY-MM-DD or empty; never consultation date' }
+        actual_amount_basis: { type: string, enum: ['', reported, estimated] }
+        csv_reconciliation_pending: { type: boolean }
         actual_amount: { type: integer, format: int64, nullable: true }
         balance_applied_amount: { type: integer, format: int64, nullable: true, description: 現在残高へ反映済みの実額。Goで計算する値ではない。 }
         free_budget_applied_amount: { type: integer, format: int64, nullable: true, description: 自由予算へ反映済みの実額。分類待ちは保留。 }
@@ -651,3 +718,41 @@ components:
         confidence: { type: number, format: double }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
+    ReconciliationDecision:
+      type: object
+      required: [row, action, purchase_id, snapshot, state_version]
+      properties:
+        row: { type: integer }
+        action: { type: string, enum: [same, distinct] }
+        purchase_id: { type: string, description: Empty only for CSV preview distinct-all-purchases }
+        snapshot: { type: string, description: Local purchase revision; not sent to LLM }
+        state_version: { type: integer, format: int64 }
+    ReconciliationCandidate:
+      type: object
+      properties:
+        id: { type: string }
+        description: { type: string }
+        planned_amount: { type: integer, format: int64 }
+        actual_amount: { type: integer, format: int64, nullable: true }
+        status: { type: string }
+        classification: { type: string }
+        recorded_at: { type: string }
+        purchase_date: { type: string }
+        snapshot: { type: string }
+    ReconciliationConflict:
+      type: object
+      properties:
+        row: { type: integer }
+        transaction: { $ref: '#/components/schemas/Transaction' }
+        candidates: { type: array, items: { $ref: '#/components/schemas/ReconciliationCandidate' } }
+        state_version: { type: integer, format: int64 }
+    ExpenseCount:
+      type: object
+      properties:
+        month: { type: string }
+        confirmed: { type: integer, description: Dated expenses within optional month }
+        estimated: { type: integer, description: Subset of confirmed; do not add }
+        undated: { type: integer, description: Disjoint all-time undated expenses }
+        unresolved: { type: integer, description: All-time unresolved identity or contradiction }
+        pending_recalculation: { type: integer, description: All-time pending financial updates }
+        scope: { type: string }

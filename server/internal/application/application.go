@@ -25,6 +25,7 @@ var jst = time.FixedZone("Asia/Tokyo", 9*60*60)
 func IsNotFound(err error) bool { return errors.Is(err, domain.ErrNotFound) }
 
 type Application struct {
+	reconciliation     ReconciliationRepository
 	requests           consultation.RequestRepository
 	requestBudget      time.Duration
 	requestSaveReserve time.Duration
@@ -125,22 +126,24 @@ type Repository interface {
 }
 
 type Config struct {
-	RequestRepository  consultation.RequestRepository
-	RequestBudget      time.Duration
-	RequestSaveReserve time.Duration
-	RequestContext     context.Context
-	ChatAgent          consultation.Agent
-	ChatRepository     consultation.Repository
-	Repository         Repository
-	ConsultationAgent  ConsultationAgent
-	FallbackAgent      ConsultationAgent
-	ReviewAgent        ReviewAgent
-	FallbackReview     ReviewAgent
-	MemoryAgent        MemoryAgent
-	FallbackMemory     MemoryAgent
-	AdminNotifier      AdminNotifier
-	Environment        string
-	Now                func() time.Time
+	ChatReconciliation       consultation.ReconciliationRepository
+	ReconciliationRepository ReconciliationRepository
+	RequestRepository        consultation.RequestRepository
+	RequestBudget            time.Duration
+	RequestSaveReserve       time.Duration
+	RequestContext           context.Context
+	ChatAgent                consultation.Agent
+	ChatRepository           consultation.Repository
+	Repository               Repository
+	ConsultationAgent        ConsultationAgent
+	FallbackAgent            ConsultationAgent
+	ReviewAgent              ReviewAgent
+	FallbackReview           ReviewAgent
+	MemoryAgent              MemoryAgent
+	FallbackMemory           MemoryAgent
+	AdminNotifier            AdminNotifier
+	Environment              string
+	Now                      func() time.Time
 }
 
 func New(config Config) *Application {
@@ -158,9 +161,16 @@ func New(config Config) *Application {
 	if config.RequestContext == nil {
 		config.RequestContext = context.Background()
 	}
+	if config.ChatReconciliation == nil {
+		config.ChatReconciliation, _ = config.ChatRepository.(consultation.ReconciliationRepository)
+	}
+	if config.ReconciliationRepository == nil {
+		config.ReconciliationRepository, _ = config.Repository.(ReconciliationRepository)
+	}
 	return &Application{
-		requests: config.RequestRepository, requestBudget: config.RequestBudget, requestSaveReserve: config.RequestSaveReserve, requestsContext: config.RequestContext,
-		chat:              consultation.Service{Repository: config.ChatRepository, Agent: config.ChatAgent, Now: now},
+		reconciliation: config.ReconciliationRepository,
+		requests:       config.RequestRepository, requestBudget: config.RequestBudget, requestSaveReserve: config.RequestSaveReserve, requestsContext: config.RequestContext,
+		chat:              consultation.Service{Reconciliation: config.ChatReconciliation, Repository: config.ChatRepository, Agent: config.ChatAgent, Now: now},
 		repository:        config.Repository,
 		consultationAgent: config.ConsultationAgent,
 		fallbackAgent:     config.FallbackAgent,
@@ -195,13 +205,14 @@ func (s *Application) PutProfile(
 
 // PreviewImport は解析した全明細を利用者に紐づけてプロセス内に30分保持する。
 // 応答の Rows は先頭10件に限定し、DBへの登録は CommitImport まで行わない。
-func (s *Application) PreviewImport(
+func (s *Application) previewImport(
 	ctx context.Context,
 	data []byte,
 	mapping domain.CSVMapping,
 	source string,
 	account string,
-	decisions ...[]domain.ImportIdentityDecision,
+	identityDecisions []domain.ImportIdentityDecision,
+	reconciliationDecisions []domain.ReconciliationDecision,
 ) (domain.ImportPreview, error) {
 	rules, err := s.repository.MerchantRules(ctx)
 	if err != nil {
@@ -218,9 +229,9 @@ func (s *Application) PreviewImport(
 		return domain.ImportPreview{}, err
 	}
 
-	if len(decisions) > 0 {
+	if len(identityDecisions) > 0 {
 		usedRows := map[int]bool{}
-		for _, d := range decisions[0] {
+		for _, d := range identityDecisions {
 			if usedRows[d.Row] {
 				return domain.ImportPreview{}, fmt.Errorf("CSVの確認行が重複しています")
 			}
@@ -240,6 +251,25 @@ func (s *Application) PreviewImport(
 			}
 		}
 	}
+	usedReconciliationRows := map[int]bool{}
+	for _, d := range reconciliationDecisions {
+		if usedReconciliationRows[d.Row] {
+			return domain.ImportPreview{}, fmt.Errorf("CSVの購入照合行が重複しています")
+		}
+		usedReconciliationRows[d.Row] = true
+		found := false
+		for i := range parsed.Transactions {
+			if parsed.Transactions[i].ImportRow == d.Row {
+				decision := d
+				parsed.Transactions[i].Reconciliation = &decision
+				found = true
+				break
+			}
+		}
+		if !found {
+			return domain.ImportPreview{}, fmt.Errorf("CSVの購入照合行の指定が不正です")
+		}
+	}
 	conflicts, err := s.repository.PreviewTransactionIdentities(ctx, parsed.Transactions)
 	if err != nil {
 		return domain.ImportPreview{}, err
@@ -250,16 +280,24 @@ func (s *Application) PreviewImport(
 			conflicts[i].Candidates[j].RawData = nil
 		}
 	}
+	var reconciliationConflicts []domain.ReconciliationConflict
+	if len(conflicts) == 0 && s.reconciliation != nil {
+		reconciliationConflicts, err = s.reconciliation.PreviewReconciliations(ctx, parsed.Transactions)
+		if err != nil {
+			return domain.ImportPreview{}, err
+		}
+	}
 	preview := domain.ImportPreview{
-		IdentityConflicts: conflicts,
-		IdentityNotice:    "取引IDがない明細は、このCSV内の出現数で識別します。別CSVの同条件明細は同じ明細か別明細か確認してから保存します。取込元・口座・列指定は再取込でも同じにしてください。",
-		DetectedEncoding:  parsed.Encoding,
-		Headers:           parsed.Headers,
-		Mapping:           parsed.Mapping,
-		NeedsMapping:      parsed.NeedsMapping,
-		ReadCount:         len(parsed.Transactions),
-		Warnings:          parsed.Warnings,
-		Rows:              parsed.Transactions,
+		ReconciliationConflicts: reconciliationConflicts,
+		IdentityConflicts:       conflicts,
+		IdentityNotice:          "取引IDがない明細は、このCSV内の出現数で識別します。別CSVの同条件明細は同じ明細か別明細か確認してから保存します。取込元・口座・列指定は再取込でも同じにしてください。",
+		DetectedEncoding:        parsed.Encoding,
+		Headers:                 parsed.Headers,
+		Mapping:                 parsed.Mapping,
+		NeedsMapping:            parsed.NeedsMapping,
+		ReadCount:               len(parsed.Transactions),
+		Warnings:                parsed.Warnings,
+		Rows:                    parsed.Transactions,
 	}
 	if len(preview.Rows) > 10 {
 		preview.Rows = preview.Rows[:10]
@@ -275,7 +313,7 @@ func (s *Application) PreviewImport(
 			preview.ExpenseTotal += transaction.Amount
 		}
 	}
-	if !parsed.NeedsMapping && len(conflicts) == 0 {
+	if !parsed.NeedsMapping && len(conflicts) == 0 && len(reconciliationConflicts) == 0 {
 		preview.PreviewID = randomID()
 		s.previewMu.Lock()
 		s.cleanupPreviewsLocked()

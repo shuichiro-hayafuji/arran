@@ -35,6 +35,10 @@ func (r *Repository) PreviewTransactionIdentities(ctx context.Context, items []d
 	return conflicts, err
 }
 func (r *Repository) ImportTransactions(ctx context.Context, items []domain.Transaction) (domain.ImportCommitResult, error) {
+	seed, err := r.LoadChatState(ctx)
+	if err != nil {
+		return domain.ImportCommitResult{}, err
+	}
 	tx, err := r.db.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return domain.ImportCommitResult{}, err
@@ -43,12 +47,39 @@ func (r *Repository) ImportTransactions(ctx context.Context, items []domain.Tran
 	if _, err = tx.ExecContext(ctx, userQuery(ctx, "SELECT pg_advisory_xact_lock(?)"), -identity.UserID(ctx)-1); err != nil {
 		return domain.ImportCommitResult{}, err
 	}
+	state, err := reconciliationState(ctx, tx, &seed, true)
+	if err != nil {
+		return domain.ImportCommitResult{}, err
+	}
+	newRows := map[string]bool{}
+	for _, item := range items {
+		id, e := resolveImportID(ctx, tx, item)
+		if e != nil {
+			return domain.ImportCommitResult{}, e
+		}
+		newRows[item.Fingerprint] = id == 0
+	}
 	result, conflicts, err := processIdentities(ctx, tx, items, true)
 	if err != nil {
 		return domain.ImportCommitResult{}, err
 	}
 	if len(conflicts) > 0 {
 		return domain.ImportCommitResult{}, fmt.Errorf("CSVの同一明細か別明細か確認が必要です。再度プレビューしてください")
+	}
+	reconciliationConflicts, err := reconcileImports(ctx, tx, items, state, true, newRows)
+	if err != nil {
+		return domain.ImportCommitResult{}, err
+	}
+	if len(reconciliationConflicts) > 0 {
+		return domain.ImportCommitResult{}, fmt.Errorf("CSVと購入の同一支出か確認が必要です。再プレビューしてください")
+	}
+	state.Version++
+	payload, e := json.Marshal(state)
+	if e != nil {
+		return domain.ImportCommitResult{}, e
+	}
+	if _, err = tx.ExecContext(ctx, userQuery(ctx, "UPDATE chat_states SET version=?,payload=? WHERE user_id=:user_id AND version=?"), state.Version, string(payload), state.Version-1); err != nil {
+		return domain.ImportCommitResult{}, err
 	}
 	if err = tx.Commit(); err != nil {
 		return domain.ImportCommitResult{}, err
