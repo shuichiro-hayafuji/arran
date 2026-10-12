@@ -74,6 +74,9 @@ func (s *Application) chatConsultation(ctx context.Context, t consultation.Threa
 	if err != nil {
 		return domain.Consultation{}, err
 	}
+	return chatProjection(item, t), nil
+}
+func chatProjection(item domain.Consultation, t consultation.Thread) domain.Consultation {
 	// Keep advice and transcript from the same saved version even if another turn
 	// finishes between the save and this summary read. Result fields remain separate.
 	item.PlannedAmount = t.Reply.PlannedAmount
@@ -101,7 +104,7 @@ func (s *Application) chatConsultation(ctx context.Context, t consultation.Threa
 	for _, m := range t.Messages {
 		item.Messages = append(item.Messages, domain.ChatMessage{Role: m.Role, Content: m.Content, CreatedAt: m.CreatedAt, Reason: m.Reason, Assumptions: m.Assumptions})
 	}
-	return item, nil
+	return item
 }
 func (s *Application) GetChat(ctx context.Context, id int64) (domain.Consultation, error) {
 	if s.chat.Repository != nil {

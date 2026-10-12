@@ -19,4 +19,7 @@ sealed class ConsultationIntent with _$ConsultationIntent implements MviIntent {
   const factory ConsultationIntent.select(Consultation consultation) =
       SelectConsultation;
   const factory ConsultationIntent.clear() = ClearConsultation;
+  const factory ConsultationIntent.recoverRequest() =
+      RecoverConsultationRequest;
+  const factory ConsultationIntent.cancelRequest() = CancelConsultationRequest;
 }

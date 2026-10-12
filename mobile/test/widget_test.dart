@@ -1,3 +1,5 @@
+import 'package:spendable_today/core/network/api_exception.dart';
+import 'package:spendable_today/features/consultation/domain/chat_request.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -195,6 +197,39 @@ class FakeRepositories {
 }
 
 class FakeConsultationRepository implements ConsultationRepository {
+  @override
+  Future<ChatRequestReceipt> submitRequest(PendingChatRequest request) async {
+    try {
+      final result = request.consultationId == 0
+          ? await start(request.message, request.plannedAmount)
+          : await continueConversation(
+              request.consultationId,
+              request.message,
+              request.plannedAmount,
+            );
+      return ChatRequestReceipt(
+        id: request.id,
+        status: 'completed',
+        expiresAt: DateTime.now().add(const Duration(seconds: 28)),
+        result: result,
+      );
+    } catch (_) {
+      return ChatRequestReceipt(
+        id: request.id,
+        status: 'failed',
+        errorCode: 'save_failed',
+        expiresAt: DateTime.now(),
+      );
+    }
+  }
+
+  @override
+  Future<ChatRequestReceipt> requestResult(String id) async =>
+      throw const ApiException('受付がありません', statusCode: 404);
+  @override
+  Future<ChatRequestReceipt> cancelRequest(String id) async =>
+      throw const ApiException('受付がありません', statusCode: 404);
+
   String? lastConsultationMessage;
   String? lastResultStatus;
 
