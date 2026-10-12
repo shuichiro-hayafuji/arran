@@ -121,3 +121,9 @@ PR #114のa67f552を隔離コピーし、既存設定の`gpt-5-mini` / `medium`�
 モデル出力のpurchase_updatesはpurchase_date（本人が明示したYYYY-MM-DDまたはnull）とamount_basis（reported/estimated/unchanged）を持つ。reconciliation_updatesは提示済refとapplied/needs_informationだけ。金融changes.basisにreconciliationを追加し、本人申告user_reportと区別する。分類freeで実額既知なら残高と自由予算の両方の包含が解決するまでappliedを拒否する。反映済み側の二重減額を拒否し、本人の新しい基準は許可する。CSV先行のreconciliation_required_idsは金融反映を保留して同一性を本人へ確認する。
 
 忘却cutoffは通常tripletだけでなく要求ID、候補一覧、照合contextにも適用する。CSV同士のaliasと原記録は保持し、古いCSVの存在で新購入を保留しない。制御モデル回帰ではSQLiteのlinked CSV除外SELECT接続漏れを検出し、両adapterで同じ入力境界を固定した。
+
+## 照合回答の長さと同値基準の採用
+
+利用者向けanswer/reasonは必要な結論・実額・包含・金額根拠を原則各1〜2文にし、assumptionsは必要な未確定の前提だけにする。規則・処理手順・内部ID/メタデータの解説を省き、同じ説明を重複させない。これは出力指示であり、schema・金融検証・期限・モデル設定の変更ではない。生成時間短縮を実モデル未検証の段階で保証しない。
+
+prior_inclusion=unknownで残高と自由予算の両方が未解決なら、本人が両方に購入を含むと確認した場合、同じ値・期間でもcurrent_balanceとmonthly_free_budgetのsetを両方返してappliedにする。通常の同値changes省略の例外として明示し、再減額しない。片方だけ判明した場合はneeds_informationを保つ。制御回帰で、setなし/片側だけは拒否、両同値setは採用し両反映メタデータを保存できることを確認する。

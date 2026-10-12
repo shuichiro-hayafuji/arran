@@ -43,6 +43,31 @@ func TestReconciliationRequiresBothFinancialDimensions(t *testing.T) {
 	}
 }
 
+func TestAlreadyIncludedUnknownRequiresBothUnchangedFinancialSets(t *testing.T) {
+	amount := int64(20000)
+	in := Input{Purchases: []Purchase{{ID: "p", Status: "purchased", ActualAmount: &amount, Classification: "free", AccountingTracked: true, CSVReconciliationPending: true}}, Facts: []Fact{{Key: "current_balance", Value: "80000円", Active: true}, {Key: "monthly_free_budget", Value: "10000円", Active: true}}, ReconciliationContext: []ReconciliationContext{{Ref: "op", PurchaseID: "p", CSV: Transaction{Amount: 20000}, PriorInclusion: "unknown"}}}
+	changes := []Change{{Key: "current_balance", Value: "80000円", Operation: "set", Basis: "reconciliation"}, {Key: "monthly_free_budget", Value: "10000円", Operation: "set", Basis: "reconciliation"}}
+	for _, incomplete := range [][]Change{nil, changes[:1], changes[1:]} {
+		reply := Reply{ReconciliationUpdates: []ReconciliationUpdate{{Ref: "op", Status: "applied"}}, Changes: incomplete}
+		if err := validateReconciliation(reply, in); err == nil {
+			t.Fatal("unknown inclusion completed without both financial observations")
+		}
+	}
+	reply := Reply{ReconciliationUpdates: []ReconciliationUpdate{{Ref: "op", Status: "applied"}}, Changes: changes}
+	if err := validateReconciliation(reply, in); err != nil {
+		t.Fatal("unchanged adopted baselines rejected", err)
+	}
+	state := State{Purchases: append([]Purchase(nil), in.Purchases...), Facts: append([]Fact(nil), in.Facts...)}
+	applyReconciliation(&state, reply, in, "2026-10-12T00:00:00Z")
+	p := state.Purchases[0]
+	if p.CSVReconciliationPending || !sameAmount(p.BalanceAppliedAmount, &amount) || !sameAmount(p.FreeBudgetAppliedAmount, &amount) {
+		t.Fatal("both unchanged financial observations did not establish applied metadata")
+	}
+	if state.Facts[0].Value != "80000円" || state.Facts[1].Value != "10000円" {
+		t.Fatal("metadata adoption changed financial values")
+	}
+}
+
 func TestPendingReconciliationHasPriorityWithinCoverageLimit(t *testing.T) {
 	s := State{}
 	for i := 0; i < 20; i++ {
