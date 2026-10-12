@@ -1,3 +1,4 @@
+import '../../repository/reconciliation_repository.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
@@ -28,6 +29,8 @@ abstract class ImportState with _$ImportState {
     @Default("個人") String accountName,
     @Default(<ImportIdentityDecision>[])
     List<ImportIdentityDecision> identityDecisions,
+    @Default(<PurchaseCsvDecision>[])
+    List<PurchaseCsvDecision> reconciliationDecisions,
     String? filePath,
     String? fileName,
     ImportPreview? preview,
@@ -39,6 +42,7 @@ abstract class ImportState with _$ImportState {
   String get source;
   String get accountName;
   List<ImportIdentityDecision> get identityDecisions;
+  List<PurchaseCsvDecision> get reconciliationDecisions;
   String? get filePath;
   String? get fileName;
   ImportPreview? get preview;
@@ -65,6 +69,8 @@ class ImportViewModel extends MviViewModel<ImportState, ImportIntent> {
         return setSource(source, account);
       case ResolveImportIdentities(decisions: final decisions):
         return resolve(decisions);
+      case ResolveImportPurchases(decisions: final decisions):
+        return resolvePurchases(decisions);
       case CommitImport():
         return commit();
       case ResetImport():
@@ -81,6 +87,7 @@ class ImportViewModel extends MviViewModel<ImportState, ImportIntent> {
     if (state.loading) return;
     state = state.copyWith(
       identityDecisions: [],
+      reconciliationDecisions: [],
       preview: null,
       commitResult: null,
       filePath: filePath,
@@ -96,6 +103,7 @@ class ImportViewModel extends MviViewModel<ImportState, ImportIntent> {
     if (state.loading) return;
     state = state.copyWith(
       identityDecisions: [],
+      reconciliationDecisions: [],
       preview: null,
       commitResult: null,
       loading: true,
@@ -115,6 +123,7 @@ class ImportViewModel extends MviViewModel<ImportState, ImportIntent> {
             source: state.source,
             accountName: state.accountName,
             identityDecisions: state.identityDecisions,
+            reconciliationDecisions: state.reconciliationDecisions,
             mapping: mapping,
           );
       if (!mounted) return;
@@ -138,6 +147,7 @@ class ImportViewModel extends MviViewModel<ImportState, ImportIntent> {
       preview: null,
       commitResult: null,
       identityDecisions: [],
+      reconciliationDecisions: [],
       error: null,
     );
     if (state.filePath != null) {
@@ -163,6 +173,23 @@ class ImportViewModel extends MviViewModel<ImportState, ImportIntent> {
     await _preview(mapping);
   }
 
+  Future<void> resolvePurchases(List<PurchaseCsvDecision> decisions) async {
+    if (state.loading || state.preview == null) return;
+    final mapping = state.preview!.mapping;
+    state = state.copyWith(
+      reconciliationDecisions: List.unmodifiable(
+        {
+          for (final d in state.reconciliationDecisions) d.row: d,
+          for (final d in decisions) d.row: d,
+        }.values,
+      ),
+      loading: true,
+      error: null,
+      commitResult: null,
+    );
+    await _preview(mapping);
+  }
+
   Future<void> commit() async {
     if (state.loading) return;
     final preview = state.preview;
@@ -177,6 +204,7 @@ class ImportViewModel extends MviViewModel<ImportState, ImportIntent> {
           .commitImport(preview.previewId);
       if (!mounted) return;
       state = state.copyWith(commitResult: result, loading: false, error: null);
+      ref.invalidate(expenseCountProvider);
       ref
           .read(transactionsViewModelProvider.notifier)
           .dispatch(const RefreshTransactions());

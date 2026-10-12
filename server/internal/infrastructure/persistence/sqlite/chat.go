@@ -128,6 +128,9 @@ func (r *Repository) SaveChatTurn(ctx context.Context, state consultation.State,
 			state.Facts[i].Source = strings.Replace(state.Facts[i].Source, "chat:0:", "chat:"+strconv.FormatInt(thread.ID, 10)+":", 1)
 		}
 	}
+	if err = syncReconciliationReceipts(ctx, tx, state, thread.Reply); err != nil {
+		return consultation.Thread{}, err
+	}
 	state.Version++
 	thread.Version++
 	stateJSON, err := json.Marshal(state)
@@ -262,7 +265,7 @@ func (r *Repository) LoadChatTransactions(ctx context.Context, limit int, forgot
 		limit = 100
 	}
 	coverage := consultation.TransactionCoverage{Partial: true, CandidateLimit: limit}
-	rows, err := r.db.QueryContext(ctx, `SELECT t.transaction_date,t.amount,t.category,t.transaction_type,t.imported_at
+	rows, err := r.db.QueryContext(ctx, `SELECT t.transaction_date,t.amount,t.category,t.transaction_type,t.imported_at,EXISTS(SELECT 1 FROM purchase_csv_decisions d WHERE d.user_id=o.user_id AND d.transaction_id=t.id AND d.action='same')
  FROM transactions t JOIN chat_transaction_owners o ON o.transaction_id=t.id
  WHERE o.user_id=? ORDER BY t.transaction_date DESC,t.id DESC LIMIT ?`, identity.UserID(ctx), limit)
 	if err != nil {
@@ -273,10 +276,15 @@ func (r *Repository) LoadChatTransactions(ctx context.Context, limit int, forgot
 	for rows.Next() {
 		var item consultation.Transaction
 		var transactionType, importedAt string
-		if err := rows.Scan(&item.Date, &item.Amount, &item.Category, &transactionType, &importedAt); err != nil {
+		var linked bool
+		if err := rows.Scan(&item.Date, &item.Amount, &item.Category, &transactionType, &importedAt, &linked); err != nil {
 			return nil, coverage, err
 		}
 		if transactionType != "expense" || (forgottenAt != "" && importedAt <= forgottenAt) {
+			continue
+		}
+		if linked {
+			coverage.LinkedExcluded++
 			continue
 		}
 		category := []rune(consultation.Redact(item.Category))

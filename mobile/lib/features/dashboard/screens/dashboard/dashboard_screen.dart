@@ -1,3 +1,4 @@
+import '../../../transactions/repository/reconciliation_repository.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -16,9 +17,12 @@ class DashboardScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final dashboard = ref.watch(dashboardViewModelProvider).data;
     return RefreshIndicator(
-      onRefresh: () => ref
-          .read(dashboardViewModelProvider.notifier)
-          .dispatch(const RefreshDashboard()),
+      onRefresh: () async {
+        ref.invalidate(expenseCountProvider);
+        await ref
+            .read(dashboardViewModelProvider.notifier)
+            .dispatch(const RefreshDashboard());
+      },
       child: dashboard.when(
         loading: () => ListView(
           children: [
@@ -43,13 +47,13 @@ class DashboardScreen extends ConsumerWidget {
   }
 }
 
-class _DashboardBody extends StatelessWidget {
+class _DashboardBody extends ConsumerWidget {
   const _DashboardBody({required this.data});
 
   final Dashboard data;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final progress = data.monthlyFreeBudget == 0
         ? 0.0
         : (data.freeExpenseTotal / data.monthlyFreeBudget).clamp(0.0, 1.0);
@@ -170,6 +174,7 @@ class _DashboardBody extends StatelessWidget {
           icon: const Icon(Icons.upload_file_outlined),
           label: const Text('CSVを追加する'),
         ),
+        _ExpenseCountCard(),
         const SizedBox(height: 24),
         const SectionTitle('直近の支出'),
         const SizedBox(height: 10),
@@ -229,6 +234,41 @@ class _MetricCard extends StatelessWidget {
               style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ExpenseCountCard extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final value = ref.watch(expenseCountProvider);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: value.when(
+          loading: () => const Text('支出件数を確認中'),
+          error: (e, s) => TextButton(
+            onPressed: () => ref.invalidate(expenseCountProvider),
+            child: const Text('支出件数を再取得'),
+          ),
+          data: (c) => Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '支出件数（CSV＋購入実績・全期間）',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              Text(
+                '日付あり ${c.confirmed}件（うち推定 ${c.estimated}件）／日付不明 ${c.undated}件',
+              ),
+              Text('照合未確定 ${c.unresolved}件／金融再計算待ち ${c.pendingRecalculation}件'),
+              const Text(
+                '日付不明は日付ありに含みません。CSV記載日を使う場合があります。旧月次の金額集計とは範囲が異なります。',
+              ),
+            ],
+          ),
         ),
       ),
     );

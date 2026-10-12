@@ -75,6 +75,7 @@ type Transaction struct {
 	Category string `json:"category"`
 }
 type TransactionCoverage struct {
+	LinkedExcluded int    `json:"linked_excluded"`
 	Partial        bool   `json:"partial"`
 	CandidateLimit int    `json:"candidate_limit"`
 	StartDate      string `json:"start_date"`
@@ -85,32 +86,35 @@ type HistoricalMessage struct {
 	Message
 }
 type Reply struct {
-	PurchaseChange        *PurchaseChange  `json:"purchase_change"`
-	PurchaseTargetUnclear bool             `json:"purchase_target_unclear"`
-	PurchaseUpdates       []PurchaseUpdate `json:"purchase_updates"`
-	Status                string           `json:"status"`
-	Answer                string           `json:"answer"`
-	Reason                string           `json:"reason"`
-	Assumptions           string           `json:"assumptions"`
-	Question              string           `json:"question"`
-	PlannedAmount         *int64           `json:"planned_amount"`
-	Changes               []Change         `json:"changes"`
-	Strictness            *int             `json:"strictness"`
+	ReconciliationUpdates []ReconciliationUpdate `json:"reconciliation_updates"`
+	PurchaseChange        *PurchaseChange        `json:"purchase_change"`
+	PurchaseTargetUnclear bool                   `json:"purchase_target_unclear"`
+	PurchaseUpdates       []PurchaseUpdate       `json:"purchase_updates"`
+	Status                string                 `json:"status"`
+	Answer                string                 `json:"answer"`
+	Reason                string                 `json:"reason"`
+	Assumptions           string                 `json:"assumptions"`
+	Question              string                 `json:"question"`
+	PlannedAmount         *int64                 `json:"planned_amount"`
+	Changes               []Change               `json:"changes"`
+	Strictness            *int                   `json:"strictness"`
 }
 type Input struct {
-	ValidationFeedback  string              `json:"validation_feedback"`
-	PendingPurchase     *PendingPurchase    `json:"pending_purchase"`
-	Purchases           []Purchase          `json:"purchases"`
-	AutoConfirmIDs      []string            `json:"auto_confirm_ids"`
-	PurchaseCoverage    PurchaseCoverage    `json:"purchase_coverage"`
-	Transactions        []Transaction       `json:"transactions"`
-	TransactionCoverage TransactionCoverage `json:"transaction_coverage"`
-	RelatedHistory      []HistoricalMessage `json:"related_history"`
-	Now                 string              `json:"now"`
-	Message             string              `json:"message"`
-	History             []Message           `json:"history"`
-	Facts               []Fact              `json:"facts"`
-	Strictness          int                 `json:"strictness"`
+	ReconciliationContext     []ReconciliationContext `json:"reconciliation_context"`
+	ReconciliationRequiredIDs []string                `json:"reconciliation_required_ids"`
+	ValidationFeedback        string                  `json:"validation_feedback"`
+	PendingPurchase           *PendingPurchase        `json:"pending_purchase"`
+	Purchases                 []Purchase              `json:"purchases"`
+	AutoConfirmIDs            []string                `json:"auto_confirm_ids"`
+	PurchaseCoverage          PurchaseCoverage        `json:"purchase_coverage"`
+	Transactions              []Transaction           `json:"transactions"`
+	TransactionCoverage       TransactionCoverage     `json:"transaction_coverage"`
+	RelatedHistory            []HistoricalMessage     `json:"related_history"`
+	Now                       string                  `json:"now"`
+	Message                   string                  `json:"message"`
+	History                   []Message               `json:"history"`
+	Facts                     []Fact                  `json:"facts"`
+	Strictness                int                     `json:"strictness"`
 }
 type Agent interface {
 	Advise(context.Context, Input) (Reply, error)
@@ -123,6 +127,7 @@ type Repository interface {
 	SaveChatTurn(context.Context, State, Thread) (Thread, error)
 }
 type Service struct {
+	Reconciliation       ReconciliationRepository
 	Repository           Repository
 	Agent                Agent
 	Now                  func() time.Time
@@ -175,7 +180,37 @@ func (s Service) Send(ctx context.Context, id int64, message string) (Thread, er
 		return Thread{}, err
 	}
 	input.RelatedHistory = relatedHistory(pastThreads, input.Message, state.Facts)
-	input.Purchases, input.PurchaseCoverage = modelPurchases(state, input.Message, id)
+	var forced []string
+	if s.Reconciliation != nil {
+		input.ReconciliationContext, err = s.Reconciliation.LoadReconciliations(ctx, latestForgetAt(state.Facts))
+		if err != nil {
+			return Thread{}, err
+		}
+		for _, c := range input.ReconciliationContext {
+			forced = append(forced, c.PurchaseID)
+		}
+	}
+	input.Purchases, input.PurchaseCoverage = modelPurchases(state, input.Message, id, forced...)
+	if s.Reconciliation != nil {
+		selected := map[string]bool{}
+		for _, p := range input.Purchases {
+			selected[p.ID] = true
+			needs, e := s.Reconciliation.RequiresCSVReconciliation(ctx, p.ID)
+			if e != nil {
+				return Thread{}, e
+			}
+			if needs {
+				input.ReconciliationRequiredIDs = append(input.ReconciliationRequiredIDs, p.ID)
+			}
+		}
+		contexts := []ReconciliationContext{}
+		for _, c := range input.ReconciliationContext {
+			if selected[c.PurchaseID] {
+				contexts = append(contexts, c)
+			}
+		}
+		input.ReconciliationContext = contexts
+	}
 	for _, p := range input.Purchases {
 		if pending(p) && p.ActualAmount == nil && p.SecondAskedAt != "" {
 			input.AutoConfirmIDs = append(input.AutoConfirmIDs, p.ID)
@@ -204,6 +239,9 @@ func (s Service) Send(ctx context.Context, id int64, message string) (Thread, er
 			}
 			if agentErr == nil {
 				agentErr = Validate(reply)
+				if agentErr == nil {
+					agentErr = validateReconciliation(reply, input)
+				}
 				if agentErr == nil {
 					agentErr = validatePurchases(reply, input)
 				}
@@ -253,6 +291,7 @@ func (s Service) Send(ctx context.Context, id int64, message string) (Thread, er
 	}
 	if agentErr == nil {
 		applyPurchases(&state, &thread, reply, input, completedTimestamp)
+		applyReconciliation(&state, reply, input, completedTimestamp)
 	}
 	// Asking again is a stored lifecycle step, never a financial calculation.
 	second := ""
@@ -318,7 +357,7 @@ func Validate(r Reply) error {
 		return errors.New("too many fact changes")
 	}
 	for _, c := range r.Changes {
-		if c.Basis != "" && c.Basis != "purchase" && c.Basis != "user_report" && c.Basis != "memory" {
+		if c.Basis != "" && c.Basis != "purchase" && c.Basis != "user_report" && c.Basis != "memory" && c.Basis != "reconciliation" {
 			return errors.New("invalid fact basis")
 		}
 		if c.Key == "" || len(c.Key) > 120 || len(c.Value) > 2000 || len(c.Period) > 100 {

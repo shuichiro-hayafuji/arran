@@ -85,7 +85,7 @@ func chatProjection(item domain.Consultation, t consultation.Thread) domain.Cons
 		item.PendingPurchase = &domain.PendingPurchase{Description: t.PendingPurchase.Description, Amount: t.PendingPurchase.Amount, RecordedAt: t.PendingPurchase.RecordedAt, Status: t.PendingPurchase.Status}
 	}
 	for _, p := range t.Purchases {
-		out := domain.Purchase{BalanceAppliedAmount: p.BalanceAppliedAmount, FreeBudgetAppliedAmount: p.FreeBudgetAppliedAmount, ID: p.ID, ConsultationID: p.ConsultationID, Description: p.Description, Amount: p.Amount, RecordedAt: p.RecordedAt, Status: p.Status, FirstAskedAt: p.FirstAskedAt, SecondAskedAt: p.SecondAskedAt, ActualAmount: p.ActualAmount, Classification: p.Classification}
+		out := domain.Purchase{ActualAmountBasis: p.ActualAmountBasis, PurchaseDate: p.PurchaseDate, CSVReconciliationPending: p.CSVReconciliationPending, BalanceAppliedAmount: p.BalanceAppliedAmount, FreeBudgetAppliedAmount: p.FreeBudgetAppliedAmount, ID: p.ID, ConsultationID: p.ConsultationID, Description: p.Description, Amount: p.Amount, RecordedAt: p.RecordedAt, Status: p.Status, FirstAskedAt: p.FirstAskedAt, SecondAskedAt: p.SecondAskedAt, ActualAmount: p.ActualAmount, Classification: p.Classification}
 		for _, e := range p.Events {
 			out.Events = append(out.Events, domain.PurchaseEvent{BalanceAppliedAmount: e.BalanceAppliedAmount, FreeBudgetAppliedAmount: e.FreeBudgetAppliedAmount, BalanceBasis: e.BalanceBasis, Outcome: e.Outcome, Amount: e.Amount, Classification: e.Classification, RecordedAt: e.RecordedAt, Source: e.Source})
 		}

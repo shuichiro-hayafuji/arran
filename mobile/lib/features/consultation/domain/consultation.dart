@@ -16,6 +16,7 @@ class ChatMessage {
 class Consultation {
   const Consultation({
     this.messages = const [],
+    this.purchases = const [],
     required this.id,
     required this.createdAt,
     required this.userMessage,
@@ -38,6 +39,7 @@ class Consultation {
   });
 
   final List<ChatMessage> messages;
+  final List<ChatPurchase> purchases;
   final int id;
   final String createdAt;
   final String userMessage;
@@ -57,4 +59,15 @@ class Consultation {
   final String responseSource;
   final bool needsFollowUp;
   final String followUpQuestion;
+}
+
+class ChatPurchase {
+  const ChatPurchase({
+    required this.id,
+    required this.description,
+    required this.csvPending,
+  });
+  final String id;
+  final String description;
+  final bool csvPending;
 }

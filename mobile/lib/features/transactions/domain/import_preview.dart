@@ -4,6 +4,7 @@ import 'transaction_item.dart';
 class ImportPreview {
   const ImportPreview({
     this.identityConflicts = const [],
+    this.reconciliationConflicts = const [],
     this.identityNotice = "",
     required this.previewId,
     required this.detectedEncoding,
@@ -19,6 +20,7 @@ class ImportPreview {
   });
 
   final List<ImportIdentityConflict> identityConflicts;
+  final List<PurchaseCsvConflict> reconciliationConflicts;
   final String identityNotice;
   final String previewId;
   final String detectedEncoding;
@@ -57,4 +59,51 @@ class ImportIdentityConflict {
   final TransactionItem transaction;
   final List<TransactionItem> candidates;
   final Map<int, String> candidateSnapshots;
+}
+
+class PurchaseCsvDecision {
+  const PurchaseCsvDecision({
+    required this.row,
+    required this.action,
+    required this.stateVersion,
+    this.purchaseId = '',
+    this.snapshot = '',
+  });
+  final int row;
+  final String action;
+  final String purchaseId;
+  final String snapshot;
+  final int stateVersion;
+}
+
+class PurchaseCsvCandidate {
+  const PurchaseCsvCandidate({
+    required this.id,
+    required this.description,
+    required this.amount,
+    required this.recordedAt,
+    required this.snapshot,
+    this.status = '',
+    this.purchaseDate = '',
+  });
+  final String id;
+  final String description;
+  final int amount;
+  final String recordedAt;
+  final String snapshot;
+  final String status;
+  final String purchaseDate;
+}
+
+class PurchaseCsvConflict {
+  const PurchaseCsvConflict({
+    required this.row,
+    required this.transaction,
+    required this.candidates,
+    required this.stateVersion,
+  });
+  final int row;
+  final TransactionItem transaction;
+  final List<PurchaseCsvCandidate> candidates;
+  final int stateVersion;
 }

@@ -125,3 +125,9 @@ docker compose down -v
 011 migrationの`chat_requests`は受付metadataと保存結果を保持する。期限はUnix epochミリ秒のBIGINT、結果はThread JSON。受付と月次予約、結果と業務保存、失敗と予約解放をそれぞれ同じtxで確定する。[受付契約](consultation-requests.md)を参照。
 
 012のCSVキー移行は[明細同一性・移行契約](csv-identity.md)を参照。transactionsにidentity_version/legacy_fingerprint/provider_transaction_id/import_file_keyを追加する。分類・row ID・原文を保持し、aliasと同時に原子的に移行する。
+
+## 購入とCSVの対応（013 / SQLite007）
+
+purchase_csv_decisionsはowner/transaction/purchaseを主キーとし、same/distinct、原CSV snapshot、最新購入revision、包含状態とpending/needs_information/appliedを保持する。sameはowner付きtransactionとpurchaseの各々にpartial unique indexを持つ。purchase_csv_receiptsはowner/ref/purchase_revisionごとの金融結果、balance_resolved/budget_resolved、state versionを保存する。銀行明細と対応への複合FKでownerを一致させる。購入本体は既存chat state JSONを維持する。
+
+CSVキー/alias/file-row対応と照合の保存は同じtx、金融receiptと相談/state/イベントの保存は既存SaveChatTurnの同じtx。移行は既存SQLを変更せず新番号で適用し、DDL途中失敗と同時起動を両DB回帰で検証する。[照合契約](purchase-csv-reconciliation.md)を参照。

@@ -84,6 +84,9 @@ func (r *Repository) SaveChatTurn(ctx context.Context, state consultation.State,
 	if _, err = tx.ExecContext(ctx, query("INSERT INTO chat_states(user_id,version,payload) VALUES(:user_id,0,'{}') ON CONFLICT(user_id) DO NOTHING")); err != nil {
 		return consultation.Thread{}, err
 	}
+	if _, err = tx.ExecContext(ctx, "SELECT pg_advisory_xact_lock($1)", -identity.UserID(ctx)-1); err != nil {
+		return consultation.Thread{}, err
+	}
 	var version int64
 	if err = tx.QueryRowContext(ctx, query("SELECT version FROM chat_states WHERE user_id=:user_id FOR UPDATE")).Scan(&version); err != nil {
 		return consultation.Thread{}, err
@@ -127,6 +130,9 @@ func (r *Repository) SaveChatTurn(ctx context.Context, state consultation.State,
 		if strings.HasPrefix(state.Facts[i].Source, "chat:0:") {
 			state.Facts[i].Source = strings.Replace(state.Facts[i].Source, "chat:0:", "chat:"+strconv.FormatInt(thread.ID, 10)+":", 1)
 		}
+	}
+	if err = syncReconciliationReceipts(ctx, tx, state, thread.Reply); err != nil {
+		return consultation.Thread{}, err
 	}
 	state.Version++
 	thread.Version++
@@ -269,6 +275,14 @@ func (r *Repository) LoadChatTransactions(ctx context.Context, limit int, forgot
 	var result []consultation.Transaction
 	for _, row := range rows {
 		if row.TransactionType != "expense" || (forgottenAt != "" && row.ImportedAt <= forgottenAt) {
+			continue
+		}
+		var linked int
+		if e := r.db.QueryRowContext(ctx, userQuery(ctx, "SELECT count(*) FROM purchase_csv_decisions WHERE user_id=:user_id AND transaction_id=? AND action='same'"), row.ID).Scan(&linked); e != nil {
+			return nil, coverage, e
+		}
+		if linked > 0 {
+			coverage.LinkedExcluded++
 			continue
 		}
 		category := []rune(consultation.Redact(row.Category))

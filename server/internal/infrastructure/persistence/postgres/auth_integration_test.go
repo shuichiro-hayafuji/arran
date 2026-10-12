@@ -316,7 +316,7 @@ func TestPostgresOwnershipAndSessions(t *testing.T) {
 			emptyMeasuredCost,
 		)
 	}
-	t.Cleanup(func() { verifyPostgresChat(t, r, ca, cb) })
+	t.Cleanup(func() { verifyPostgresChat(t, r, ca, cb); verifyReconciliationIntegration(t) })
 	if _, err = r.GetProfile(ca); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("legacy data exposed: %v", err)
 	}
