@@ -55,7 +55,7 @@ extension ImportIntentPatterns on ImportIntent {
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( SelectImportFile value)?  selectFile,TResult Function( ApplyImportMapping value)?  applyMapping,TResult Function( SetImportSource value)?  setSource,TResult Function( ResolveImportIdentities value)?  resolveIdentities,TResult Function( ResolveImportPurchases value)?  resolvePurchases,TResult Function( CommitImport value)?  commit,TResult Function( ResetImport value)?  reset,required TResult orElse(),}){
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( SelectImportFile value)?  selectFile,TResult Function( ApplyImportMapping value)?  applyMapping,TResult Function( SetImportSource value)?  setSource,TResult Function( ResolveImportIdentities value)?  resolveIdentities,TResult Function( ResolveImportPurchases value)?  resolvePurchases,TResult Function( ConfirmImportReactivation value)?  confirmReactivation,TResult Function( CommitImport value)?  commit,TResult Function( ResetImport value)?  reset,required TResult orElse(),}){
 final _that = this;
 switch (_that) {
 case SelectImportFile() when selectFile != null:
@@ -63,7 +63,8 @@ return selectFile(_that);case ApplyImportMapping() when applyMapping != null:
 return applyMapping(_that);case SetImportSource() when setSource != null:
 return setSource(_that);case ResolveImportIdentities() when resolveIdentities != null:
 return resolveIdentities(_that);case ResolveImportPurchases() when resolvePurchases != null:
-return resolvePurchases(_that);case CommitImport() when commit != null:
+return resolvePurchases(_that);case ConfirmImportReactivation() when confirmReactivation != null:
+return confirmReactivation(_that);case CommitImport() when commit != null:
 return commit(_that);case ResetImport() when reset != null:
 return reset(_that);case _:
   return orElse();
@@ -83,7 +84,7 @@ return reset(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( SelectImportFile value)  selectFile,required TResult Function( ApplyImportMapping value)  applyMapping,required TResult Function( SetImportSource value)  setSource,required TResult Function( ResolveImportIdentities value)  resolveIdentities,required TResult Function( ResolveImportPurchases value)  resolvePurchases,required TResult Function( CommitImport value)  commit,required TResult Function( ResetImport value)  reset,}){
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( SelectImportFile value)  selectFile,required TResult Function( ApplyImportMapping value)  applyMapping,required TResult Function( SetImportSource value)  setSource,required TResult Function( ResolveImportIdentities value)  resolveIdentities,required TResult Function( ResolveImportPurchases value)  resolvePurchases,required TResult Function( ConfirmImportReactivation value)  confirmReactivation,required TResult Function( CommitImport value)  commit,required TResult Function( ResetImport value)  reset,}){
 final _that = this;
 switch (_that) {
 case SelectImportFile():
@@ -91,7 +92,8 @@ return selectFile(_that);case ApplyImportMapping():
 return applyMapping(_that);case SetImportSource():
 return setSource(_that);case ResolveImportIdentities():
 return resolveIdentities(_that);case ResolveImportPurchases():
-return resolvePurchases(_that);case CommitImport():
+return resolvePurchases(_that);case ConfirmImportReactivation():
+return confirmReactivation(_that);case CommitImport():
 return commit(_that);case ResetImport():
 return reset(_that);}
 }
@@ -107,7 +109,7 @@ return reset(_that);}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( SelectImportFile value)?  selectFile,TResult? Function( ApplyImportMapping value)?  applyMapping,TResult? Function( SetImportSource value)?  setSource,TResult? Function( ResolveImportIdentities value)?  resolveIdentities,TResult? Function( ResolveImportPurchases value)?  resolvePurchases,TResult? Function( CommitImport value)?  commit,TResult? Function( ResetImport value)?  reset,}){
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( SelectImportFile value)?  selectFile,TResult? Function( ApplyImportMapping value)?  applyMapping,TResult? Function( SetImportSource value)?  setSource,TResult? Function( ResolveImportIdentities value)?  resolveIdentities,TResult? Function( ResolveImportPurchases value)?  resolvePurchases,TResult? Function( ConfirmImportReactivation value)?  confirmReactivation,TResult? Function( CommitImport value)?  commit,TResult? Function( ResetImport value)?  reset,}){
 final _that = this;
 switch (_that) {
 case SelectImportFile() when selectFile != null:
@@ -115,7 +117,8 @@ return selectFile(_that);case ApplyImportMapping() when applyMapping != null:
 return applyMapping(_that);case SetImportSource() when setSource != null:
 return setSource(_that);case ResolveImportIdentities() when resolveIdentities != null:
 return resolveIdentities(_that);case ResolveImportPurchases() when resolvePurchases != null:
-return resolvePurchases(_that);case CommitImport() when commit != null:
+return resolvePurchases(_that);case ConfirmImportReactivation() when confirmReactivation != null:
+return confirmReactivation(_that);case CommitImport() when commit != null:
 return commit(_that);case ResetImport() when reset != null:
 return reset(_that);case _:
   return null;
@@ -134,14 +137,15 @@ return reset(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( String filePath,  String fileName)?  selectFile,TResult Function( CsvMapping mapping)?  applyMapping,TResult Function( String source,  String accountName)?  setSource,TResult Function( List<ImportIdentityDecision> decisions)?  resolveIdentities,TResult Function( List<PurchaseCsvDecision> decisions)?  resolvePurchases,TResult Function()?  commit,TResult Function()?  reset,required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( String filePath,  String fileName)?  selectFile,TResult Function( CsvMapping mapping)?  applyMapping,TResult Function( String source,  String accountName)?  setSource,TResult Function( List<ImportIdentityDecision> decisions)?  resolveIdentities,TResult Function( List<PurchaseCsvDecision> decisions)?  resolvePurchases,TResult Function()?  confirmReactivation,TResult Function()?  commit,TResult Function()?  reset,required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case SelectImportFile() when selectFile != null:
 return selectFile(_that.filePath,_that.fileName);case ApplyImportMapping() when applyMapping != null:
 return applyMapping(_that.mapping);case SetImportSource() when setSource != null:
 return setSource(_that.source,_that.accountName);case ResolveImportIdentities() when resolveIdentities != null:
 return resolveIdentities(_that.decisions);case ResolveImportPurchases() when resolvePurchases != null:
-return resolvePurchases(_that.decisions);case CommitImport() when commit != null:
+return resolvePurchases(_that.decisions);case ConfirmImportReactivation() when confirmReactivation != null:
+return confirmReactivation();case CommitImport() when commit != null:
 return commit();case ResetImport() when reset != null:
 return reset();case _:
   return orElse();
@@ -161,14 +165,15 @@ return reset();case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( String filePath,  String fileName)  selectFile,required TResult Function( CsvMapping mapping)  applyMapping,required TResult Function( String source,  String accountName)  setSource,required TResult Function( List<ImportIdentityDecision> decisions)  resolveIdentities,required TResult Function( List<PurchaseCsvDecision> decisions)  resolvePurchases,required TResult Function()  commit,required TResult Function()  reset,}) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( String filePath,  String fileName)  selectFile,required TResult Function( CsvMapping mapping)  applyMapping,required TResult Function( String source,  String accountName)  setSource,required TResult Function( List<ImportIdentityDecision> decisions)  resolveIdentities,required TResult Function( List<PurchaseCsvDecision> decisions)  resolvePurchases,required TResult Function()  confirmReactivation,required TResult Function()  commit,required TResult Function()  reset,}) {final _that = this;
 switch (_that) {
 case SelectImportFile():
 return selectFile(_that.filePath,_that.fileName);case ApplyImportMapping():
 return applyMapping(_that.mapping);case SetImportSource():
 return setSource(_that.source,_that.accountName);case ResolveImportIdentities():
 return resolveIdentities(_that.decisions);case ResolveImportPurchases():
-return resolvePurchases(_that.decisions);case CommitImport():
+return resolvePurchases(_that.decisions);case ConfirmImportReactivation():
+return confirmReactivation();case CommitImport():
 return commit();case ResetImport():
 return reset();}
 }
@@ -184,14 +189,15 @@ return reset();}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( String filePath,  String fileName)?  selectFile,TResult? Function( CsvMapping mapping)?  applyMapping,TResult? Function( String source,  String accountName)?  setSource,TResult? Function( List<ImportIdentityDecision> decisions)?  resolveIdentities,TResult? Function( List<PurchaseCsvDecision> decisions)?  resolvePurchases,TResult? Function()?  commit,TResult? Function()?  reset,}) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( String filePath,  String fileName)?  selectFile,TResult? Function( CsvMapping mapping)?  applyMapping,TResult? Function( String source,  String accountName)?  setSource,TResult? Function( List<ImportIdentityDecision> decisions)?  resolveIdentities,TResult? Function( List<PurchaseCsvDecision> decisions)?  resolvePurchases,TResult? Function()?  confirmReactivation,TResult? Function()?  commit,TResult? Function()?  reset,}) {final _that = this;
 switch (_that) {
 case SelectImportFile() when selectFile != null:
 return selectFile(_that.filePath,_that.fileName);case ApplyImportMapping() when applyMapping != null:
 return applyMapping(_that.mapping);case SetImportSource() when setSource != null:
 return setSource(_that.source,_that.accountName);case ResolveImportIdentities() when resolveIdentities != null:
 return resolveIdentities(_that.decisions);case ResolveImportPurchases() when resolvePurchases != null:
-return resolvePurchases(_that.decisions);case CommitImport() when commit != null:
+return resolvePurchases(_that.decisions);case ConfirmImportReactivation() when confirmReactivation != null:
+return confirmReactivation();case CommitImport() when commit != null:
 return commit();case ResetImport() when reset != null:
 return reset();case _:
   return null;
@@ -546,6 +552,38 @@ as List<PurchaseCsvDecision>,
 
 
 }
+
+/// @nodoc
+
+
+class ConfirmImportReactivation extends ImportIntent {
+  const ConfirmImportReactivation(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is ConfirmImportReactivation);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+  return 'ImportIntent.confirmReactivation()';
+}
+
+
+}
+
+
+
 
 /// @nodoc
 

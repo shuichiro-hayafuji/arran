@@ -25,6 +25,7 @@ var jst = time.FixedZone("Asia/Tokyo", 9*60*60)
 func IsNotFound(err error) bool { return errors.Is(err, domain.ErrNotFound) }
 
 type Application struct {
+	imports            ImportManagementRepository
 	reconciliation     ReconciliationRepository
 	requests           consultation.RequestRepository
 	requestBudget      time.Duration
@@ -126,7 +127,9 @@ type Repository interface {
 }
 
 type Config struct {
+	ChatDataChanges          consultation.DataChangeRepository
 	ChatReconciliation       consultation.ReconciliationRepository
+	ImportManagement         ImportManagementRepository
 	ReconciliationRepository ReconciliationRepository
 	RequestRepository        consultation.RequestRepository
 	RequestBudget            time.Duration
@@ -161,16 +164,23 @@ func New(config Config) *Application {
 	if config.RequestContext == nil {
 		config.RequestContext = context.Background()
 	}
+	if config.ChatDataChanges == nil {
+		config.ChatDataChanges, _ = config.ChatRepository.(consultation.DataChangeRepository)
+	}
 	if config.ChatReconciliation == nil {
 		config.ChatReconciliation, _ = config.ChatRepository.(consultation.ReconciliationRepository)
 	}
 	if config.ReconciliationRepository == nil {
 		config.ReconciliationRepository, _ = config.Repository.(ReconciliationRepository)
 	}
+	if config.ImportManagement == nil {
+		config.ImportManagement, _ = config.Repository.(ImportManagementRepository)
+	}
 	return &Application{
+		imports:        config.ImportManagement,
 		reconciliation: config.ReconciliationRepository,
 		requests:       config.RequestRepository, requestBudget: config.RequestBudget, requestSaveReserve: config.RequestSaveReserve, requestsContext: config.RequestContext,
-		chat:              consultation.Service{Reconciliation: config.ChatReconciliation, Repository: config.ChatRepository, Agent: config.ChatAgent, Now: now},
+		chat:              consultation.Service{DataChanges: config.ChatDataChanges, Reconciliation: config.ChatReconciliation, Repository: config.ChatRepository, Agent: config.ChatAgent, Now: now},
 		repository:        config.Repository,
 		consultationAgent: config.ConsultationAgent,
 		fallbackAgent:     config.FallbackAgent,
@@ -213,6 +223,7 @@ func (s *Application) previewImport(
 	account string,
 	identityDecisions []domain.ImportIdentityDecision,
 	reconciliationDecisions []domain.ReconciliationDecision,
+	options domain.ImportPreviewOptions,
 ) (domain.ImportPreview, error) {
 	rules, err := s.repository.MerchantRules(ctx)
 	if err != nil {
@@ -313,8 +324,20 @@ func (s *Application) previewImport(
 			preview.ExpenseTotal += transaction.Amount
 		}
 	}
-	if !parsed.NeedsMapping && len(conflicts) == 0 && len(reconciliationConflicts) == 0 {
+	var reactivationIDs []int64
+	if s.imports != nil && !parsed.NeedsMapping {
+		reactivationIDs, err = s.imports.ReactivationCandidates(ctx, parsed.Transactions)
+		if err != nil {
+			return domain.ImportPreview{}, err
+		}
+	}
+	preview.ReactivationIDs = reactivationIDs
+	if !parsed.NeedsMapping && len(conflicts) == 0 && len(reconciliationConflicts) == 0 && (len(reactivationIDs) == 0 || options.ConfirmReactivation) {
 		preview.PreviewID = randomID()
+		meta := domain.ImportMetadata{CommitKey: preview.PreviewID, FileName: options.FileName, Encoding: parsed.Encoding, Mapping: parsed.Mapping, ConfirmReactivation: options.ConfirmReactivation}
+		for i := range parsed.Transactions {
+			parsed.Transactions[i].ImportMetadata = &meta
+		}
 		s.previewMu.Lock()
 		s.cleanupPreviewsLocked()
 		s.previews[preview.PreviewID] = cachedPreview{
@@ -333,6 +356,15 @@ func (s *Application) CommitImport(
 	ctx context.Context,
 	previewID string,
 ) (domain.ImportCommitResult, error) {
+	if s.imports != nil {
+		result, err := s.imports.ImportCommit(ctx, previewID)
+		if err == nil {
+			return result, nil
+		}
+		if !errors.Is(err, domain.ErrNotFound) {
+			return domain.ImportCommitResult{}, err
+		}
+	}
 	s.previewMu.Lock()
 	cached, ok := s.previews[previewID]
 	ok = ok && cached.userID == identity.UserID(ctx)

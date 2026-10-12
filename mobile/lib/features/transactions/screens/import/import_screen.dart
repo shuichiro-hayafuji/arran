@@ -161,6 +161,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
               onCommit: () => controller.dispatch(const CommitImport()),
               loading:
                   state.loading ||
+                  state.preview!.previewId.isEmpty ||
                   dirty ||
                   state.preview!.identityConflicts.isNotEmpty ||
                   state.preview!.reconciliationConflicts.isNotEmpty,
@@ -186,6 +187,17 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
                   controller.dispatch(ResolveImportPurchases(values)),
             ),
           ],
+          if (state.preview?.reactivationIds.isNotEmpty == true &&
+              !state.confirmReactivation) ...[
+            const Text('取消済みの明細が含まれています。同じ明細と最新訂正を保持して再び有効にします。残高は自動変更しません。'),
+            TextButton(
+              onPressed: state.loading || dirty
+                  ? null
+                  : () =>
+                        controller.dispatch(const ConfirmImportReactivation()),
+              child: const Text('取消済み明細の再有効化を確認'),
+            ),
+          ],
           if (state.commitResult != null) ...[
             const SizedBox(height: 20),
             Card(
@@ -203,6 +215,14 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
                       ),
                     ),
                     Text('重複 ${state.commitResult!.duplicateCount}件'),
+                    if (state.commitResult!.reactivatedCount > 0)
+                      Text('再有効化 ${state.commitResult!.reactivatedCount}件'),
+                    TextButton(
+                      onPressed: () => context.push(
+                        '/imports/${state.commitResult!.importId}',
+                      ),
+                      child: const Text('この取込の履歴を見る'),
+                    ),
                     const Text(
                       '購入との照合は保存済みです。残高・自由予算の反映に確認が必要な場合は、次のチャットで質問します。',
                     ),

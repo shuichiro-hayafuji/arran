@@ -3,6 +3,8 @@ package domain
 // Transaction はCSVから正規化した明細。Amount は整数の円で、入出金は TransactionType で区別する。
 // RawData にはCSV原文を保持するため、この型をそのままLLMへ送信しない。
 type Transaction struct {
+	ImportMetadata            *ImportMetadata         `json:"-"`
+	Revision                  int64                   `json:"revision"`
 	Reconciliation            *ReconciliationDecision `json:"-"`
 	IdentityVersion           int                     `json:"-"`
 	ProviderTransactionID     string                  `json:"-"`

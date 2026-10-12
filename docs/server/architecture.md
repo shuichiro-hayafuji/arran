@@ -97,3 +97,7 @@ PostgreSQLは一つのまま利用するが、テーブルの論理的な所有�
 購入確認は`consultation`がモデル・状態遷移・ReminderRepository Portを所有する。`ReminderWorker`は起動時と1分ごとに期限を検索し、金融計算を行わず同じチャットへ確認を追加する。`app`がPostgreSQLと所有者context付き配信を接続し、Close時にworkerを停止する。期限索引・利用者状態・複数原チャットの更新はPostgreSQL Adapterの同じtransactionで扱う。
 
 購入とCSVの照合は既存ApplicationのReconciliationRepositoryとconsultationのReconciliationPortをcomposition rootで組み立てる。記録同一性をDBに保存し、限定モデルDTO・構造検証・既存SaveChatTurnへ接続する。新しい金融計算器や全面ledgerを置かず、再計算を通常の相談receiptの寿命に収める。CSV確定によるchat state version更新で進行中の古い相談保存を拒否する。[照合契約](../../server/docs/purchase-csv-reconciliation.md)を参照。
+
+## CSV取込管理の保存境界
+
+Issue #34は既存transactionsへeffective列と有効読取viewを加え、取込全行evidenceとimmutable監査を保存する。ApplicationのImportManagementRepositoryは履歴・版付き訂正/取消・結果照会を担当し、金融計算をしない。consultation所有のDataChangeRepositoryは銀行操作の方向と前後tripletだけを読む。production composition rootはrepoを両portへ注入する。金融保留は既存chat receipt/28秒期限とSaveChatTurnのtxに接続し、新worker/queueやledgerを作らない。保留対象のローカルowner/ref→transaction FKは通常CSV tripletの二重提示を除外するために必要で、銀行識別子をモデルへ追加しない。詳細は[取込管理](../../server/docs/csv-import-management.md)。

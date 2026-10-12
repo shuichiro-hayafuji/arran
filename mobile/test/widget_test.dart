@@ -296,6 +296,7 @@ class FakeTransactionsRepository implements TransactionsRepository {
 
   @override
   Future<ImportPreview> previewImport({
+    bool confirmReactivation = false,
     required String filePath,
     required String fileName,
     required String source,

@@ -11,6 +11,8 @@ import '../../features/transactions/screens/import/import_screen.dart';
 import '../../features/transactions/screens/detail/transaction_detail_screen.dart';
 import '../../features/transactions/screens/list/transactions_screen.dart';
 import 'navigation_shell.dart';
+import '../../features/transactions/screens/history/import_history_screen.dart';
+import '../../features/transactions/screens/history/management_screen.dart';
 import '../../features/session/provider/session_provider.dart';
 import '../../features/login/screens/login/login_screen.dart';
 
@@ -52,6 +54,15 @@ final appRouter = GoRouter(
           builder: (context, state) => const SettingsScreen(),
         ),
       ],
+    ),
+    GoRoute(
+      path: '/imports',
+      builder: (context, state) => const ImportHistoryScreen(),
+    ),
+    GoRoute(
+      path: '/imports/:id',
+      builder: (context, state) =>
+          ManagementScreen(id: state.pathParameters['id']!, isImport: true),
     ),
     GoRoute(path: '/import', builder: (context, state) => const ImportScreen()),
     GoRoute(

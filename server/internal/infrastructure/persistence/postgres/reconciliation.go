@@ -240,7 +240,7 @@ func (r *Repository) LoadReconciliations(ctx context.Context, cutoff string) ([]
 	if err != nil {
 		return nil, err
 	}
-	rows, err := r.db.QueryContext(ctx, userQuery(ctx, "SELECT d.ref,d.purchase_id,t.transaction_date,t.amount,t.category,d.prior_inclusion,d.balance_resolved,d.budget_resolved FROM purchase_csv_decisions d JOIN transactions t ON t.id=d.transaction_id AND t.user_id=d.user_id WHERE d.user_id=:user_id AND d.action='same' AND d.financial_status!='applied' AND t.imported_at>? ORDER BY d.recorded_at LIMIT 20"), cutoff)
+	rows, err := r.db.QueryContext(ctx, userQuery(ctx, "SELECT d.ref,d.purchase_id,t.transaction_date,t.amount,t.category,d.prior_inclusion,d.balance_resolved,d.budget_resolved FROM purchase_csv_decisions d JOIN effective_transactions t ON t.id=d.transaction_id AND t.user_id=d.user_id WHERE d.user_id=:user_id AND d.action='same' AND d.financial_status!='applied' AND t.imported_at>? ORDER BY d.recorded_at LIMIT 20"), cutoff)
 	if err != nil {
 		return nil, err
 	}
@@ -359,7 +359,7 @@ func (r *Repository) ExpenseCount(ctx context.Context, month string) (domain.Exp
 			}
 		}
 	}
-	rows, err := r.db.QueryContext(ctx, userQuery(ctx, "SELECT t.transaction_date,COALESCE(d.purchase_id,''),COALESCE(d.financial_status,'') FROM transactions t LEFT JOIN purchase_csv_decisions d ON d.transaction_id=t.id AND d.user_id=t.user_id AND d.action='same' WHERE t.user_id=:user_id AND t.transaction_type='expense'"))
+	rows, err := r.db.QueryContext(ctx, userQuery(ctx, "SELECT t.transaction_date,COALESCE(d.purchase_id,''),COALESCE(d.financial_status,'') FROM effective_transactions t LEFT JOIN purchase_csv_decisions d ON d.transaction_id=t.id AND d.user_id=t.user_id AND d.action='same' WHERE t.user_id=:user_id AND t.transaction_type='expense'"))
 	if err != nil {
 		return result, err
 	}
@@ -415,6 +415,11 @@ func (r *Repository) ExpenseCount(ctx context.Context, month string) (domain.Exp
 		estimated := consultation.ActualAmountProvenance(p) == "estimated"
 		add(date, estimated)
 	}
+	var pending int
+	if err = r.db.DB.QueryRowContext(ctx, userQuery(ctx, "SELECT count(*) FROM csv_financial_receipts WHERE user_id=:user_id AND status IN ('pending','needs_information') AND recorded_at>?"), forgottenCutoff(state)).Scan(&pending); err != nil {
+		return result, err
+	}
+	result.PendingRecalculation += pending
 	return result, nil
 }
 func (r *Repository) PurchaseCSVCandidates(ctx context.Context, purchaseID string) ([]domain.ReconciliationConflict, error) {
@@ -474,7 +479,7 @@ func (r *Repository) ResolvePurchaseCSV(ctx context.Context, id int64, d domain.
 		if d.Action != "distinct" || d.PurchaseID == "" {
 			return fmt.Errorf("CSV distinct-all purchase choice is invalid")
 		}
-		rows, e := tx.QueryContext(ctx, userQuery(ctx, "SELECT "+identityColumns+" FROM transactions t WHERE t.user_id=:user_id AND t.transaction_type='expense' AND t.imported_at>? AND NOT EXISTS(SELECT 1 FROM purchase_csv_decisions x WHERE x.user_id=t.user_id AND x.transaction_id=t.id AND (x.action='same' OR x.purchase_id=?)) ORDER BY t.id LIMIT 1001"), forgottenCutoff(state), d.PurchaseID)
+		rows, e := tx.QueryContext(ctx, userQuery(ctx, "SELECT "+identityColumns+" FROM effective_transactions t WHERE t.user_id=:user_id AND t.transaction_type='expense' AND t.imported_at>? AND NOT EXISTS(SELECT 1 FROM purchase_csv_decisions x WHERE x.user_id=t.user_id AND x.transaction_id=t.id AND (x.action='same' OR x.purchase_id=?)) ORDER BY t.id LIMIT 1001"), forgottenCutoff(state), d.PurchaseID)
 		if e != nil {
 			return e
 		}
@@ -495,7 +500,7 @@ func (r *Repository) ResolvePurchaseCSV(ctx context.Context, id int64, d domain.
 			return fmt.Errorf("CSV candidates changed or exceed the confirmation limit")
 		}
 	} else {
-		item, e := scanIdentity(tx.QueryRowContext(ctx, userQuery(ctx, "SELECT "+identityColumns+" FROM transactions t WHERE t.user_id=:user_id AND t.id=?"), id))
+		item, e := scanIdentity(tx.QueryRowContext(ctx, userQuery(ctx, "SELECT "+identityColumns+" FROM effective_transactions t WHERE t.user_id=:user_id AND t.id=?"), id))
 		if e != nil || item.ImportedAt <= forgottenCutoff(state) {
 			return consultation.ErrNotFound
 		}
@@ -528,7 +533,7 @@ func (r *Repository) RequiresCSVReconciliation(ctx context.Context, purchaseID s
 	}
 	cutoff := forgottenCutoff(state)
 	var count int
-	err = r.db.QueryRowContext(ctx, userQuery(ctx, "SELECT count(*) FROM transactions t WHERE t.user_id=:user_id AND t.transaction_type='expense' AND t.imported_at>? AND NOT EXISTS(SELECT 1 FROM purchase_csv_decisions d WHERE d.user_id=t.user_id AND d.transaction_id=t.id AND (d.action='same' OR d.purchase_id=?))"), cutoff, purchaseID).Scan(&count)
+	err = r.db.QueryRowContext(ctx, userQuery(ctx, "SELECT count(*) FROM effective_transactions t WHERE t.user_id=:user_id AND t.transaction_type='expense' AND t.imported_at>? AND NOT EXISTS(SELECT 1 FROM purchase_csv_decisions d WHERE d.user_id=t.user_id AND d.transaction_id=t.id AND (d.action='same' OR d.purchase_id=?))"), cutoff, purchaseID).Scan(&count)
 	return count > 0, err
 }
 

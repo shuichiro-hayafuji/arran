@@ -3,6 +3,7 @@ import 'transaction_item.dart';
 
 class ImportPreview {
   const ImportPreview({
+    this.reactivationIds = const [],
     this.identityConflicts = const [],
     this.reconciliationConflicts = const [],
     this.identityNotice = "",
@@ -19,6 +20,7 @@ class ImportPreview {
     required this.warnings,
   });
 
+  final List<int> reactivationIds;
   final List<ImportIdentityConflict> identityConflicts;
   final List<PurchaseCsvConflict> reconciliationConflicts;
   final String identityNotice;

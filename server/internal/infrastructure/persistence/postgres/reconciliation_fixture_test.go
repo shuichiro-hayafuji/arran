@@ -33,7 +33,7 @@ func openReconciliationRepository(t *testing.T) *Repository {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { repo.Close() })
-	for _, id := range []int{701, 702, 711, 712, 713, 714, 715, 901, 902, 920, 921, 922, 923, 924, 925, 926} {
+	for _, id := range []int{701, 702, 711, 712, 713, 714, 715, 901, 902, 3430, 3431, 3434, 3435, 3436, 3437, 3438, 3439, 3440, 920, 921, 922, 923, 924, 925, 926} {
 		if _, err = repo.db.Exec("INSERT INTO users(id,username,password_hash) VALUES($1,$2,'disabled-test-only')", id, fmt.Sprintf("fixture%d", id)); err != nil {
 			t.Fatal(err)
 		}
@@ -51,5 +51,10 @@ func verifyReconciliationIntegration(t *testing.T) {
 	verifyNotPurchasedBankConflictCannotDisappearWithBalanceEcho(t, r)
 	verifyLegacyEstimatedBasisSurvivesClassificationOnly(t, r)
 	verifyInitialSameOnlyCompletesProvenAlreadyAppliedObservation(t, r)
+	verifyImportEvidenceCancelRestoreCorrectionAndAudit(t, r)
+	verifyBankChangesHoldUnknownInclusionAndSaveBothDimensionsAtomically(t, r)
+	verifyPartialBankChangesAllowOnlyExplicitBothUserBaselines(t, r)
+	verifyBankCorrectionExcludesPendingTripletAndCancelKeepsSamePurchase(t, r)
 	verifyReconciliationMigrationRollbackAndConcurrentRestart(t, r)
+	verifyImportManagementMigrationPreservesProvenAndUnknownLegacyAndRollsBack(t, r)
 }
