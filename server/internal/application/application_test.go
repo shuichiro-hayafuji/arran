@@ -425,14 +425,22 @@ func TestPreviewOwnership(t *testing.T) {
 	service, _ := testService(t)
 	owner := identity.WithUser(context.Background(), 1)
 	other := identity.WithUser(context.Background(), 2)
-	service.previews["owned-preview"] = cachedPreview{userID: 1, expiresAt: time.Now().Add(time.Hour)}
-	if _, err := service.CommitImport(other, "owned-preview"); err == nil {
+	preview, err := service.PreviewImport(owner, []byte("date,description,amount\n2035-01-01,coffee,500\n"), domain.CSVMapping{}, "bank", "account")
+	if err != nil || preview.PreviewID == "" {
+		t.Fatal(preview, err)
+	}
+	if _, err := service.CommitImport(other, preview.PreviewID); err == nil {
 		t.Fatal("cross-user preview accepted")
 	}
-	if _, err := service.CommitImport(owner, "owned-preview"); err != nil {
+	first, err := service.CommitImport(owner, preview.PreviewID)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.CommitImport(owner, "owned-preview"); err == nil {
-		t.Fatal("preview reused")
+	second, err := service.CommitImport(owner, preview.PreviewID)
+	if err != nil || second != first {
+		t.Fatal("retry must return saved receipt", second, err)
+	}
+	if _, err := service.CommitImport(other, preview.PreviewID); err == nil {
+		t.Fatal("cross-user receipt accepted")
 	}
 }

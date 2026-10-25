@@ -165,6 +165,7 @@ paths:
     post:
       tags: [transactions]
       summary: CSVインポートのプレビュー
+      description: 確定可能な全明細を所有者と30分の期限付きでDBへ保存する。取引にはまだ反映しない。再起動や同じDBを使う別プロセスでも期限内は同じpreview_idで確定できる。
       requestBody:
         required: true
         content:
@@ -189,6 +190,7 @@ paths:
     post:
       tags: [transactions]
       summary: CSVインポートを確定
+      description: 同じpreview_idの再送は成功済みなら期限後も元の結果を返す。DB保存失敗ではプレビューを消費しない。期限切れ・不存在・別所有者の未確定IDは拒否する。通信の結果不明時も同じIDを再送する。
       requestBody:
         required: true
         content:
@@ -669,7 +671,7 @@ components:
         reconciliation_conflicts: { type: array, items: { $ref: '#/components/schemas/ReconciliationConflict' } }
         identity_notice: { type: string }
         identity_conflicts: { type: array, items: { $ref: '#/components/schemas/ImportIdentityConflict' } }
-        preview_id: { type: string, description: 未解決identity_conflictsがある場合は空で確定不可 }
+        preview_id: { type: string, description: 未解決の本人確認や列指定がある場合は空で確定不可。確定可能なIDは所有者付きでDBへ30分保持し、成功済みの再送は元の結果を返す }
         detected_encoding: { type: string }
         headers: { type: array, items: { type: string } }
         mapping: { $ref: '#/components/schemas/CSVMapping' }

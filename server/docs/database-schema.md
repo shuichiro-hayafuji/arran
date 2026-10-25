@@ -26,6 +26,7 @@ psql "$DATABASE_URL" -c '\\dt'
 | `llm_model_prices` | モデル単価の履歴 | `(model, effective_from)` 主キー、公式資料URLと確認日時 |
 | `monthly_operating_costs` | 月次のインフラ費用とサポート実績 | `month` 主キー、USD、件数、分数 |
 | `profiles` | ユーザーごとの家計プロフィール | `id = 1`、`user_id` 一意 |
+| `csv_import_previews` | 未確定の全明細・本人確認と30分期限 | `(user_id,id)`主キー、所有者FK、期限索引。空行成功時だけresultを保持 |
 | `csv_identity_file_rows` | scope付きCSV物理行と保存明細の一対一対応 | owner/file/source/account/type/rowの主キー、同scope/明細の一意性、所有者付き明細FK |
 | `csv_identity_aliases` | CSV確認済みstrategyキーと双方snapshot | `(user_id,row_key)`主キー、所有者付き明細FK、scope/行/明細を行対応へ結ぶ複合FK |
 | `transactions` | CSVから取り込む支出・入金明細 | `(user_id, fingerprint)` 一意、日付・カテゴリ索引 |
@@ -135,3 +136,7 @@ CSVキー/alias/file-row対応と照合の保存は同じtx、金融receiptと�
 ## 取込管理の014 / SQLite008
 
 transactionsのeffective_date/amount/categoryとrevisionは訂正投影、legacy_retainedは旧不明証拠の保護。effective_transactionsは他のactive batch evidenceも含め有効性を判定する。csv_import_batches（owner/id、owner/commit_key一意）、csv_import_evidence（owner/batch/row/type、owner付きbank FK）、csv_mutations（owner/id・同payload結果）、transaction_change_events（owner付きmutation FK・immutable前後）、csv_financial_receipts（owner/ref・方向/coverage/axis/status）、csv_financial_items（owner/ref/transaction・両owner付きFK）を追加する。SQLiteの新remember merchant規則はmerchant_rules_ownedでowner分離し、owner0の旧規則は保持する。旧file-rowのscopeが証明できる単位だけを日時不明のlegacy履歴へ移し、不明単位は原行保護。詳細は[取込管理](csv-import-management.md)。
+
+## プレビューの015 / SQLite009
+
+`csv_import_previews`は`user_id`・`id`を主キーとし、全明細と内部確認情報をversion付きJSONの`payload`に保存する。`expires_at`はUnix epochナノ秒のBIGINTで、所有者と期限の索引を持つ。PostgreSQLはusers FK、SQLiteは既存のテスト用owner方式を維持する。`result`はNULLが未確定、0行成功時だけJSON receiptを保持し、その際payloadを空にする。通常の成功結果は既存csv_import_batchesのcommit_key/resultを再利用してpreview行を同じtxで削除する。期限切れ未確定行は同所有者の次回preview保存時に削除する。既存明細・履歴・receiptの変更や移し替えはない。
