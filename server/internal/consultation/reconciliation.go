@@ -119,6 +119,15 @@ func validateReconciliation(reply Reply, in Input) error {
 			}
 		}
 	}
+	for _, u := range reply.DataChangeUpdates {
+		for _, c := range in.DataChangeContext {
+			if u.Ref == c.Ref {
+				seen[u.Ref] = true
+				balanceNeeded = balanceNeeded || !c.BalanceResolved
+				budgetNeeded = budgetNeeded || !c.BudgetResolved
+			}
+		}
+	}
 	for _, change := range reply.Changes {
 		if change.Basis != "reconciliation" {
 			continue

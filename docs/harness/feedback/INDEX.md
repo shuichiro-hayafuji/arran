@@ -16,5 +16,6 @@
 | [FB-20261012-06](FB-20261012-06.md) | CSV同一性・キー移行・確認画面 | B-S05/B-S06/B-S08、C-S02/C-S03/C-S04、B-M02 | 異file・同file strategy変更の自動追加、旧row自動統合、表記差漏れ | 完了 | 行対応の双方向一意性と別strategy aliasを補強。focused/専用PG/docs PASS、全量と実機は親確認 |
 | [FB-20261012-07](FB-20261012-07.md) | OpenAPI契約 | C-S03 | 別source契約へ購入項目が混入しYAML構文不正 | 完了 | 誤混入3行削除、標準Ruby YAML解析と項目所在PASS。docs参照検査とは区別 |
 | [FB-20261012-08](FB-20261012-08.md) | 購入・CSV照合 | B-S08/B-S10/A-S03/B-M02 | 金融包含、初期/最新receipt、推定・候補失効・取得順位 | 対応中 | 実装・正規検証・独立レビュー・chat-first/CSV-first実LLM完了。旧期限切れ保全、実機確認待ち |
+| [FB-20261012-09](FB-20261012-09.md) | CSV取込管理・金融保留・mobile | B-S08/A-S02/A-M02 | owner/partial/監査/銀行計算basisの境界不足 | 保留 | server/PG/mobile57/docs/YAML・独立再レビュー・修正後partial実LLM PASS。生成空白1行はC-M04/EX-M03に従い保留 |
 
 記録の雛形は [テンプレート](TEMPLATE.md) を使用する。

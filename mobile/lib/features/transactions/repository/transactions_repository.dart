@@ -27,6 +27,7 @@ abstract interface class TransactionsRepository {
     required bool rememberMerchant,
   });
   Future<ImportPreview> previewImport({
+    bool confirmReactivation = false,
     required String filePath,
     required String fileName,
     required String source,
@@ -69,6 +70,7 @@ class TransactionsRepositoryImpl implements TransactionsRepository {
 
   @override
   Future<ImportPreview> previewImport({
+    bool confirmReactivation = false,
     required String filePath,
     required String fileName,
     required String source,
@@ -78,6 +80,7 @@ class TransactionsRepositoryImpl implements TransactionsRepository {
     List<PurchaseCsvDecision> reconciliationDecisions = const [],
   }) async {
     final request = ImportPreviewRequestDto(
+      confirmReactivation: confirmReactivation,
       filePath: filePath,
       fileName: fileName,
       source: source,

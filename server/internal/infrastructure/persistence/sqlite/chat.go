@@ -131,6 +131,9 @@ func (r *Repository) SaveChatTurn(ctx context.Context, state consultation.State,
 	if err = syncReconciliationReceipts(ctx, tx, state, thread.Reply); err != nil {
 		return consultation.Thread{}, err
 	}
+	if err = syncDataChangeReceipts(ctx, tx, state, thread.Reply); err != nil {
+		return consultation.Thread{}, err
+	}
 	state.Version++
 	thread.Version++
 	stateJSON, err := json.Marshal(state)
@@ -265,9 +268,9 @@ func (r *Repository) LoadChatTransactions(ctx context.Context, limit int, forgot
 		limit = 100
 	}
 	coverage := consultation.TransactionCoverage{Partial: true, CandidateLimit: limit}
-	rows, err := r.db.QueryContext(ctx, `SELECT t.transaction_date,t.amount,t.category,t.transaction_type,t.imported_at,EXISTS(SELECT 1 FROM purchase_csv_decisions d WHERE d.user_id=o.user_id AND d.transaction_id=t.id AND d.action='same')
- FROM transactions t JOIN chat_transaction_owners o ON o.transaction_id=t.id
- WHERE o.user_id=? ORDER BY t.transaction_date DESC,t.id DESC LIMIT ?`, identity.UserID(ctx), limit)
+	rows, err := r.db.QueryContext(ctx, `SELECT t.transaction_date,t.amount,t.category,t.transaction_type,t.imported_at,EXISTS(SELECT 1 FROM purchase_csv_decisions d WHERE d.user_id=o.user_id AND d.transaction_id=t.id AND d.action='same'),EXISTS(SELECT 1 FROM csv_financial_items i JOIN csv_financial_receipts f ON f.user_id=i.user_id AND f.ref=i.ref WHERE i.user_id=o.user_id AND i.transaction_id=t.id AND f.status IN ('pending','needs_information') AND f.recorded_at>?)
+ FROM effective_transactions t JOIN chat_transaction_owners o ON o.transaction_id=t.id
+ WHERE o.user_id=? ORDER BY t.transaction_date DESC,t.id DESC LIMIT ?`, forgottenAt, identity.UserID(ctx), limit)
 	if err != nil {
 		return nil, coverage, err
 	}
@@ -276,11 +279,15 @@ func (r *Repository) LoadChatTransactions(ctx context.Context, limit int, forgot
 	for rows.Next() {
 		var item consultation.Transaction
 		var transactionType, importedAt string
-		var linked bool
-		if err := rows.Scan(&item.Date, &item.Amount, &item.Category, &transactionType, &importedAt, &linked); err != nil {
+		var linked, dataPending bool
+		if err := rows.Scan(&item.Date, &item.Amount, &item.Category, &transactionType, &importedAt, &linked, &dataPending); err != nil {
 			return nil, coverage, err
 		}
 		if transactionType != "expense" || (forgottenAt != "" && importedAt <= forgottenAt) {
+			continue
+		}
+		if dataPending {
+			coverage.DataChangeExcluded++
 			continue
 		}
 		if linked {

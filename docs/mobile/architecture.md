@@ -148,3 +148,7 @@ ApiClient/interceptorはHTTP・認証・エラー変換、app/routerはgo_router
 - [チェックtool](../../tools/CHECKS.md) のmobile-architectureを実行する。構成変更が必要なら理由・影響、ルール、検出範囲と回帰テストを同時に更新し、違反を通すだけの除外を追加しない。
 
 相談の送信・結果照会・取消しをRepositoryで扱い、ViewModelが最大45秒の待機と未確定IDの復元を進行する。未確定入力は既存セッション内の安全なストレージで保持し、セッション切替後の応答と復元を遮断する。 詳細は[相談の受付と保存結果](../../server/docs/consultation-requests.md)を参照。
+
+## 取込履歴・訂正の接続
+
+transactions featureのImportManagementRepository/DTO/Domainが版付き銀行操作と保存結果照会を所有する。ManagementViewModelのIntent/Stateで保存・結果不明・再照会を管理し、Screenは確認と入力だけを行う。単純な履歴ページの読取はautoDispose FutureProvider、更新はMVIへ置く。既存session generationのProviderScopeとmountedで旧利用者への遅延応答を閉じる。画面はJSON/HTTPや残高計算を持たない。

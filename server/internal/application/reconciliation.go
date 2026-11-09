@@ -19,10 +19,14 @@ func (s *Application) PreviewImport(ctx context.Context, data []byte, mapping do
 	if len(decisions) > 0 {
 		identityDecisions = decisions[0]
 	}
-	return s.previewImport(ctx, data, mapping, source, account, identityDecisions, nil)
+	return s.previewImport(ctx, data, mapping, source, account, identityDecisions, nil, domain.ImportPreviewOptions{})
 }
-func (s *Application) PreviewReconciledImport(ctx context.Context, data []byte, mapping domain.CSVMapping, source, account string, identityDecisions []domain.ImportIdentityDecision, decisions []domain.ReconciliationDecision) (domain.ImportPreview, error) {
-	return s.previewImport(ctx, data, mapping, source, account, identityDecisions, decisions)
+func (s *Application) PreviewReconciledImport(ctx context.Context, data []byte, mapping domain.CSVMapping, source, account string, identityDecisions []domain.ImportIdentityDecision, decisions []domain.ReconciliationDecision, options ...domain.ImportPreviewOptions) (domain.ImportPreview, error) {
+	option := domain.ImportPreviewOptions{}
+	if len(options) > 0 {
+		option = options[0]
+	}
+	return s.previewImport(ctx, data, mapping, source, account, identityDecisions, decisions, option)
 }
 func (s *Application) ExpenseCount(ctx context.Context, month string) (domain.ExpenseCount, error) {
 	if month != "" {

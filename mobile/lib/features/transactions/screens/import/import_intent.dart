@@ -24,6 +24,7 @@ sealed class ImportIntent with _$ImportIntent implements MviIntent {
   const factory ImportIntent.resolvePurchases(
     List<PurchaseCsvDecision> decisions,
   ) = ResolveImportPurchases;
+  const factory ImportIntent.confirmReactivation() = ConfirmImportReactivation;
   const factory ImportIntent.commit() = CommitImport;
   const factory ImportIntent.reset() = ResetImport;
 }

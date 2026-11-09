@@ -179,6 +179,7 @@ paths:
                 identity_decisions: { type: string, description: ImportIdentityDecisionのJSON配列。sameには候補snapshotが必要 }
                 source: { type: string }
                 source_account_name: { type: string }
+                confirm_reactivation: { type: string, enum: ["true", "false"], description: 取消済み同IDの再有効化を明示確認 }
       responses:
         '401': { description: Invalid or expired bearer session }
         '503': { description: Authentication database unavailable }
@@ -222,9 +223,17 @@ paths:
                   items: { type: array, items: { $ref: '#/components/schemas/Transaction' } }
                   categories: { type: array, items: { type: string } }
   /transactions/{id}:
+    get:
+      tags: [transactions]
+      summary: 原銀行明細と有効な訂正投影
+      parameters:
+        - { $ref: '#/components/parameters/Id' }
+      responses:
+        '200': { description: 所有者の明細, content: { application/json: { schema: { $ref: '#/components/schemas/TransactionRecord' } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
     patch:
       tags: [transactions]
-      summary: 取引カテゴリ更新
+      summary: 版付き金額・日付・カテゴリ訂正（銀行原内容を保持）
       parameters:
         - { $ref: '#/components/parameters/Id' }
       requestBody:
@@ -232,17 +241,26 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              required: [category]
-              properties:
-                category: { type: string }
-                remember_merchant: { type: boolean }
+              oneOf:
+                - { $ref: '#/components/schemas/CSVMutationInput' }
+                - type: object
+                  required: [category]
+                  not: { required: [mutation_id] }
+                  properties:
+                    category: { type: string }
+                    remember_merchant: { type: boolean }
       responses:
-        '401': { description: Invalid or expired bearer session }
-        '503': { description: Authentication database unavailable }
-        '200': { description: 更新後の取引, content: { application/json: { schema: { $ref: '#/components/schemas/Transaction' } } } }
+        '200':
+          description: mutation_id付きは保存結果、旧カテゴリのみは更新後取引
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - { $ref: '#/components/schemas/CSVMutationResult' }
+                  - { $ref: '#/components/schemas/Transaction' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: 状態版/明細版または同ID異payload競合 }
   /dashboard/monthly:
     get:
       tags: [transactions]
@@ -459,6 +477,81 @@ paths:
         '404': { description: Unknown purchase }
         '409': { description: State or purchase snapshot changed }
         '401': { description: Invalid or expired bearer session }
+  /imports:
+    get:
+      tags: [transactions]
+      summary: 取込履歴（行・snapshot・取消影響はdetailを読む）
+      parameters:
+        - { name: before, in: query, schema: { type: string }, description: 前ページ末尾のid。日時/id順で最大20件 }
+      responses:
+        '200': { description: owner履歴, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/CSVImportBatch' } } } } }
+  /imports/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    get:
+      tags: [transactions]
+      summary: 取込の原観測・現在投影・有効性・取消影響
+      responses:
+        '200': { description: owner取込, content: { application/json: { schema: { $ref: '#/components/schemas/CSVImportBatch' } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /imports/{id}/cancel-preview:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    post:
+      tags: [transactions]
+      summary: cancel-preview（本人の購入・銀行原記録を保持）
+      responses:
+        '200': { description: owner保存または確認結果, content: { application/json: { schema: { $ref: '#/components/schemas/CSVImportBatch' } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: 状態版/対象snapshotまたは同ID異payload競合 }
+  /imports/{id}/cancel:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    post:
+      tags: [transactions]
+      summary: cancel（本人の購入・銀行原記録を保持）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CSVMutationInput' }
+      responses:
+        '200': { description: owner保存または確認結果, content: { application/json: { schema: { $ref: '#/components/schemas/CSVMutationResult' } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: 状態版/対象snapshotまたは同ID異payload競合 }
+  /imports/{id}/restore:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    post:
+      tags: [transactions]
+      summary: restore（本人の購入・銀行原記録を保持）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CSVMutationInput' }
+      responses:
+        '200': { description: owner保存または確認結果, content: { application/json: { schema: { $ref: '#/components/schemas/CSVMutationResult' } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: 状態版/対象snapshotまたは同ID異payload競合 }
+  /mutations/{id}:
+    get:
+      tags: [transactions]
+      summary: 同論理IDの保存結果照会
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: owner結果, content: { application/json: { schema: { $ref: '#/components/schemas/CSVMutationResult' } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /changes/{id}:
+    get:
+      tags: [transactions]
+      summary: 対象のimmutable監査
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: owner結果, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/CSVChangeEvent' } } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
 components:
   securitySchemes:
     bearerAuth:
@@ -531,6 +624,7 @@ components:
         updated_at: { type: string, format: date-time }
     Transaction:
       type: object
+      required: [id, transaction_date, amount, transaction_type, category]
       properties:
         id: { type: integer, format: int64 }
         transaction_date: { type: string, format: date }
@@ -542,6 +636,7 @@ components:
         source: { type: string }
         source_account_name: { type: string }
         imported_at: { type: string, format: date-time }
+        revision: { type: integer, format: int64 }
     ImportIdentityDecision:
       type: object
       required: [row, action]
@@ -570,6 +665,7 @@ components:
     ImportPreview:
       type: object
       properties:
+        reactivation_ids: { type: array, items: { type: integer, format: int64 }, description: 未確認ならpreview_idは空 }
         reconciliation_conflicts: { type: array, items: { $ref: '#/components/schemas/ReconciliationConflict' } }
         identity_notice: { type: string }
         identity_conflicts: { type: array, items: { $ref: '#/components/schemas/ImportIdentityConflict' } }
@@ -587,6 +683,9 @@ components:
     ImportCommitResult:
       type: object
       properties:
+        import_id: { type: string }
+        reactivated_count: { type: integer }
+        financial_pending: { type: integer, description: 復活方向の金融保留数。金融完了を意味しない }
         imported_count: { type: integer }
         duplicate_count: { type: integer }
     Dashboard:
@@ -756,3 +855,108 @@ components:
         unresolved: { type: integer, description: All-time unresolved identity or contradiction }
         pending_recalculation: { type: integer, description: All-time pending financial updates }
         scope: { type: string }
+    TransactionRecord:
+      type: object
+      required: [original, current, active, state_version]
+      properties:
+        original: { $ref: '#/components/schemas/Transaction' }
+        current: { $ref: '#/components/schemas/Transaction' }
+        active: { type: boolean }
+        state_version: { type: integer, format: int64 }
+    CSVMutationInput:
+      type: object
+      required: [mutation_id, expected_version, state_version]
+      properties:
+        mutation_id: { type: string, maxLength: 128 }
+        action: { type: string, enum: [correct, cancel, restore], description: API pathで指定。correctでは少なくとも1訂正項目が必要 }
+        expected_version: { type: integer, format: int64 }
+        state_version: { type: integer, format: int64 }
+        snapshot: { type: string, description: cancel/restoreはdetail snapshot必須 }
+        amount: { type: integer, format: int64, minimum: 0, maximum: 1000000000000 }
+        transaction_date: { type: string, format: date }
+        category: { type: string }
+        remember_merchant: { type: boolean }
+        reason: { type: string, maxLength: 2000 }
+    CSVMutationResult:
+      type: object
+      required: [mutation_id, status, affected_count, protected_count, pending_recalculation, state_version]
+      properties:
+        mutation_id: { type: string }
+        status: { type: string, enum: [saved] }
+        affected_count: { type: integer }
+        protected_count: { type: integer }
+        pending_recalculation: { type: integer }
+        state_version: { type: integer, format: int64 }
+    CSVImportBatch:
+      type: object
+      properties:
+        id: { type: string }
+        file_key: { type: string, description: ローカル銀行identity。モデルへ送らない }
+        source: { type: string }
+        account: { type: string }
+        metadata:
+          type: object
+          properties:
+            file_name: { type: string }
+            encoding: { type: string }
+            mapping: { $ref: '#/components/schemas/CSVMapping' }
+        status: { type: string, enum: [active, cancelled] }
+        version: { type: integer, format: int64 }
+        state_version: { type: integer, format: int64 }
+        recorded_at: { type: string, description: 証明できない旧取込は空文字（日時不明） }
+        legacy: { type: boolean }
+        result: { $ref: '#/components/schemas/ImportCommitResult' }
+        snapshot: { type: string, description: detailのowner/版/全行確認snapshot。履歴一覧では空 }
+        cancel_affected_count: { type: integer, description: detailの取消影響。履歴一覧では0 }
+        cancel_protected_count: { type: integer, description: detailの他active evidenceまたは旧不明証拠による保護数 }
+        rows:
+          type: array
+          items:
+            type: object
+            properties:
+              row: { type: integer }
+              transaction_id: { type: integer, format: int64 }
+              original: { $ref: '#/components/schemas/Transaction' }
+              current: { $ref: '#/components/schemas/Transaction' }
+              active: { type: boolean }
+              legacy_retained: { type: boolean }
+    CSVChangeEvent:
+      type: object
+      properties:
+        id: { type: string }
+        mutation_id: { type: string }
+        kind: { type: string }
+        target: { type: string }
+        recorded_at: { type: string, format: date-time }
+        before_state: { type: string, description: 保存した監査JSON。モデルへ送らない }
+        after_state: { type: string, description: 保存した監査JSON。financial_confirmationでは採用モードとaxisを含む }
+    DataChangeContext:
+      type: object
+      description: 内部LLM送信契約。銀行identityは含めずpublic取込detailと混同しない
+      additionalProperties: false
+      required: [ref, operation, before, after, included_count, omitted_count, balance_resolved, budget_resolved, related_purchase_ids]
+      properties:
+        ref: { type: string }
+        operation: { type: string, enum: [correct_expense, correct_income, cancel_expense, cancel_income, restore_expense, restore_income] }
+        before: { type: array, items: { $ref: '#/components/schemas/FinancialTriplet' } }
+        after: { type: array, items: { $ref: '#/components/schemas/FinancialTriplet' } }
+        included_count: { type: integer }
+        omitted_count: { type: integer }
+        balance_resolved: { type: boolean }
+        budget_resolved: { type: boolean }
+        related_purchase_ids: { type: array, nullable: true, items: { type: string } }
+    FinancialTriplet:
+      type: object
+      additionalProperties: false
+      required: [date, amount, category]
+      properties:
+        date: { type: string, format: date }
+        amount: { type: integer, format: int64 }
+        category: { type: string }
+    DataChangeUpdate:
+      type: object
+      additionalProperties: false
+      required: [ref, status]
+      properties:
+        ref: { type: string }
+        status: { type: string, enum: [applied, needs_information, baseline_adopted], description: baseline_adoptedは両basis=user_reportかつkind=factのsetと空またはJST現在月のperiodが必須。現在残高はJST現在日も許可 }

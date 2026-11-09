@@ -74,7 +74,10 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 	if err = migrateCSVIdentity(ctx, db); err != nil {
 		return err
 	}
-	return migrateReconciliation(ctx, db)
+	if err = migrateReconciliation(ctx, db); err != nil {
+		return err
+	}
+	return migrateImportManagement(ctx, db)
 }
 
 func ValidatePath(path string) error {
@@ -133,6 +136,33 @@ func migrateReconciliation(ctx context.Context, db *sql.DB) error {
 	}
 	if applied == 0 {
 		data, e := migrations.Files.ReadFile("007_purchase_csv_reconciliation.sql")
+		if e != nil {
+			return e
+		}
+		if _, err = conn.ExecContext(ctx, string(data)); err != nil {
+			return err
+		}
+	}
+	_, err = conn.ExecContext(ctx, "COMMIT")
+	return err
+}
+
+func migrateImportManagement(ctx context.Context, db *sql.DB) error {
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	if _, err = conn.ExecContext(ctx, "BEGIN IMMEDIATE"); err != nil {
+		return err
+	}
+	defer conn.ExecContext(context.WithoutCancel(ctx), "ROLLBACK")
+	var applied int
+	if err = conn.QueryRowContext(ctx, "SELECT count(*) FROM schema_migrations WHERE version=8").Scan(&applied); err != nil {
+		return err
+	}
+	if applied == 0 {
+		data, e := migrations.Files.ReadFile("008_import_management.sql")
 		if e != nil {
 			return e
 		}

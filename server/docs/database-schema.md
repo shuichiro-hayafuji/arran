@@ -131,3 +131,7 @@ docker compose down -v
 purchase_csv_decisionsはowner/transaction/purchaseを主キーとし、same/distinct、原CSV snapshot、最新購入revision、包含状態とpending/needs_information/appliedを保持する。sameはowner付きtransactionとpurchaseの各々にpartial unique indexを持つ。purchase_csv_receiptsはowner/ref/purchase_revisionごとの金融結果、balance_resolved/budget_resolved、state versionを保存する。銀行明細と対応への複合FKでownerを一致させる。購入本体は既存chat state JSONを維持する。
 
 CSVキー/alias/file-row対応と照合の保存は同じtx、金融receiptと相談/state/イベントの保存は既存SaveChatTurnの同じtx。移行は既存SQLを変更せず新番号で適用し、DDL途中失敗と同時起動を両DB回帰で検証する。[照合契約](purchase-csv-reconciliation.md)を参照。
+
+## 取込管理の014 / SQLite008
+
+transactionsのeffective_date/amount/categoryとrevisionは訂正投影、legacy_retainedは旧不明証拠の保護。effective_transactionsは他のactive batch evidenceも含め有効性を判定する。csv_import_batches（owner/id、owner/commit_key一意）、csv_import_evidence（owner/batch/row/type、owner付きbank FK）、csv_mutations（owner/id・同payload結果）、transaction_change_events（owner付きmutation FK・immutable前後）、csv_financial_receipts（owner/ref・方向/coverage/axis/status）、csv_financial_items（owner/ref/transaction・両owner付きFK）を追加する。SQLiteの新remember merchant規則はmerchant_rules_ownedでowner分離し、owner0の旧規則は保持する。旧file-rowのscopeが証明できる単位だけを日時不明のlegacy履歴へ移し、不明単位は原行保護。詳細は[取込管理](csv-import-management.md)。

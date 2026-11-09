@@ -26,3 +26,5 @@
 | 実装への指摘、レビュー修正、同じ問題の再発 | [自己改善ループ](FEEDBACK.md) と [改善記録](feedback/INDEX.md) |
 
 共通の作業手順は [運用・検証範囲](WORKFLOW.md) を参照する。
+
+CSV取込履歴・訂正・取消を変更する場合は[取込管理契約](../../server/docs/csv-import-management.md)とサーバー・モバイルの業務/構成、DB/ER/OpenAPIを参照する。

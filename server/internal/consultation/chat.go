@@ -75,17 +75,19 @@ type Transaction struct {
 	Category string `json:"category"`
 }
 type TransactionCoverage struct {
-	LinkedExcluded int    `json:"linked_excluded"`
-	Partial        bool   `json:"partial"`
-	CandidateLimit int    `json:"candidate_limit"`
-	StartDate      string `json:"start_date"`
-	EndDate        string `json:"end_date"`
+	DataChangeExcluded int    `json:"data_change_excluded"`
+	LinkedExcluded     int    `json:"linked_excluded"`
+	Partial            bool   `json:"partial"`
+	CandidateLimit     int    `json:"candidate_limit"`
+	StartDate          string `json:"start_date"`
+	EndDate            string `json:"end_date"`
 }
 type HistoricalMessage struct {
 	ConsultationID int64 `json:"consultation_id"`
 	Message
 }
 type Reply struct {
+	DataChangeUpdates     []ReconciliationUpdate `json:"data_change_updates"`
 	ReconciliationUpdates []ReconciliationUpdate `json:"reconciliation_updates"`
 	PurchaseChange        *PurchaseChange        `json:"purchase_change"`
 	PurchaseTargetUnclear bool                   `json:"purchase_target_unclear"`
@@ -100,6 +102,7 @@ type Reply struct {
 	Strictness            *int                   `json:"strictness"`
 }
 type Input struct {
+	DataChangeContext         []DataChangeContext     `json:"data_change_context"`
 	ReconciliationContext     []ReconciliationContext `json:"reconciliation_context"`
 	ReconciliationRequiredIDs []string                `json:"reconciliation_required_ids"`
 	ValidationFeedback        string                  `json:"validation_feedback"`
@@ -127,6 +130,7 @@ type Repository interface {
 	SaveChatTurn(context.Context, State, Thread) (Thread, error)
 }
 type Service struct {
+	DataChanges          DataChangeRepository
 	Reconciliation       ReconciliationRepository
 	Repository           Repository
 	Agent                Agent
@@ -190,6 +194,23 @@ func (s Service) Send(ctx context.Context, id int64, message string) (Thread, er
 			forced = append(forced, c.PurchaseID)
 		}
 	}
+	if s.DataChanges != nil {
+		input.DataChangeContext, err = s.DataChanges.LoadDataChanges(ctx, latestForgetAt(state.Facts))
+		if err != nil {
+			return Thread{}, err
+		}
+		for _, c := range input.DataChangeContext {
+			forced = append(forced, c.RelatedPurchaseIDs...)
+		}
+	}
+	tripletBudget := 100
+	for _, c := range input.DataChangeContext {
+		tripletBudget -= len(c.Before) + len(c.After)
+	}
+	if len(input.Transactions) > tripletBudget {
+		input.Transactions = input.Transactions[:tripletBudget]
+		input.TransactionCoverage.Partial = true
+	}
 	input.Purchases, input.PurchaseCoverage = modelPurchases(state, input.Message, id, forced...)
 	if s.Reconciliation != nil {
 		selected := map[string]bool{}
@@ -216,7 +237,7 @@ func (s Service) Send(ctx context.Context, id int64, message string) (Thread, er
 			input.AutoConfirmIDs = append(input.AutoConfirmIDs, p.ID)
 		}
 	}
-	if len(input.Purchases) > 0 {
+	if len(input.Purchases) > 0 || len(input.DataChangeContext) > 0 {
 		input.Facts = financialFacts(state.Facts, relevantFacts(state.Facts, input.Message+" 残高 予算", input.History))
 	}
 	if thread.PendingPurchase != nil && thread.PendingPurchase.RecordedAt > latestForgetAt(state.Facts) {
@@ -241,6 +262,9 @@ func (s Service) Send(ctx context.Context, id int64, message string) (Thread, er
 				agentErr = Validate(reply)
 				if agentErr == nil {
 					agentErr = validateReconciliation(reply, input)
+					if agentErr == nil {
+						agentErr = validateDataChanges(reply, input)
+					}
 				}
 				if agentErr == nil {
 					agentErr = validatePurchases(reply, input)

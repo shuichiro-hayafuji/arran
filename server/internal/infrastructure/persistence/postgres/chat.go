@@ -134,6 +134,9 @@ func (r *Repository) SaveChatTurn(ctx context.Context, state consultation.State,
 	if err = syncReconciliationReceipts(ctx, tx, state, thread.Reply); err != nil {
 		return consultation.Thread{}, err
 	}
+	if err = syncDataChangeReceipts(ctx, tx, state, thread.Reply); err != nil {
+		return consultation.Thread{}, err
+	}
 	state.Version++
 	thread.Version++
 	stateJSON, err := json.Marshal(state)
@@ -275,6 +278,14 @@ func (r *Repository) LoadChatTransactions(ctx context.Context, limit int, forgot
 	var result []consultation.Transaction
 	for _, row := range rows {
 		if row.TransactionType != "expense" || (forgottenAt != "" && row.ImportedAt <= forgottenAt) {
+			continue
+		}
+		var dataPending int
+		if e := r.db.QueryRowContext(ctx, userQuery(ctx, "SELECT count(*) FROM csv_financial_items i JOIN csv_financial_receipts f ON f.user_id=i.user_id AND f.ref=i.ref WHERE i.user_id=:user_id AND i.transaction_id=? AND f.status IN ('pending','needs_information') AND f.recorded_at>?"), row.ID, forgottenAt).Scan(&dataPending); e != nil {
+			return nil, coverage, e
+		}
+		if dataPending > 0 {
+			coverage.DataChangeExcluded++
 			continue
 		}
 		var linked int

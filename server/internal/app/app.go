@@ -48,7 +48,7 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 	fallbackAgent := agentadapter.New(fallback, fallback, "quota_fallback")
 	adminNotifier := notification.NewPagerDuty(cfg.PagerDutyRoutingKey)
 	requestCtx, stopRequests := context.WithCancel(ctx)
-	apiApplication := application.New(application.Config{ChatReconciliation: repo, ReconciliationRepository: repo, RequestRepository: repo, RequestContext: requestCtx, Repository: repo, ChatRepository: repo, ChatAgent: chatAgent,
+	apiApplication := application.New(application.Config{ImportManagement: repo, ChatDataChanges: repo, ChatReconciliation: repo, ReconciliationRepository: repo, RequestRepository: repo, RequestContext: requestCtx, Repository: repo, ChatRepository: repo, ChatAgent: chatAgent,
 		ConsultationAgent: agents, FallbackAgent: fallbackAgent,
 		ReviewAgent: agents, FallbackReview: fallbackAgent,
 		MemoryAgent: agents, FallbackMemory: fallbackAgent, AdminNotifier: adminNotifier,

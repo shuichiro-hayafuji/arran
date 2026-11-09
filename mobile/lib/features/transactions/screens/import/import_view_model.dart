@@ -25,6 +25,7 @@ final importControllerProvider =
 @freezed
 abstract class ImportState with _$ImportState {
   const factory ImportState({
+    @Default(false) bool confirmReactivation,
     @Default("manual_csv") String source,
     @Default("個人") String accountName,
     @Default(<ImportIdentityDecision>[])
@@ -39,6 +40,7 @@ abstract class ImportState with _$ImportState {
     String? error,
   }) = _ImportState;
 
+  bool get confirmReactivation;
   String get source;
   String get accountName;
   List<ImportIdentityDecision> get identityDecisions;
@@ -71,6 +73,10 @@ class ImportViewModel extends MviViewModel<ImportState, ImportIntent> {
         return resolve(decisions);
       case ResolveImportPurchases(decisions: final decisions):
         return resolvePurchases(decisions);
+      case ConfirmImportReactivation():
+        if (state.loading || state.preview == null) return Future.value();
+        state = state.copyWith(confirmReactivation: true);
+        return _preview(state.preview!.mapping);
       case CommitImport():
         return commit();
       case ResetImport():
@@ -86,6 +92,7 @@ class ImportViewModel extends MviViewModel<ImportState, ImportIntent> {
   }) async {
     if (state.loading) return;
     state = state.copyWith(
+      confirmReactivation: false,
       identityDecisions: [],
       reconciliationDecisions: [],
       preview: null,
@@ -102,6 +109,7 @@ class ImportViewModel extends MviViewModel<ImportState, ImportIntent> {
   Future<void> remap(CsvMapping mapping) async {
     if (state.loading) return;
     state = state.copyWith(
+      confirmReactivation: false,
       identityDecisions: [],
       reconciliationDecisions: [],
       preview: null,
@@ -124,6 +132,7 @@ class ImportViewModel extends MviViewModel<ImportState, ImportIntent> {
             accountName: state.accountName,
             identityDecisions: state.identityDecisions,
             reconciliationDecisions: state.reconciliationDecisions,
+            confirmReactivation: state.confirmReactivation,
             mapping: mapping,
           );
       if (!mounted) return;
@@ -146,6 +155,7 @@ class ImportViewModel extends MviViewModel<ImportState, ImportIntent> {
       accountName: account.trim(),
       preview: null,
       commitResult: null,
+      confirmReactivation: false,
       identityDecisions: [],
       reconciliationDecisions: [],
       error: null,

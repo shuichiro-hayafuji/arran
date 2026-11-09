@@ -23,10 +23,11 @@
 | --- | --- | --- |
 | EX-M01 | sessionはアプリ寿命のProviderContainer・Secure Storage・ChangeNotifierを使用 | sessionの既存認証経路に限定許可。通信はpublicApiClientProviderから注入し、画面のProviderScope破棄後も失効を完了させる。loginはpublicApiClientProviderと通常のRiverpod + MVIを使う。Session DomainのJSON変換はDTOへ分離済み。層を統一する際は認証・永続化・ユーザー切替の回帰テストを通す |
 | EX-M02 | 相談結果→profileのメモリ、CSV確定→dashboardのViewModelが他featureのIntent・Providerを参照 | 既存連携を維持。新しい機能間依存は責務を説明する。公開query等へ移す場合は保存後の表示更新を検証 |
-| GAP-M01 | 取引詳細Screenは保存中をsetStateで管理し、既存画面に生の例外表示や二重操作対策が不十分な経路がある | 新規実装の見本にしない。該当操作の変更時にMVIの保存状態・安全なエラー表示・重複操作防止へ寄せ、操作テストで確認する |
+| GAP-M01 | 旧画面に生の例外表示や二重操作対策が不十分な経路がある。取引詳細は#34でMVI保存・結果照会へ移行済み | 新規実装の見本にしない。該当操作の変更時にMVIの保存状態・安全なエラー表示・重複操作防止へ寄せ、操作テストで確認する |
 | GAP-M02 | dashboard/profile等に直接指定の余白・文字・色が残る | 新規・変更部分はデザインシステムに従う。一括リデザインはしない。対象がtokenへ移行し画面確認できた範囲で解消する |
 | GAP-S01 | server内部は技術レイヤー単位の`application`・`handler`・Repository実装へ複数の業務機能が集まっており、ADR-0001の業務モジュール境界へ未移行 | API・業務ルール・所有者条件・現行の依存検査を維持し、機能変更に合わせて段階的に分割する。一括移行や空ディレクトリの先行作成はしない。移行時は依存チェッカーとテストを同じ変更で更新する |
 | GAP-D01 | READMEのinfrastructure/参照、設計資料のViewModel配置が実装と不一致 | 新規作業は実在する配置と本ハーネスに従う。説明資料の修正は別途可能。存在しない旧ディレクトリを再作成しない |
+| EX-M03 | 固定Freezed生成のimport_intent.freezed.dart、ConfirmImportReactivation空引数クラスにtrailing whitespace1行 | #34の正規generate/format後も残る生成出力だけに限定。C-M04に従い手編集せず、非生成diff・format/analyze/testを確認。git diff --checkのexit2は報告する。許可されたgenerator改善時に解消を再確認。[根拠](feedback/FB-20261012-09.md) |
 
 例外を追加する場合はID、対象、理由、許可範囲、解消条件をこの表に記録する。一律除外や既存違反の無条件な追認はしない。
 

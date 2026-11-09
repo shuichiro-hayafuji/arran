@@ -127,3 +127,7 @@ PR #114のa67f552を隔離コピーし、既存設定の`gpt-5-mini` / `medium`�
 利用者向けanswer/reasonは必要な結論・実額・包含・金額根拠を原則各1〜2文にし、assumptionsは必要な未確定の前提だけにする。規則・処理手順・内部ID/メタデータの解説を省き、同じ説明を重複させない。これは出力指示であり、schema・金融検証・期限・モデル設定の変更ではない。生成時間短縮を実モデル未検証の段階で保証しない。
 
 prior_inclusion=unknownで残高と自由予算の両方が未解決なら、本人が両方に購入を含むと確認した場合、同じ値・期間でもcurrent_balanceとmonthly_free_budgetのsetを両方返してappliedにする。通常の同値changes省略の例外として明示し、再減額しない。片方だけ判明した場合はneeds_informationを保つ。制御回帰で、setなし/片側だけは拒否、両同値setは採用し両反映メタデータを保存できることを確認する。
+
+## CSV訂正・取消の金融確認
+
+銀行操作の方向別`data_change_context`と`data_change_updates`を追加した。opaque refと前後triplet、coverage・axis・関連purchase IDsだけを許可し、銀行識別子を送らない。partialの本人両基準採用は専用baseline_adoptedで照合appliedと区別する。既存deadline・修正回数・receipt/忘却境界を維持する。[詳細契約](csv-import-management.md)を参照。

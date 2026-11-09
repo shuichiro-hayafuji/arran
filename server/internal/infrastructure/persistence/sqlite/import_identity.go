@@ -49,11 +49,31 @@ func (r *Repository) ImportTransactions(ctx context.Context, items []domain.Tran
 	if err != nil {
 		return domain.ImportCommitResult{}, err
 	}
+	if len(items) > 0 && items[0].ImportMetadata != nil && items[0].ImportMetadata.CommitKey != "" {
+		var payload string
+		e := tx.QueryRowContext(ctx, chatQuery(ctx, "SELECT result FROM csv_import_batches WHERE user_id=:user_id AND commit_key=?"), items[0].ImportMetadata.CommitKey).Scan(&payload)
+		if e == nil {
+			var saved domain.ImportCommitResult
+			e = json.Unmarshal([]byte(payload), &saved)
+			return saved, e
+		}
+		if !errors.Is(e, sql.ErrNoRows) {
+			return domain.ImportCommitResult{}, e
+		}
+	}
+	priorActive := map[int64]bool{}
 	newRows := map[string]bool{}
 	for _, item := range items {
 		id, e := resolveImportID(ctx, tx, item)
 		if e != nil {
 			return domain.ImportCommitResult{}, e
+		}
+		if id > 0 {
+			var n int
+			if e = tx.QueryRowContext(ctx, chatQuery(ctx, "SELECT count(*) FROM effective_transactions WHERE user_id=:user_id AND id=?"), id).Scan(&n); e != nil {
+				return domain.ImportCommitResult{}, e
+			}
+			priorActive[id] = n > 0
 		}
 		newRows[item.Fingerprint] = id == 0
 	}
@@ -70,6 +90,9 @@ func (r *Repository) ImportTransactions(ctx context.Context, items []domain.Tran
 	}
 	if len(reconciliationConflicts) > 0 {
 		return domain.ImportCommitResult{}, fmt.Errorf("CSVと購入の同一支出か確認が必要です。再プレビューしてください")
+	}
+	if err = recordImportBatch(ctx, tx, items, &result, priorActive, state); err != nil {
+		return domain.ImportCommitResult{}, err
 	}
 	state.Version++
 	payload, e := json.Marshal(state)
