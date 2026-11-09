@@ -33,6 +33,9 @@ func New(apiApplication *application.Application) http.Handler {
 	mux.HandleFunc("GET /transactions", handler.listTransactions)
 	mux.HandleFunc("PATCH /transactions/{id}", handler.updateTransaction)
 	mux.HandleFunc("GET /dashboard/monthly", handler.dashboard)
+	mux.HandleFunc("POST /consultation-requests/{request_id}", handler.submitChatRequest)
+	mux.HandleFunc("GET /consultation-requests/{request_id}", handler.getChatRequest)
+	mux.HandleFunc("DELETE /consultation-requests/{request_id}", handler.cancelChatRequest)
 	mux.HandleFunc("POST /consultations", handler.startConsultation)
 	mux.HandleFunc("POST /consultations/{id}/messages", handler.continueConsultation)
 	mux.HandleFunc("PATCH /consultations/{id}/result", handler.updateConsultationResult)
@@ -396,6 +399,14 @@ func ensureEOF(decoder *json.Decoder) error {
 
 func writeServiceError(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, application.ErrRequestsStopping):
+		writeError(w, http.StatusServiceUnavailable, "service_stopping", "処理を終了しています。保存結果は再起動後に同じ送信IDで確認してください。")
+	case errors.Is(err, consultation.ErrRequestPayload):
+		writeError(w, http.StatusConflict, "request_payload_changed", "同じ送信IDで相談内容は変更できません。")
+	case errors.Is(err, consultation.ErrRequestBusy):
+		writeError(w, http.StatusConflict, "request_processing", "別の相談を処理しています。結果を確認してから再送してください。")
+	case errors.Is(err, consultation.ErrNotFound):
+		writeError(w, http.StatusNotFound, "not_found", "対象データがありません。")
 	case errors.Is(err, consultation.ErrConflict):
 		writeError(w, http.StatusConflict, "conversation_changed", "会話が更新されました。読み直して再試行してください。")
 	case application.IsNotFound(err):
@@ -485,4 +496,33 @@ func recoverMiddleware(next http.Handler) http.Handler {
 		}()
 		next.ServeHTTP(w, r)
 	})
+}
+
+func (h *handler) submitChatRequest(w http.ResponseWriter, r *http.Request) {
+	var input application.ChatRequestInput
+	if !decodeJSON(w, r, &input) {
+		return
+	}
+	receipt, err := h.application.SubmitChatRequest(r.Context(), r.PathValue("request_id"), input)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusAccepted, receipt)
+}
+func (h *handler) getChatRequest(w http.ResponseWriter, r *http.Request) {
+	receipt, err := h.application.GetChatRequest(r.Context(), r.PathValue("request_id"))
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, receipt)
+}
+func (h *handler) cancelChatRequest(w http.ResponseWriter, r *http.Request) {
+	receipt, err := h.application.CancelChatRequest(r.Context(), r.PathValue("request_id"))
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, receipt)
 }

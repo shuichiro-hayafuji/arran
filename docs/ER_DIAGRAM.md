@@ -1,6 +1,6 @@
 # ER図
 
-PostgreSQLの`001_init.sql`から`010_purchase_schedule.sql`までを適用した後の物理スキーマです。認証・運用設定・家計データ・相談データに分けて示します。実DBを読み取った図ではなく、リポジトリ内のDDLに基づきます。
+PostgreSQLの`001_init.sql`から`011_chat_requests.sql`までを適用した後の物理スキーマです。認証・運用設定・家計データ・相談データに分けて示します。実DBを読み取った図ではなく、リポジトリ内のDDLに基づきます。
 
 正本: [PostgreSQL migration](../server/internal/infrastructure/persistence/postgres/)
 
@@ -275,3 +275,25 @@ erDiagram
 関連資料: [認証設計・ユーザー登録・既存データ移行](../server/docs/authentication.md) / [スキーマの運用手順](../server/docs/database-schema.md) / [サーバーアーキテクチャ](server/overview.md)
 
 DDLを変更した際はこの図のカラム、NULL可否、一意制約、外部キーと多重度を併せて更新してください。
+
+## 論理相談受付
+
+```mermaid
+erDiagram
+    users ||--o{ chat_requests : "論理送信を所有"
+    chat_requests {
+        bigint user_id PK, FK
+        text request_id PK
+        text payload_hash
+        text month
+        boolean new_consultation
+        boolean quota_reserved
+        text status "processing/completed/cancelled/failed"
+        bigint expires_at "Unix epoch milliseconds"
+        boolean cancel_requested
+        text error_code
+        text result_json "NULL可・保存時点のThread"
+    }
+```
+
+処理中statusだけを対象とするuser_idの部分一意索引で同時受付を1件に制限する。相談IDは結果JSON内のsnapshotに含み、独立FKではない。

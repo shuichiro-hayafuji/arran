@@ -4,6 +4,8 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 import '../../../core/network/api_client.dart';
 import '../../../shared/utils/json_parsing.dart';
 import '../domain/consultation.dart';
+import '../domain/chat_request.dart';
+import 'dto/chat_request_dto.dart';
 import 'dto/consultation_dto.dart';
 
 @riverpod
@@ -15,6 +17,9 @@ final consultationRepositoryProvider = Provider<ConsultationRepository>(
 );
 
 abstract interface class ConsultationRepository {
+  Future<ChatRequestReceipt> submitRequest(PendingChatRequest request);
+  Future<ChatRequestReceipt> requestResult(String id);
+  Future<ChatRequestReceipt> cancelRequest(String id);
   Future<Consultation> start(String message, int? plannedAmount);
   Future<Consultation> continueConversation(
     int id,
@@ -37,6 +42,26 @@ class ConsultationRepositoryImpl implements ConsultationRepository {
   const ConsultationRepositoryImpl(this._client);
 
   final ApiClient _client;
+  @override
+  Future<ChatRequestReceipt> submitRequest(PendingChatRequest request) async {
+    final response = await _client.post(
+      "/consultation-requests/${request.id}",
+      data: ChatRequestDto.request(request),
+    );
+    return ChatRequestDto.receipt(response.data);
+  }
+
+  @override
+  Future<ChatRequestReceipt> requestResult(String id) async {
+    final response = await _client.get("/consultation-requests/$id");
+    return ChatRequestDto.receipt(response.data);
+  }
+
+  @override
+  Future<ChatRequestReceipt> cancelRequest(String id) async {
+    final response = await _client.delete("/consultation-requests/$id");
+    return ChatRequestDto.receipt(response.data);
+  }
 
   @override
   Future<Consultation> start(String message, int? plannedAmount) async {

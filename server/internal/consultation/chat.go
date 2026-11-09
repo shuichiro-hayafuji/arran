@@ -123,10 +123,11 @@ type Repository interface {
 	SaveChatTurn(context.Context, State, Thread) (Thread, error)
 }
 type Service struct {
-	Repository        Repository
-	Agent             Agent
-	Now               func() time.Time
-	UnavailableReason string
+	Repository           Repository
+	Agent                Agent
+	Now                  func() time.Time
+	SuppressConfirmation bool
+	UnavailableReason    string
 }
 
 // Send keeps missing amounts missing and never substitutes a programmed financial verdict.
@@ -198,6 +199,9 @@ func (s Service) Send(ctx context.Context, id int64, message string) (Thread, er
 				break
 			}
 			reply, agentErr = s.Agent.Advise(modelCtx, input)
+			if modelCtx.Err() != nil {
+				agentErr = modelCtx.Err()
+			}
 			if agentErr == nil {
 				agentErr = Validate(reply)
 				if agentErr == nil {
@@ -251,7 +255,10 @@ func (s Service) Send(ctx context.Context, id int64, message string) (Thread, er
 		applyPurchases(&state, &thread, reply, input, completedTimestamp)
 	}
 	// Asking again is a stored lifecycle step, never a financial calculation.
-	second := secondConfirmation(&state, input, completedTimestamp)
+	second := ""
+	if !s.SuppressConfirmation {
+		second = secondConfirmation(&state, input, completedTimestamp)
+	}
 	if second != "" {
 		reply.Answer += "\n\n" + second
 	}
@@ -264,7 +271,11 @@ func (s Service) Send(ctx context.Context, id int64, message string) (Thread, er
 	thread.Messages = append(thread.Messages, Message{Role: "user", Content: message, CreatedAt: timestamp}, Message{Role: "assistant", Content: reply.Answer, Reason: reply.Reason, Assumptions: reply.Assumptions, CreatedAt: completedTimestamp})
 	thread.Reply = reply
 	// Store the consultation even when model calls exhaust the request's deadline.
-	saveCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	saveDeadline := time.Now().Add(5 * time.Second)
+	if ref, ok := RequestReferenceFrom(ctx); ok && ref.Deadline.Before(saveDeadline) {
+		saveDeadline = ref.Deadline
+	}
+	saveCtx, cancel := context.WithDeadline(context.WithoutCancel(ctx), saveDeadline)
 	defer cancel()
 	return s.Repository.SaveChatTurn(saveCtx, state, thread)
 }

@@ -22,10 +22,12 @@ import (
 
 // App owns the resources created during application composition.
 type App struct {
-	Server     *http.Server
-	repository *postgres.Repository
-	stopWorker context.CancelFunc
-	workerDone chan struct{}
+	Server       *http.Server
+	repository   *postgres.Repository
+	stopRequests context.CancelFunc
+	application  *application.Application
+	stopWorker   context.CancelFunc
+	workerDone   chan struct{}
 }
 
 func New(ctx context.Context, cfg config.Config) (*App, error) {
@@ -45,7 +47,8 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 	}
 	fallbackAgent := agentadapter.New(fallback, fallback, "quota_fallback")
 	adminNotifier := notification.NewPagerDuty(cfg.PagerDutyRoutingKey)
-	apiApplication := application.New(application.Config{Repository: repo, ChatRepository: repo, ChatAgent: chatAgent,
+	requestCtx, stopRequests := context.WithCancel(ctx)
+	apiApplication := application.New(application.Config{RequestRepository: repo, RequestContext: requestCtx, Repository: repo, ChatRepository: repo, ChatAgent: chatAgent,
 		ConsultationAgent: agents, FallbackAgent: fallbackAgent,
 		ReviewAgent: agents, FallbackReview: fallbackAgent,
 		MemoryAgent: agents, FallbackMemory: fallbackAgent, AdminNotifier: adminNotifier,
@@ -68,7 +71,7 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 			WriteTimeout:      30 * time.Second,
 			IdleTimeout:       60 * time.Second,
 		},
-		repository: repo, stopWorker: stopWorker, workerDone: workerDone,
+		repository: repo, stopRequests: stopRequests, application: apiApplication, stopWorker: stopWorker, workerDone: workerDone,
 	}, nil
 }
 
@@ -86,6 +89,8 @@ func usageRecorder(repository interface {
 }
 
 func (a *App) Close() error {
+	a.stopRequests()
+	a.application.WaitRequests()
 	a.stopWorker()
 	<-a.workerDone
 	return a.repository.Close()

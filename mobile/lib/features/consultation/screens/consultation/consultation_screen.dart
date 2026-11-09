@@ -5,6 +5,7 @@ import '../../../../app/constants/space_theme.dart';
 import '../../../../shared/widgets/async_error_card.dart';
 import 'consultation_intent.dart';
 import 'consultation_view_model.dart';
+import 'consultation_state.dart';
 
 class ConsultationScreen extends ConsumerStatefulWidget {
   const ConsultationScreen({super.key});
@@ -21,6 +22,12 @@ class _ConsultationScreenState extends ConsumerState<ConsultationScreen> {
   }
 
   Future<void> _send() async {
+    if (ref.read(consultationControllerProvider).unresolved) {
+      await ref
+          .read(consultationControllerProvider.notifier)
+          .dispatch(const RecoverConsultationRequest());
+      return;
+    }
     final text = _message.text.trim();
     if (text.isEmpty) return;
     final vm = ref.read(consultationControllerProvider.notifier);
@@ -36,21 +43,26 @@ class _ConsultationScreenState extends ConsumerState<ConsultationScreen> {
           ? SubmitConsultation(text, null)
           : ContinueConsultation(threadId, text, null),
     );
-    if (!mounted) return;
-    final saved = ref
-        .read(consultationControllerProvider)
-        .consultation
-        .valueOrNull;
-    if (saved != null &&
-        !ref.read(consultationControllerProvider).consultation.hasError &&
-        !ref.read(consultationControllerProvider).consultation.isLoading) {
-      _message.clear();
-    }
   }
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(consultationControllerProvider, (previous, next) {
+      if (previous?.unresolved == true &&
+          !next.unresolved &&
+          next.consultation.valueOrNull != null &&
+          !next.consultation.hasError &&
+          !next.consultation.isLoading) {
+        _message.clear();
+      }
+      if (_message.text.isEmpty && next.pendingRequest != null) {
+        _message.text = next.pendingRequest!.message;
+      }
+    });
     final state = ref.watch(consultationControllerProvider);
+    if (_message.text.isEmpty && state.pendingRequest != null) {
+      _message.text = state.pendingRequest!.message;
+    }
     final item = state.consultation.valueOrNull;
     return ListView(
       padding: AppSpace.pXl,
@@ -103,7 +115,7 @@ class _ConsultationScreenState extends ConsumerState<ConsultationScreen> {
           controller: _message,
           minLines: 2,
           maxLines: 6,
-          enabled: !state.consultation.isLoading,
+          enabled: !state.consultation.isLoading && !state.unresolved,
           decoration: const InputDecoration(
             labelText: '相談・補足・訂正',
             hintText: '例：2万円のイヤホンを買おうか迷っている',
@@ -113,17 +125,29 @@ class _ConsultationScreenState extends ConsumerState<ConsultationScreen> {
         FilledButton(
           key: const ValueKey('submit-consultation'),
           onPressed: state.consultation.isLoading ? null : _send,
-          child: const Text('送る'),
+          child: Text(state.unresolved ? '結果を確認' : '送る'),
         ),
         if (state.consultation.isLoading) ...[
           AppSpace.syM,
           const LinearProgressIndicator(),
+          Text(
+            state.phase == ConsultationPhase.cancelling
+                ? '中止を確認しています。保存が完了している場合は結果を表示します。'
+                : '回答を作成しています。通信が切れても同じ送信の保存結果を確認します。',
+          ),
         ],
+        if (state.unresolved)
+          TextButton(
+            onPressed: () => ref
+                .read(consultationControllerProvider.notifier)
+                .dispatch(const CancelConsultationRequest()),
+            child: const Text('処理の中止を依頼'),
+          ),
         if (state.consultation.hasError)
           AsyncErrorCard(error: state.consultation.error!, onRetry: _send),
         AppSpace.syM,
         TextButton(
-          onPressed: state.consultation.isLoading
+          onPressed: (state.consultation.isLoading || state.unresolved)
               ? null
               : () {
                   _message.clear();
@@ -151,7 +175,7 @@ class _ConsultationScreenState extends ConsumerState<ConsultationScreen> {
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
-                  onTap: state.consultation.isLoading
+                  onTap: (state.consultation.isLoading || state.unresolved)
                       ? null
                       : () {
                           ref
