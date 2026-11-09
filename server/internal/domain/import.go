@@ -23,19 +23,20 @@ type ImportIdentityConflict struct {
 }
 
 type ImportPreview struct {
-	IdentityConflicts []ImportIdentityConflict `json:"identity_conflicts"`
-	IdentityNotice    string                   `json:"identity_notice"`
-	PreviewID         string                   `json:"preview_id"`
-	DetectedEncoding  string                   `json:"detected_encoding"`
-	Headers           []string                 `json:"headers"`
-	Mapping           CSVMapping               `json:"mapping"`
-	NeedsMapping      bool                     `json:"needs_mapping"`
-	ReadCount         int                      `json:"read_count"`
-	PeriodStart       string                   `json:"period_start"`
-	PeriodEnd         string                   `json:"period_end"`
-	ExpenseTotal      int64                    `json:"expense_total"`
-	Rows              []Transaction            `json:"rows"`
-	Warnings          []string                 `json:"warnings"`
+	ReconciliationConflicts []ReconciliationConflict `json:"reconciliation_conflicts"`
+	IdentityConflicts       []ImportIdentityConflict `json:"identity_conflicts"`
+	IdentityNotice          string                   `json:"identity_notice"`
+	PreviewID               string                   `json:"preview_id"`
+	DetectedEncoding        string                   `json:"detected_encoding"`
+	Headers                 []string                 `json:"headers"`
+	Mapping                 CSVMapping               `json:"mapping"`
+	NeedsMapping            bool                     `json:"needs_mapping"`
+	ReadCount               int                      `json:"read_count"`
+	PeriodStart             string                   `json:"period_start"`
+	PeriodEnd               string                   `json:"period_end"`
+	ExpenseTotal            int64                    `json:"expense_total"`
+	Rows                    []Transaction            `json:"rows"`
+	Warnings                []string                 `json:"warnings"`
 }
 
 type ImportCommitResult struct {

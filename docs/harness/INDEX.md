@@ -15,6 +15,7 @@
 | 初回相談・チャット入力・購入実績確認 | [チャット主体の初回相談と購入実績確認](../product/first-consultation-onboarding.md)（必須情報、保存、CSV案内、購入後の確認） |
 | 無料提供・相談上限・費用確認 | [無料提供と利用上限の方針](../product/free-service-cost-policy.md)（人数、変更可能な上限、到達後の動作、管理者通知、月次確認） |
 | mobileの画面・Widget・テーマ | [モバイルのデザインシステム](../mobile/design-system.md) |
+| チャット購入とCSVの照合・金融包含・統合件数 | [照合契約](../../server/docs/purchase-csv-reconciliation.md)とサーバー・モバイル業務・構成 |
 | API、DTO、認証、セッション | モバイル・サーバーの3文書と [OpenAPI](../../server/docs/openapi.yaml) |
 | 金額、分類、相談、CSV、レビュー | サーバー業務。表示も変える場合はモバイル業務・構成 |
 | 設定、DB、コンテナ、配備 | サーバー・インフラの3文書 |

@@ -1,3 +1,4 @@
+import '../../../transactions/screens/import/purchase_csv_confirmation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -72,6 +73,12 @@ class _ConsultationScreenState extends ConsumerState<ConsultationScreen> {
         const Text('分かる範囲で話してください。金額の入力やCSVの取込は必須ではありません。'),
         AppSpace.syXl,
         if (item != null) ...[
+          for (final p in item.purchases.where((p) => p.csvPending))
+            PurchaseCsvConfirmation(
+              key: ValueKey(p.id),
+              purchaseId: p.id,
+              description: p.description,
+            ),
           if (item.messages.isEmpty) Text(item.recommendation),
           for (final message in item.messages)
             Card(

@@ -95,3 +95,5 @@ PostgreSQLは一つのまま利用するが、テーブルの論理的な所有�
 依存例外を追加する場合は、チェッカーの`DependencyException`をimport元・import先・ルールID・例外IDの完全一致で登録し、同じ例外ID、理由、許可範囲、解消条件を[運用・検証範囲](../harness/WORKFLOW.md)へ記録する。ディレクトリ単位の除外は登録しない。現在、登録済みの依存例外はない。
 
 購入確認は`consultation`がモデル・状態遷移・ReminderRepository Portを所有する。`ReminderWorker`は起動時と1分ごとに期限を検索し、金融計算を行わず同じチャットへ確認を追加する。`app`がPostgreSQLと所有者context付き配信を接続し、Close時にworkerを停止する。期限索引・利用者状態・複数原チャットの更新はPostgreSQL Adapterの同じtransactionで扱う。
+
+購入とCSVの照合は既存ApplicationのReconciliationRepositoryとconsultationのReconciliationPortをcomposition rootで組み立てる。記録同一性をDBに保存し、限定モデルDTO・構造検証・既存SaveChatTurnへ接続する。新しい金融計算器や全面ledgerを置かず、再計算を通常の相談receiptの寿命に収める。CSV確定によるchat state version更新で進行中の古い相談保存を拒否する。[照合契約](../../server/docs/purchase-csv-reconciliation.md)を参照。

@@ -1,3 +1,4 @@
+import '../../../transactions/repository/reconciliation_repository.dart';
 import 'dart:async';
 import 'dart:math';
 import '../../../../core/network/api_exception.dart';
@@ -226,6 +227,7 @@ class ConsultationViewModel
               phase: ConsultationPhase.idle,
               clearPending: true,
             );
+            ref.invalidate(expenseCountProvider);
             await refreshHistory();
             return;
           }

@@ -338,3 +338,38 @@ erDiagram
 `transactions(id,user_id)`の複合一意性とFKで所有者を一致させる。行対応は`PRIMARY KEY(user_id,file_key,source_scope,account_scope,transaction_type,row_number)`で行から明細、`UNIQUE(user_id,file_key,source_scope,account_scope,transaction_type,transaction_id)`で明細から行を一意にする。aliasは全scope・行番号・明細IDの複合FKで対応を参照する。同じ物理行の別strategyキーは複数保持でき、別行への二重割当と同じ行への二重計上はDB制約で拒否する。source/account scopeは大小文字を統一する。commitの所有者直列化とsnapshot検証はアプリ側txの追加保証として行う。
 
 行対応は新規追加・明示sameだけでなく、既存fingerprint/aliasによる重複除外でも同じtxで保存する。別fileの安定IDが同じだった場合も新しいfileの行対応を保持する。previewでは双方の対応を検証するが保存はしない。
+
+## 購入とCSVの照合（Postgres013 / SQLite007）
+
+```mermaid
+erDiagram
+    users ||--o{ purchase_csv_decisions : "所有者"
+    transactions ||--o{ purchase_csv_decisions : "owner付きFK"
+    purchase_csv_decisions ||--o{ purchase_csv_receipts : "ownerとrefのFK"
+    purchase_csv_decisions {
+        bigint user_id PK, FK
+        bigint transaction_id PK, FK
+        text purchase_id PK "chat state内の購入ID"
+        text action "sameまたはdistinct"
+        text ref UK
+        text csv_snapshot
+        text purchase_revision
+        text prior_inclusion "new_csvまたはunknown"
+        boolean balance_resolved
+        boolean budget_resolved
+        text financial_status "pending/needs_information/applied"
+        text recorded_at
+    }
+    purchase_csv_receipts {
+        bigint user_id PK, FK
+        text ref PK, FK
+        text purchase_revision PK
+        text status "needs_information/applied"
+        boolean balance_resolved
+        boolean budget_resolved
+        bigint state_version
+        text recorded_at
+    }
+```
+
+DBはowner付き明細FK、対応ref複合FK、sameのowner/transactionおよびowner/purchaseのpartial uniqueを保証する。購入IDはJSON内正本のためDBのPurchase FKを捏造せず、所有者・購入snapshot・state versionをtx内で検証する。旧銀行原記録とCSV alias/file-row対応は変更しない。金融結果のrevision履歴を保持し、購入訂正で対応を削除しない。SQLiteは既存設計と同様users FKを持たず、全操作にowner条件を適用する。

@@ -1,3 +1,4 @@
+import 'purchase_csv_form.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -161,7 +162,8 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
               loading:
                   state.loading ||
                   dirty ||
-                  state.preview!.identityConflicts.isNotEmpty,
+                  state.preview!.identityConflicts.isNotEmpty ||
+                  state.preview!.reconciliationConflicts.isNotEmpty,
             ),
           ],
           if (state.preview?.identityConflicts.isNotEmpty == true) ...[
@@ -172,6 +174,16 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
               loading: state.loading || dirty,
               onSubmit: (values) =>
                   controller.dispatch(ResolveImportIdentities(values)),
+            ),
+          ],
+          if (state.preview?.reconciliationConflicts.isNotEmpty == true) ...[
+            AppSpace.syL,
+            PurchaseCsvForm(
+              key: ValueKey(state.preview),
+              conflicts: state.preview!.reconciliationConflicts,
+              loading: state.loading || dirty,
+              onSubmit: (values) =>
+                  controller.dispatch(ResolveImportPurchases(values)),
             ),
           ],
           if (state.commitResult != null) ...[
@@ -191,6 +203,9 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
                       ),
                     ),
                     Text('重複 ${state.commitResult!.duplicateCount}件'),
+                    const Text(
+                      '購入との照合は保存済みです。残高・自由予算の反映に確認が必要な場合は、次のチャットで質問します。',
+                    ),
                     const SizedBox(height: 12),
                     FilledButton(
                       onPressed: () {

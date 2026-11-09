@@ -238,3 +238,5 @@ DELETE /memories/{id}
 相談の通信断・期限・取消し・結果照会は[受付契約](server/docs/consultation-requests.md)を参照。
 
 CSVの同条件明細・入出金・複数口座の保存と、旧キーの明示引継ぎは[同一性契約](server/docs/csv-identity.md)を参照。
+
+チャットで確定した購入とCSVを同じ支出として記録する場合は、CSVプレビューまたは購入の確認カードで照合します。日付・同額だけでは自動でまとめず、最新購入訂正と銀行原明細を保持します。金融包含が不明な場合は次のチャットで必要な点だけ確認し、残高・自由予算のLLM再計算を一度保存します。Dashboardの統合件数は全期間の日付あり・推定（内数）・日付不明・未確定を分け、従来のCSV金額集計は維持します。[照合契約](server/docs/purchase-csv-reconciliation.md)を参照。

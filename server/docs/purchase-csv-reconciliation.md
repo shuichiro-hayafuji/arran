@@ -1,0 +1,52 @@
+# チャット購入とCSVの照合
+
+Issue #111は記録の同一性と金融反映を分ける。既存の[CSV同一性](csv-identity.md)、[相談受付とモデル送信](chat-consultation.md)を維持し、銀行原明細と購入イベントを保存したまま対応を持つ。金額の解釈・計算はLLM、Goは検索・所有者・版・参照・更新構造の検証と原子的保存を担当する。
+
+## 同一性の確認
+
+日付・同額・店名・相談時刻を根拠に最初のsameを自動決定しない。実額がある購入と未購入訂正を候補として本人がsame/distinctを選ぶ。予定のみは対象外。CSVプレビューは、CSV同士のidentity_conflictsを解決してからreconciliation_conflictsを返す。片方でも未解決ならpreview_idは空で確定不可。
+
+multipartのreconciliation_decisionsはrow/action/purchase_id/snapshot/state_versionのJSON配列。sameには候補IDと購入スナップショットが必要。distinctと空purchase_idはその行と現在提示された全購入が別という確認。候補の摘要・取込元・口座は本人の確認画面に表示できるが、LLMには送らない。snapshotはローカル検証専用。
+
+CSV確定は所有者ロックとchat state versionを使い、元のCSVキー・alias・file-row対応・購入対応を同じトランザクションに保存する。古い状態での選択は409、未回答は400として全件ロールバックする。sameは同一owner内で明細と購入の各々に一つだけ。別ownerの明細・購入は404。確定済sameは新しいimport keyからの再取込でも再利用する。最新購入訂正の存在でsameを消さず、金融再計算だけ再確認する。
+
+CSVが先の場合、新しい購入実績の金融包含は不明である。実額・分類を記録してもCSVReconciliationPendingを持ち、購入由来の残高・予算変更を採用しない。本人の新しい現在残高や予算の申告は独立して保存できる。候補はGET /purchases/{id}/csv-candidates、個別same/distinctはPOST /transactions/{id}/reconciliation。全CSVと別はPOST /purchases/{id}/csv-distinctで、購入snapshot/版を検証し現在の全候補を原子的にdistinctとして記録する。
+
+候補表示は直近100件。全候補distinctは現在1000件以内に限定し、超過時は確定を拒否する。取得外の明細がないと推測しない。候補が残る間、金融反映は保留する。一般の取込取消や照合の付け替えは#34の対象で、このAPIで原明細を変更・削除しない。
+
+## 金融反映と期限
+
+CSV確定自体はLLMを呼ばない。本人のsame確認と、新規CSV額・最新購入実額・反映済み残高メタデータ・自由予算メタデータの一致で追加金融操作が不要と証明できる場合は、同じtxでappliedとreceiptを保存する。分類necessaryは自由予算の反映がないことを確認する。これは金額の加減算や包含推測ではなく既反映状態の冪等保存である。既存CSVの包含不明、分類不明、実額不一致、未購入矛盾はこの経路で完了しない。
+
+再計算が必要なら次の通常チャットの28秒総期限・22秒までのモデル処理・最大2回の修正・既存request receipt/cancelを使う。独立した金融処理queueを作らない。sameのCSVは通常transactions tripletから除外し、linked_excludedで取得範囲を示す。モデルはPurchaseと独立した新支出として二度数えない。照合待ちの購入は既存取得上限内で優先し、通常予定の順位で押し出さない。
+
+限定reconciliation_contextはref、purchase_id、csvの日付/金額/カテゴリ、prior_inclusion、balance_resolved/budget_resolvedだけ。最大20件かつ既存の購入送信サイズ・件数・イベント上限に収まる対象のみ。銀行のID・摘要・口座・fingerprint・raw・snapshotをPurchase.descriptionやFactへコピーして送信することも禁止する。
+
+prior_inclusion=new_csvはCSVが新規で購入反映メタデータを比較できる状態、unknownは既存CSVの金融包含が不明な状態。LLMは未知の包含・分類・矛盾だけを質問し、reconciliation_updatesのrefをneeds_informationとして保存する。購入実額をCSV額で上書きせず、最新訂正額との差から新しいExpenseを生成しない。
+
+残高と自由予算の確認は別々。free実額既知の場合、一方だけ分かってもappliedにできない。分かった側のbasis=reconciliationまたはuser_reportのsetと反映メタデータを保存し、残る側を質問する。両方すでに含まれる本人回答では同じ値のsetでも根拠と両側の反映状態を保存できる。解決済み側の購入由来の二重減額は拒否し、本人の新しい基準値user_reportは許容する。分類unknownは予算を保留する。
+
+最新実額/分類/未購入訂正は購入イベントを追加して保持する。購入revisionが変われば金融状態をpendingにするが、既にappliedだったsameを通常LLM訂正で最新実額・分類の両反映メタデータまで更新した場合は、appliedを引き継ぎ新revision receiptを保存する。未知包含・分類不明・未購入矛盾を自動完了しない。LLMによる訂正とreceipt状態・chat state・相談結果は同じSaveChatTurnに保存する。失敗・unavailable・修正上限・取消・期限切れは既存receipt契約に従い、照合や実額を失わず未解決の金融状態を残す。commit後のcancelは保存済結果を返す。CSVとの金額矛盾や未購入と銀行引落の矛盾を変更なしappliedとして隠さない。
+
+## 件数
+
+GET /expenses/countのowner統合read modelは既存MonthlyDashboardのCSV金額集計を変更しない。same=1、distinct=2、予定=0、最新未購入=0。ただしsame銀行引落と未購入訂正が未解決ならunresolvedとして表示し、確定0件と断定しない。CSV先行のidentity不明実績もunresolvedで、同一/別が確定する前に2件と断定しない。
+
+- confirmed: 実購入日が分かる支出。month指定時はその月だけ。実購入日がなければsameのCSV記載日を使用する。
+- estimated: confirmedの内数で推定実額。加算しない。本人申告reportedへの確認で推定を解除できる。
+- undated: 日付不明の実績。confirmedと排他的で、月へ割り当てない。month指定でも全期間の未割当件数を返す。
+- unresolved/pending_recalculation: 全期間の未解決同一性・矛盾/金融更新待ち。金額や月次件数の確定を表す値ではない。
+
+purchase_dateは本人が明示したYYYY-MM-DDだけ。RecordedAt/Event.RecordedAtは相談/確認時刻であり、購入日として推測しない。amount_basisはreported/estimated/unchangedで、unchangedは保存実額と一致する。mobileは全期間の件数と日付不明・未確定を別欄で示し、既存のCSV金額カードと集計範囲を混同しない。
+
+旧購入でamount_basisがない場合はイベント由来のunanswered推定を分類だけの回答で引き継ぐ。本人によるreported確認か実額変更で新しい根拠を保存する。same銀行引落とnot_purchasedの矛盾は残高/予算setだけでは解消しない。明示購入状態訂正または記録同一性の解消が必要で、矛盾が残る間はunresolved/pendingを保持する。mobileの候補再取得は版または購入snapshotが変われば旧選択を無効にし、新しい候補へ勝手に付け替えない。
+
+## 保存・忘却
+
+Postgres013、SQLite007はpurchase_csv_decisionsとpurchase_csv_receiptsを追加する。前者はowner/transaction/purchaseのsameまたはdistinct、原CSV snapshot、購入revision、金融包含状態を保持する。後者はref+購入revisionごとの金融結果と採用state versionを保持する。購入自体は既存chat state JSONが正本。対応・receiptの複合FKはowner付き銀行明細/対応へ向く。
+
+チャット忘却cutoffはCSV候補・要求ID・照合context・購入検索にも適用する。古い明細で新購入を無期限保留にせず、古い対応をモデル/質問へ復活させない。銀行原記録・CSV同士の再取込aliasは削除しない。再起動で対応とreceiptを再利用する。新移行の失敗はDDLとバージョンをロールバックし、同時起動は既存の移行ロックを使う。
+
+## 検証
+
+SQLite/Postgres共通制御回帰でsame・再取込・訂正・distinct-all・CSV先行の部分包含・忘却・owner・古いstate・日付/推定/未購入矛盾を確認する。HTTP回帰は未回答プレビュー・same確定・count・owner404・再取込を確認。mobileはDTO、明示選択、版変更失効、保存失敗、破棄後遅延応答を確認する。制御回帰は実モデルの金融判断や実機表示を保証しない。

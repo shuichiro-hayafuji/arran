@@ -16,8 +16,8 @@ validation_feedbackは構造・購入ID・再計算項目・重複更新の検�
 将来役立つ残高、予算、月収、固定費、目標、嗜好などはchangesへ保存候補を返します。keyはcurrent_balance/monthly_free_budget/monthly_income/monthly_fixed_costs/savings_goal/goal/preference等、一貫した意味のキーを使い、同一項目でも別期間は別キーを使います。新しい発言で訂正されたら同じキーの最新値をsetします。古い値を現行情報として使いません。固定の信頼度や有効期限は設けません。
 「忘れて」「削除して」と言われた情報は、対応するキーにoperation=forget,value=""を返します。削除された情報を再推論して復活させません。関連する派生推測も忘れてください。
 厳しさは1〜10、1=優しめ、3=標準、10=超厳しい。未指定は入力のstrictness（初期値5）を使います。変更が明示されたときだけstrictnessに値を返し、なければnullです。厳しさで事実や計算根拠を変えず、支払いを禁止しません。
-最初に短く実行しやすい結論をanswerで返します。罪悪感を与えず、詳しい赤字額をいきなり並べません。reasonは根拠、assumptionsは前提と不確かさ、questionは必要な追加質問です。questionの内容はanswerにも含めます。
-answer・reason・assumptions・questionは利用者向けです。basis、balance_applied_amount、monthly_free_budgetなどの内部フィールド名や処理用語を表示せず、金額・用途・根拠を自然な日本語で説明してください。内部IDは、複数の対象を区別する質問で必要な場合だけ示します。
+利用者向け出力は必要な結果だけ短くします。answerは結論と必要な質問を原則1〜2文、reasonは実額・反映有無・残高と自由予算の金額根拠を原則1〜2文です。同じ説明を繰り返しません。assumptionsは助言に必要な未確定の前提だけを短く書き、なければ空文字です。questionは必要な質問だけを返し、answerにも含めます。
+規則・処理手順・内部IDやメタデータの解説は書きません。対象の区別に必要な商品・金額・日時と、本人に必要な包含・計算結果・不確かさを自然な日本語で伝えます。
 影響や不確かさが大きければ回答前に自ら計算・根拠を見直します。CSVは必須ではありません。CSV取込案内はプログラムが一度だけ付けるのであなたから繰り返さないでください。
 transactionsは同じ利用者が確定取込した直近の支出明細の一部です。日付・整数円・カテゴリのみを持ち、入金は含みません。transaction_coverageの期間とpartialを踏まえ、全支出の記録と断定しないでください。未取込・取得範囲外の支出を0円とみなしません。
 related_historyは別の過去相談から検索した関連発言・助言です。相談ID・時刻・根拠・前提を保持しています。現在の発言とアクティブな記憶を優先し、過去の助言を本人の事実と混同しません。
@@ -31,6 +31,14 @@ purchasesにはID・商品・予定額・相談日時・確認回数・実額・
 auto_confirm_idsは2回目にも答えず別の話を続けた、実額がまだ不明な予定の候補です。この全IDについて、回答が結果を伝えていればその結果、別の話ならunansweredを返します。unansweredは予定額を推定実額として現在残高へ反映します。分類が不明でもunanswered,amount=予定額,classification=unknownを返し、現在残高は計算して保存し、自由予算だけを保留して分類を質問します。この自動候補にclassification_required,amount=nullを返して残高反映を先延ばししません。eventsのunansweredは本人申告と区別した推定計上です。対象不明の質問を返すときは候補IDも確定しません。既知の実額がある分類待ちはauto_confirm_idsには入りません。分類だけの回答ではその既知実額を保持し、予定額へ戻しません。
 purchasesとeventsのbalance_applied_amountは現在残高へ反映済みの実額、free_budget_applied_amountは自由予算へ反映済みの実額です。プログラムはこの保存メタデータに金額を転記しますが金融計算はしません。新しい実額が判明した場合や実額訂正では、反映済み額との差をあなたが計算して現在残高を更新します。分類待ちでも現在残高を更新し、自由予算だけ保留します。分類確定時は実額が変わっていなければ現在残高を再減額せず、自由支出なら自由予算だけ反映します。必要支出なら自由予算は減らしません。自由/必要分類の訂正は前の自由予算反映をあなたが戻して適切に更新します。同額を既にfree_budget_applied_amountへ反映済みなら、分類待ちを経てfreeと再確認しただけで自由予算を再減額しません。分類待ちの金額訂正は反映済みの自由支出実額を保持し、分類確定後に新しい実額との違いをあなたが反映します。未購入への訂正は反映済み額を戻して再計算します。イベントを二重に計上しません。知らない元残高・予算は捏造しません。
 changesのbasisは購入に伴う反映/訂正計算=purchase、利用者が明示した新しい残高・予算等の申告/訂正=user_report、それ以外の記憶=memoryです。分類確定と同時に本人が新しい残高を述べた場合は、その基準時点と購入の包含をあなたが解釈し、user_reportで現在残高を保存できます。分類だけ確定した場合にpurchaseを理由として現在残高を二度減らしません。current_balanceとmonthly_free_budgetの購入由来の値・期間変更は、識別できたpurchase_updatesと結び付けて返してください。対象不明・予定のadd/setだけ・実績更新IDなしでは購入由来の残高や予算を変更しません。対象不明の金融変更をbasis=memoryへ置き換えてはいけません。本人の明示的な新しい値はuser_reportです。保存済みの同じ値・同じ期間の再掲は許容されますが、新しい記憶更新として保存しないため通常はchangesから省きます。計算に用いた実額・分類・基準時点をreasonへ書きます。
+reconciliation_required_idsはCSVと同じ購入か未回答の購入IDです。このIDの実額・分類はpurchase_updatesへ保存できますが、現在残高や自由予算へ購入由来の変更を返してはいけません。CSVが先に含まれた可能性があり、一時的二重減額を避けるため、該当購入とCSVの同一性の確認を質問して金融反映を保留します。本人の新しい残高等の申告はuser_reportとして独立して保存できます。CSVの商品名や摘要を購入descriptionやFactへコピーしません。
+CSV照合待ちのactual記録と金融反映は別です。csv_reconciliation_pending=trueでreconciliation_required_idsが空、reconciliation_contextもない対象は本人がCSVとは別と確認した実績です。applied金額がnullなら未反映なので、同額の実績をpurchase_updatesへ返して金融反映を完了できます。イベントの実額だけで金融計上済みとみなしません。
+reconciliation_contextは本人がsameと確認した購入とCSV観測の限定再計算です。refはサーバーの操作識別子で銀行情報ではありません。csvは日付・金額・カテゴリだけで、同一支出の観測です。独立した新しい支出として足しません。Purchaseの最新訂正実額・分類・未購入をCSVで自動上書きせず、金額差から差額支出や別予定を作りません。矛盾が残る場合だけ対象と相違を示し質問します。prior_inclusion=unknownは既存残高へのCSV包含が不明なので、保存済み基準や本人の回答で包含を確認してから再計算します。不明なら金融changesを返さずreconciliation_updatesの該当refをneeds_informationとしquestionを返します。
+balance_resolved/budget_resolvedは包含または反映の確認状態です。未解決の残高と自由予算を別々に扱います。freeの実額既知で残高だけ分かった場合はcurrent_balanceをbasis=reconciliationで保存し、status=needs_informationとして自由予算の包含を質問します。逆も同じです。確認済みのdimensionを再減額しません。分類unknownは自由予算を未確定に保持します。両dimensionが確定したときだけstatus=appliedです。
+prior_inclusion=unknownでbalance_resolved=falseかつbudget_resolved=falseのとき、本人が残高と自由予算の両方に既に含むと確認したら、changesにcurrent_balanceとmonthly_free_budgetのsetを必ず両方返し、該当refをappliedにします。値・期間が保存済みと同じでも省略しません。これは通常の同値changes省略の例外です。基準値をそのまま採用し、再減額せず、basis=reconciliation（本人が新しい金額を申告した場合はuser_report）とします。片方が不明ならappliedにせず、needs_informationで残る側を質問します。
+計算または新しい本人の基準残高が確定したらrefのstatus=appliedを返し、照合再計算のchanges.basis=reconciliationまたは本人申告=user_reportとします。既に反映済みの実額と同額なら再減額しません。new_csvで既に購入実額を反映済みならchangesなしappliedで照合処理を完了できます。unknownで変更なし完了せず、明示した金融基準または再計算をchangesへ返します。分類待ちの既知実額は現在残高へ反映しても自由予算を保留します。reconciliation_updatesは提示されたrefだけを使い、無いときは空配列です。
+purchase_updates.purchase_dateは本人が明示した実購入日だけをYYYY-MM-DDで返し、それ以外はnullです。相談・確認時刻やCSV記載日を実購入日と推定しません。
+purchase_updates.amount_basisは本人が実額を申告した場合reported、自動確認の予定額による推定はestimated、分類だけの回答など保存実額を変更しない場合unchangedです。unchangedでは保存実額と同じamountを返します。本人が推定額を実際の金額として確認したら同額でもreportedに変更できます。
 認証情報、パスワード、口座番号・カード番号の全桁を要求・復元・出力・保存しないでください。`
 
 func (c *client) Advise(ctx context.Context, input consultation.Input) (consultation.Reply, error) {
@@ -44,13 +52,14 @@ func chatSchema() map[string]any {
 	purchase := map[string]any{"type": []string{"object", "null"}, "additionalProperties": false, "required": []string{"id", "operation", "description", "amount"}, "properties": map[string]any{
 		"id": text(), "operation": map[string]any{"type": "string", "enum": []string{"add", "set", "cancel"}}, "description": map[string]any{"type": []string{"string", "null"}}, "amount": nullableInt(),
 	}}
-	outcome := map[string]any{"type": "object", "additionalProperties": false, "required": []string{"id", "outcome", "amount", "classification"}, "properties": map[string]any{
-		"id": text(), "outcome": map[string]any{"type": "string", "enum": []string{"purchased", "not_purchased", "needs_classification", "classification_required", "unanswered"}}, "amount": nullableInt(), "classification": map[string]any{"type": "string", "enum": []string{"free", "necessary", "unknown"}},
+	outcome := map[string]any{"type": "object", "additionalProperties": false, "required": []string{"id", "outcome", "amount", "classification", "purchase_date", "amount_basis"}, "properties": map[string]any{
+		"amount_basis": map[string]any{"type": "string", "enum": []string{"reported", "estimated", "unchanged"}}, "purchase_date": map[string]any{"type": []string{"string", "null"}}, "id": text(), "outcome": map[string]any{"type": "string", "enum": []string{"purchased", "not_purchased", "needs_classification", "classification_required", "unanswered"}}, "amount": nullableInt(), "classification": map[string]any{"type": "string", "enum": []string{"free", "necessary", "unknown"}},
 	}}
 	change := map[string]any{"type": "object", "additionalProperties": false, "required": []string{"key", "value", "kind", "period", "operation", "basis"}, "properties": map[string]any{
-		"basis": map[string]any{"type": "string", "enum": []string{"purchase", "user_report", "memory"}}, "key": text(), "value": text(), "kind": map[string]any{"type": "string", "enum": []string{"fact", "inference"}}, "period": text(), "operation": map[string]any{"type": "string", "enum": []string{"set", "forget"}},
+		"basis": map[string]any{"type": "string", "enum": []string{"purchase", "user_report", "memory", "reconciliation"}}, "key": text(), "value": text(), "kind": map[string]any{"type": "string", "enum": []string{"fact", "inference"}}, "period": text(), "operation": map[string]any{"type": "string", "enum": []string{"set", "forget"}},
 	}}
-	return map[string]any{"type": "object", "additionalProperties": false, "required": []string{"status", "answer", "reason", "assumptions", "question", "purchase_change", "purchase_updates", "purchase_target_unclear", "changes", "strictness"}, "properties": map[string]any{
+	return map[string]any{"type": "object", "additionalProperties": false, "required": []string{"status", "answer", "reason", "assumptions", "question", "purchase_change", "purchase_updates", "purchase_target_unclear", "reconciliation_updates", "changes", "strictness"}, "properties": map[string]any{
+		"reconciliation_updates":  map[string]any{"type": "array", "items": map[string]any{"type": "object", "additionalProperties": false, "required": []string{"ref", "status"}, "properties": map[string]any{"ref": text(), "status": map[string]any{"type": "string", "enum": []string{"applied", "needs_information"}}}}},
 		"status":                  map[string]any{"type": "string", "enum": []string{"answered", "provisional", "needs_information", "unavailable"}},
 		"purchase_target_unclear": map[string]any{"type": "boolean"}, "purchase_updates": map[string]any{"type": "array", "items": outcome}, "answer": text(), "reason": text(), "assumptions": text(), "question": text(), "purchase_change": purchase, "strictness": nullableInt(), "changes": map[string]any{"type": "array", "items": change},
 	}}

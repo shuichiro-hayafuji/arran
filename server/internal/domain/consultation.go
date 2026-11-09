@@ -23,19 +23,22 @@ type PurchaseEvent struct {
 	Source                  string `json:"source"`
 }
 type Purchase struct {
-	BalanceAppliedAmount    *int64          `json:"balance_applied_amount"`
-	FreeBudgetAppliedAmount *int64          `json:"free_budget_applied_amount"`
-	ID                      string          `json:"id"`
-	ConsultationID          int64           `json:"consultation_id"`
-	Description             string          `json:"description"`
-	Amount                  int64           `json:"amount"`
-	RecordedAt              string          `json:"recorded_at"`
-	Status                  string          `json:"status"`
-	FirstAskedAt            string          `json:"first_asked_at"`
-	SecondAskedAt           string          `json:"second_asked_at"`
-	ActualAmount            *int64          `json:"actual_amount"`
-	Classification          string          `json:"classification"`
-	Events                  []PurchaseEvent `json:"events"`
+	ActualAmountBasis        string          `json:"actual_amount_basis"`
+	PurchaseDate             string          `json:"purchase_date"`
+	CSVReconciliationPending bool            `json:"csv_reconciliation_pending"`
+	BalanceAppliedAmount     *int64          `json:"balance_applied_amount"`
+	FreeBudgetAppliedAmount  *int64          `json:"free_budget_applied_amount"`
+	ID                       string          `json:"id"`
+	ConsultationID           int64           `json:"consultation_id"`
+	Description              string          `json:"description"`
+	Amount                   int64           `json:"amount"`
+	RecordedAt               string          `json:"recorded_at"`
+	Status                   string          `json:"status"`
+	FirstAskedAt             string          `json:"first_asked_at"`
+	SecondAskedAt            string          `json:"second_asked_at"`
+	ActualAmount             *int64          `json:"actual_amount"`
+	Classification           string          `json:"classification"`
+	Events                   []PurchaseEvent `json:"events"`
 }
 type ChatMessage struct {
 	Reason      string `json:"reason,omitempty"`
