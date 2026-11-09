@@ -463,13 +463,18 @@ components:
         pending_purchase:
           type: object
           nullable: true
-          description: LLMが抽出した商品と購入確認待ちの予定。金額の補足・訂正では商品を保持し、同額の商品変更は更新、明示的な取り消しは解除する。支出・残高への反映は行わない。
+          description: LLMが抽出した商品と購入確認待ちの予定。金額の補足・訂正では商品を保持し、同額の商品変更は更新、明示的な取り消しは解除する。単一予定の互換表示。複数予定・実績・訂正はpurchasesを参照する。
           required: [description, amount, recorded_at, status]
           properties:
             description: { type: string }
             amount: { type: integer, format: int64 }
             recorded_at: { type: string, format: date-time }
-            status: { type: string, enum: [purchase_confirmation_pending] }
+            status: { type: string, enum: [purchase_confirmation_pending, needs_classification, classification_required] }
+        purchases:
+          type: array
+          nullable: true
+          description: 元の相談に紐づく複数の予定・確認時刻・実績・訂正イベント。IDで回答対象を区別する。
+          items: { $ref: '#/components/schemas/Purchase' }
         messages:
           type: array
           nullable: true
@@ -483,6 +488,37 @@ components:
               reason: { type: string }
               assumptions: { type: string }
               created_at: { type: string, format: date-time }
+    Purchase:
+      type: object
+      required: [id, consultation_id, description, amount, recorded_at, status, first_asked_at, second_asked_at, actual_amount, classification, balance_applied_amount, free_budget_applied_amount, events]
+      properties:
+        id: { type: string }
+        consultation_id: { type: integer, format: int64 }
+        description: { type: string }
+        amount: { type: integer, format: int64 }
+        recorded_at: { type: string, format: date-time }
+        status: { type: string, enum: [purchase_confirmation_pending, needs_classification, classification_required, purchased, not_purchased, unanswered, cancelled] }
+        first_asked_at: { type: string, description: 未確認は空文字 }
+        second_asked_at: { type: string, description: 未確認は空文字 }
+        actual_amount: { type: integer, format: int64, nullable: true }
+        balance_applied_amount: { type: integer, format: int64, nullable: true, description: 現在残高へ反映済みの実額。Goで計算する値ではない。 }
+        free_budget_applied_amount: { type: integer, format: int64, nullable: true, description: 自由予算へ反映済みの実額。分類待ちは保留。 }
+        classification: { type: string, enum: ['', free, necessary, unknown] }
+        events:
+          type: array
+          nullable: true
+          items:
+            type: object
+            required: [outcome, amount, classification, recorded_at, source]
+            properties:
+              outcome: { type: string, enum: [purchased, not_purchased, unanswered, needs_classification, classification_required] }
+              amount: { type: integer, format: int64, nullable: true }
+              classification: { type: string, enum: [free, necessary, unknown] }
+              recorded_at: { type: string, format: date-time }
+              source: { type: string }
+              balance_applied_amount: { type: integer, format: int64, nullable: true }
+              free_budget_applied_amount: { type: integer, format: int64, nullable: true }
+              balance_basis: { type: string, description: purchase・user_report。旧イベントは空文字。 }
     ConsultationResultUpdate:
       type: object
       properties:

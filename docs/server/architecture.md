@@ -93,3 +93,5 @@ PostgreSQLは一つのまま利用するが、テーブルの論理的な所有�
 公開識別子の必要性も意味上の判断を伴うため自動検査しない。新しい公開型・関数を追加する場合は、利用する別パッケージと所有責務を差分レビューで確認する。
 
 依存例外を追加する場合は、チェッカーの`DependencyException`をimport元・import先・ルールID・例外IDの完全一致で登録し、同じ例外ID、理由、許可範囲、解消条件を[運用・検証範囲](../harness/WORKFLOW.md)へ記録する。ディレクトリ単位の除外は登録しない。現在、登録済みの依存例外はない。
+
+購入確認は`consultation`がモデル・状態遷移・ReminderRepository Portを所有する。`ReminderWorker`は起動時と1分ごとに期限を検索し、金融計算を行わず同じチャットへ確認を追加する。`app`がPostgreSQLと所有者context付き配信を接続し、Close時にworkerを停止する。期限索引・利用者状態・複数原チャットの更新はPostgreSQL Adapterの同じtransactionで扱う。

@@ -21,12 +21,16 @@ type Fact struct {
 	Source     string `json:"source"`
 	RecordedAt string `json:"recorded_at"`
 	Active     bool   `json:"active"`
+	Basis      string `json:"basis,omitempty"`
 }
 type State struct {
-	Version    int64  `json:"version"`
-	Facts      []Fact `json:"facts"`
-	Strictness int    `json:"strictness"`
-	CSVOffered bool   `json:"csv_offered"`
+	Version           int64      `json:"version"`
+	Facts             []Fact     `json:"facts"`
+	Strictness        int        `json:"strictness"`
+	CSVOffered        bool       `json:"csv_offered"`
+	Purchases         []Purchase `json:"purchases"`
+	PurchasesMigrated bool       `json:"purchases_migrated"`
+	purchasesHydrated bool
 }
 type Message struct {
 	Role        string `json:"role"`
@@ -43,6 +47,7 @@ type PendingPurchase struct {
 }
 type Thread struct {
 	PendingPurchase *PendingPurchase `json:"pending_purchase,omitempty"`
+	Purchases       []Purchase       `json:"purchases,omitempty"`
 	ID              int64            `json:"id"`
 	Version         int64            `json:"version"`
 	CreatedAt       string           `json:"created_at"`
@@ -56,8 +61,10 @@ type Change struct {
 	Kind      string `json:"kind"`
 	Period    string `json:"period"`
 	Operation string `json:"operation"`
+	Basis     string `json:"basis"`
 }
 type PurchaseChange struct {
+	ID          string  `json:"id"`
 	Operation   string  `json:"operation"`
 	Description *string `json:"description"`
 	Amount      *int64  `json:"amount"`
@@ -78,18 +85,24 @@ type HistoricalMessage struct {
 	Message
 }
 type Reply struct {
-	PurchaseChange *PurchaseChange `json:"purchase_change"`
-	Status         string          `json:"status"`
-	Answer         string          `json:"answer"`
-	Reason         string          `json:"reason"`
-	Assumptions    string          `json:"assumptions"`
-	Question       string          `json:"question"`
-	PlannedAmount  *int64          `json:"planned_amount"`
-	Changes        []Change        `json:"changes"`
-	Strictness     *int            `json:"strictness"`
+	PurchaseChange        *PurchaseChange  `json:"purchase_change"`
+	PurchaseTargetUnclear bool             `json:"purchase_target_unclear"`
+	PurchaseUpdates       []PurchaseUpdate `json:"purchase_updates"`
+	Status                string           `json:"status"`
+	Answer                string           `json:"answer"`
+	Reason                string           `json:"reason"`
+	Assumptions           string           `json:"assumptions"`
+	Question              string           `json:"question"`
+	PlannedAmount         *int64           `json:"planned_amount"`
+	Changes               []Change         `json:"changes"`
+	Strictness            *int             `json:"strictness"`
 }
 type Input struct {
+	ValidationFeedback  string              `json:"validation_feedback"`
 	PendingPurchase     *PendingPurchase    `json:"pending_purchase"`
+	Purchases           []Purchase          `json:"purchases"`
+	AutoConfirmIDs      []string            `json:"auto_confirm_ids"`
+	PurchaseCoverage    PurchaseCoverage    `json:"purchase_coverage"`
 	Transactions        []Transaction       `json:"transactions"`
 	TransactionCoverage TransactionCoverage `json:"transaction_coverage"`
 	RelatedHistory      []HistoricalMessage `json:"related_history"`
@@ -161,6 +174,15 @@ func (s Service) Send(ctx context.Context, id int64, message string) (Thread, er
 		return Thread{}, err
 	}
 	input.RelatedHistory = relatedHistory(pastThreads, input.Message, state.Facts)
+	input.Purchases, input.PurchaseCoverage = modelPurchases(state, input.Message, id)
+	for _, p := range input.Purchases {
+		if pending(p) && p.ActualAmount == nil && p.SecondAskedAt != "" {
+			input.AutoConfirmIDs = append(input.AutoConfirmIDs, p.ID)
+		}
+	}
+	if len(input.Purchases) > 0 {
+		input.Facts = financialFacts(state.Facts, relevantFacts(state.Facts, input.Message+" 残高 予算", input.History))
+	}
 	if thread.PendingPurchase != nil && thread.PendingPurchase.RecordedAt > latestForgetAt(state.Facts) {
 		pending := *thread.PendingPurchase
 		pending.Description = Redact(pending.Description)
@@ -178,8 +200,11 @@ func (s Service) Send(ctx context.Context, id int64, message string) (Thread, er
 			reply, agentErr = s.Agent.Advise(modelCtx, input)
 			if agentErr == nil {
 				agentErr = Validate(reply)
-				if agentErr == nil && reply.PurchaseChange != nil && reply.PurchaseChange.Operation == "set" && input.PendingPurchase == nil && (reply.PurchaseChange.Description == nil || strings.TrimSpace(*reply.PurchaseChange.Description) == "") {
-					agentErr = errors.New("new purchase requires a product")
+				if agentErr == nil {
+					agentErr = validatePurchases(reply, input)
+				}
+				if agentErr != nil {
+					input.ValidationFeedback = "前回の出力を修正してください: " + agentErr.Error()
 				}
 			}
 			if agentErr == nil {
@@ -187,6 +212,11 @@ func (s Service) Send(ctx context.Context, id int64, message string) (Thread, er
 			}
 		}
 	}
+	completedNow := time.Now()
+	if s.Now != nil {
+		completedNow = s.Now()
+	}
+	completedTimestamp := completedNow.UTC().Format(time.RFC3339)
 	thread.Source = "openai"
 	if agentErr != nil {
 		reply = Reply{Status: "unavailable", Answer: "今は助言を作成できません。相談内容は保存しました。同じ相談で再試行できます。"}
@@ -197,12 +227,17 @@ func (s Service) Send(ctx context.Context, id int64, message string) (Thread, er
 		}
 	} else {
 		for _, change := range reply.Changes {
+			// A model echo is not a fresh financial observation. Retain its original
+			// provenance rather than refreshing the amount's timestamp.
+			if financialKey(change.Key) && change.Operation == "set" && change.Basis != "user_report" && unchangedFinancialFact(state.Facts, change) {
+				continue
+			}
 			for i := range state.Facts {
 				if state.Facts[i].Key == change.Key {
 					state.Facts[i].Active = false
 				}
 			}
-			state.Facts = append(state.Facts, Fact{Key: change.Key, Value: Redact(change.Value), Kind: change.Kind, Period: change.Period, Source: fmt.Sprintf("chat:%d:turn:%d", thread.ID, len(thread.Messages)/2+1), RecordedAt: timestamp, Active: change.Operation == "set"})
+			state.Facts = append(state.Facts, Fact{Key: change.Key, Basis: change.Basis, Value: Redact(change.Value), Kind: change.Kind, Period: change.Period, Source: fmt.Sprintf("chat:%d:turn:%d", thread.ID, len(thread.Messages)/2+1), RecordedAt: completedTimestamp, Active: change.Operation == "set"})
 		}
 		if reply.Strictness != nil {
 			state.Strictness = *reply.Strictness
@@ -212,26 +247,21 @@ func (s Service) Send(ctx context.Context, id int64, message string) (Thread, er
 			state.CSVOffered = true
 		}
 	}
-	if agentErr == nil && reply.PurchaseChange != nil {
-		change := reply.PurchaseChange
-		if change.Operation == "cancel" {
-			thread.PendingPurchase = nil
-		} else {
-			description := ""
-			if input.PendingPurchase != nil {
-				description = input.PendingPurchase.Description
-			}
-			if change.Description != nil && strings.TrimSpace(*change.Description) != "" {
-				description = Redact(strings.TrimSpace(*change.Description))
-			}
-			thread.PendingPurchase = &PendingPurchase{Description: description, Amount: *change.Amount, RecordedAt: timestamp, Status: "purchase_confirmation_pending"}
-		}
+	if agentErr == nil {
+		applyPurchases(&state, &thread, reply, input, completedTimestamp)
 	}
+	// Asking again is a stored lifecycle step, never a financial calculation.
+	second := secondConfirmation(&state, input, completedTimestamp)
+	if second != "" {
+		reply.Answer += "\n\n" + second
+	}
+	ProjectPurchases(state, &thread)
+
 	reply.PlannedAmount = nil
 	if thread.PendingPurchase != nil {
 		reply.PlannedAmount = &thread.PendingPurchase.Amount
 	}
-	thread.Messages = append(thread.Messages, Message{Role: "user", Content: message, CreatedAt: timestamp}, Message{Role: "assistant", Content: reply.Answer, Reason: reply.Reason, Assumptions: reply.Assumptions, CreatedAt: timestamp})
+	thread.Messages = append(thread.Messages, Message{Role: "user", Content: message, CreatedAt: timestamp}, Message{Role: "assistant", Content: reply.Answer, Reason: reply.Reason, Assumptions: reply.Assumptions, CreatedAt: completedTimestamp})
 	thread.Reply = reply
 	// Store the consultation even when model calls exhaust the request's deadline.
 	saveCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
@@ -254,13 +284,13 @@ func Validate(r Reply) error {
 		return errors.New("missing follow-up question")
 	}
 	if change := r.PurchaseChange; change != nil {
-		if change.Operation != "set" && change.Operation != "cancel" {
+		if change.Operation != "set" && change.Operation != "add" && change.Operation != "cancel" {
 			return errors.New("invalid purchase operation")
 		}
 		if change.Description != nil && len(*change.Description) > 2000 {
 			return errors.New("purchase description too long")
 		}
-		if change.Operation == "set" && (change.Amount == nil || *change.Amount < 0) {
+		if change.Operation != "cancel" && (change.Amount == nil || *change.Amount < 0) {
 			return errors.New("invalid purchase amount")
 		}
 		if change.Operation == "cancel" && (change.Amount != nil || change.Description != nil) {
@@ -277,6 +307,9 @@ func Validate(r Reply) error {
 		return errors.New("too many fact changes")
 	}
 	for _, c := range r.Changes {
+		if c.Basis != "" && c.Basis != "purchase" && c.Basis != "user_report" && c.Basis != "memory" {
+			return errors.New("invalid fact basis")
+		}
 		if c.Key == "" || len(c.Key) > 120 || len(c.Value) > 2000 || len(c.Period) > 100 {
 			return errors.New("invalid fact")
 		}
