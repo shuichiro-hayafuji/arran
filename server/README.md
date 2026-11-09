@@ -113,7 +113,7 @@ Docker ComposeはPostgreSQLを`127.0.0.1:5432`だけに公開します。Go API�
 | `OPENAI_API_KEY` | 空 | `USE_MOCK_LLM=false`のときに必要 |
 | `OPENAI_MODEL` | `gpt-5.6-terra` | OpenAI Responses APIで使うモデル |
 | `OPENAI_REASONING_EFFORT` | `medium` | OpenAI Responses APIのreasoning effort |
-| `APP_ENVIRONMENT` | `local` | PagerDuty通知に含める環境名 |
+| `APP_ENVIRONMENT` | `local` | 通知に含める環境名。DB移行の実行条件は下記参照 |
 | `PAGERDUTY_ROUTING_KEY` | 空 | PagerDuty Events API v2のIntegration routing key |
 | `ENV_FILE` | 空 | 明示的に読み込むdotenvファイルのパス |
 
@@ -256,7 +256,13 @@ infrastructure/persistence/postgres → Repository interface
 
 ## データベース
 
-起動時に[PostgreSQL migration](./internal/infrastructure/persistence/postgres/001_init.sql)から未適用の番号付きSQLが順に実行され、次のテーブルが作成されます。
+本番のAPIと移行処理は同じイメージを使い、別のDBユーザーで実行します。
+
+1. デプロイ時に一度だけ、移行用の接続情報を渡して、通常のコンテナコマンドに引数 `migrate` を追加します（Goで直接実行する場合は `go run ./cmd/api migrate`）。移行処理はトランザクションで実行され、成功すると終了します。新しいAPIを起動する前に終了コード0を確認してください。
+2. APIには別の実行用ユーザーの接続情報だけを渡し、`APP_ENVIRONMENT=prod` または `production` で起動します。このユーザーに必要なのは、対象スキーマの利用、`schema_migrations` の読み取り、業務で使うテーブルの読み書きとシーケンスの利用です。移行履歴の書き換え、テーブルの所有・作成、移行用ロールの引き受けは許可しません。
+3. 本番APIはスキーマを変更せず、埋め込まれた移行番号とDBの適用履歴が一致する場合だけ起動します。不足や想定より新しいバージョンがあれば、接続先と移行ジョブの結果を確認してください。旧版への切り戻し時も、旧版のバイナリが対応するスキーマとの一致が必要です。
+
+`APP_ENVIRONMENT` が `local`（既定）、`dev`、`development` の場合は、これまで通り起動時に[PostgreSQL migration](./internal/infrastructure/persistence/postgres/001_init.sql)から未適用の番号付きSQLが順に実行され、次のテーブルが作成されます。
 
 詳細な列定義、制約、JSON列、PostgreSQL CLIによる確認方法は[docs/database-schema.md](./docs/database-schema.md)を参照してください。
 

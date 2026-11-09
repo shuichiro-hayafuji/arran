@@ -9,6 +9,7 @@ Python 3標準ライブラリの `harness.py` を共通入口とする。ファ�
 | mobile | A-M07検査、FVM Dartのformat確認、Flutter analyze、Flutter test |
 | server | A-S01〜A-S05とB-S08のGo依存境界検査、Go format確認、serverとAgentそれぞれのvet・test。テストDB環境変数を除いて実行 |
 | infra | npm scriptsのbuild・lint・test |
+| postgres-roles | `ARRAN_ROLE_TEST_DATABASE_URL` で指定した隔離PostgreSQLテストDBで、移行者とAPIユーザーの実行権限・スキーマ履歴を検証（テスト用ユーザーとスキーマを作成・削除できる管理ユーザーが必要） |
 | postgres | ARRAN_TEST_DATABASE_URLを必須として、PostgreSQL所有者・セッション統合テストを実行 |
 | all | docs・mobile・server・infra。postgresを含まない |
 
