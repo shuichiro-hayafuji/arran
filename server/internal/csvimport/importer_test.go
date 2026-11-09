@@ -155,3 +155,70 @@ func (w byteSliceWriter) Write(data []byte) (int, error) {
 	*w.target = append(*w.target, data...)
 	return len(data), nil
 }
+
+func TestRecordIdentityIsTypedExactAndStableAcrossEncoding(t *testing.T) {
+	data := []byte("日付,摘要,金額\n2031-01-01,店舗123,2500\n2031-01-01,店舗123,2500\n2031-01-01,店舗123,-2500\n2031-01-01,店舗456,2500\n")
+	options := Options{Source: "bank", SourceAccountName: "account"}
+	parsed, err := Parse(data, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]bool{}
+	for _, row := range parsed.Transactions {
+		if seen[row.Fingerprint] {
+			t.Fatal("legitimate records collided")
+		}
+		seen[row.Fingerprint] = true
+	}
+	encoded, _, err := transform.Bytes(japanese.ShiftJIS.NewEncoder(), data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := Parse(encoded, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, row := range other.Transactions {
+		if row.Fingerprint != parsed.Transactions[i].Fingerprint || row.ImportFileKey != parsed.Transactions[i].ImportFileKey {
+			t.Fatal("encoding changed record identity")
+		}
+	}
+	options.MerchantRules = map[string]string{"店舗": "学習"}
+	classified, _ := Parse(data, options)
+	if classified.Transactions[0].Fingerprint != parsed.Transactions[0].Fingerprint {
+		t.Fatal("classification affected identity")
+	}
+}
+func TestProviderIDColumnRequiresRealExplicitColumn(t *testing.T) {
+	data := []byte("日付,摘要,金額,取引ID\n2031-01-01,店,2500,a\n2031-01-01,店,2600,a\n")
+	options := Options{Source: "bank", SourceAccountName: "account", Mapping: domain.CSVMapping{DateColumn: "日付", DescriptionColumn: "摘要", AmountColumn: "金額", TransactionIDColumn: "取引ID"}}
+	if _, err := Parse(data, options); err == nil {
+		t.Fatal("same ID with different content accepted")
+	}
+	options.Mapping.TransactionIDColumn = "missing"
+	if _, err := Parse(data, options); err == nil {
+		t.Fatal("unknown ID column accepted")
+	}
+}
+
+func TestExplicitIDColumnSurvivesOtherColumnAutoDetection(t *testing.T) {
+	result, err := Parse([]byte("日付,摘要,金額,取引ID\n2031-01-01,店,2500,a\n"), Options{Source: "bank", SourceAccountName: "account", Mapping: domain.CSVMapping{TransactionIDColumn: "取引ID"}})
+	if err != nil || result.Mapping.TransactionIDColumn != "取引ID" || result.Transactions[0].ProviderTransactionID != "a" {
+		t.Fatalf("explicit ID lost %+v %v", result, err)
+	}
+}
+
+func TestRepeatedProviderIDRejectsEntireCSV(t *testing.T) {
+	data := []byte("日付,摘要,金額,取引ID\n2034-01-01,店,2500,id-1\n2034-01-01,店,2500,id-1\n")
+	opts := Options{Source: "bank", SourceAccountName: "account", Mapping: domain.CSVMapping{TransactionIDColumn: "取引ID"}}
+	result, err := Parse(data, opts)
+	if err == nil || len(result.Transactions) != 0 {
+		t.Fatalf("repeated ID must reject the whole input: %+v %v", result, err)
+	}
+	// Removing the ID is not an automatic recovery: the caller must choose it.
+	opts.Mapping.TransactionIDColumn = ""
+	result, err = Parse(data, opts)
+	if err != nil || len(result.Transactions) != 2 || result.Transactions[0].Fingerprint == result.Transactions[1].Fingerprint {
+		t.Fatalf("ID-less legitimate occurrences lost: %+v %v", result, err)
+	}
+}

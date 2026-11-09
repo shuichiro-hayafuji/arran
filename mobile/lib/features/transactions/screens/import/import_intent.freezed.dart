@@ -55,12 +55,14 @@ extension ImportIntentPatterns on ImportIntent {
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( SelectImportFile value)?  selectFile,TResult Function( ApplyImportMapping value)?  applyMapping,TResult Function( CommitImport value)?  commit,TResult Function( ResetImport value)?  reset,required TResult orElse(),}){
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( SelectImportFile value)?  selectFile,TResult Function( ApplyImportMapping value)?  applyMapping,TResult Function( SetImportSource value)?  setSource,TResult Function( ResolveImportIdentities value)?  resolveIdentities,TResult Function( CommitImport value)?  commit,TResult Function( ResetImport value)?  reset,required TResult orElse(),}){
 final _that = this;
 switch (_that) {
 case SelectImportFile() when selectFile != null:
 return selectFile(_that);case ApplyImportMapping() when applyMapping != null:
-return applyMapping(_that);case CommitImport() when commit != null:
+return applyMapping(_that);case SetImportSource() when setSource != null:
+return setSource(_that);case ResolveImportIdentities() when resolveIdentities != null:
+return resolveIdentities(_that);case CommitImport() when commit != null:
 return commit(_that);case ResetImport() when reset != null:
 return reset(_that);case _:
   return orElse();
@@ -80,12 +82,14 @@ return reset(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( SelectImportFile value)  selectFile,required TResult Function( ApplyImportMapping value)  applyMapping,required TResult Function( CommitImport value)  commit,required TResult Function( ResetImport value)  reset,}){
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( SelectImportFile value)  selectFile,required TResult Function( ApplyImportMapping value)  applyMapping,required TResult Function( SetImportSource value)  setSource,required TResult Function( ResolveImportIdentities value)  resolveIdentities,required TResult Function( CommitImport value)  commit,required TResult Function( ResetImport value)  reset,}){
 final _that = this;
 switch (_that) {
 case SelectImportFile():
 return selectFile(_that);case ApplyImportMapping():
-return applyMapping(_that);case CommitImport():
+return applyMapping(_that);case SetImportSource():
+return setSource(_that);case ResolveImportIdentities():
+return resolveIdentities(_that);case CommitImport():
 return commit(_that);case ResetImport():
 return reset(_that);}
 }
@@ -101,12 +105,14 @@ return reset(_that);}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( SelectImportFile value)?  selectFile,TResult? Function( ApplyImportMapping value)?  applyMapping,TResult? Function( CommitImport value)?  commit,TResult? Function( ResetImport value)?  reset,}){
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( SelectImportFile value)?  selectFile,TResult? Function( ApplyImportMapping value)?  applyMapping,TResult? Function( SetImportSource value)?  setSource,TResult? Function( ResolveImportIdentities value)?  resolveIdentities,TResult? Function( CommitImport value)?  commit,TResult? Function( ResetImport value)?  reset,}){
 final _that = this;
 switch (_that) {
 case SelectImportFile() when selectFile != null:
 return selectFile(_that);case ApplyImportMapping() when applyMapping != null:
-return applyMapping(_that);case CommitImport() when commit != null:
+return applyMapping(_that);case SetImportSource() when setSource != null:
+return setSource(_that);case ResolveImportIdentities() when resolveIdentities != null:
+return resolveIdentities(_that);case CommitImport() when commit != null:
 return commit(_that);case ResetImport() when reset != null:
 return reset(_that);case _:
   return null;
@@ -125,11 +131,13 @@ return reset(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( String filePath,  String fileName)?  selectFile,TResult Function( CsvMapping mapping)?  applyMapping,TResult Function()?  commit,TResult Function()?  reset,required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( String filePath,  String fileName)?  selectFile,TResult Function( CsvMapping mapping)?  applyMapping,TResult Function( String source,  String accountName)?  setSource,TResult Function( List<ImportIdentityDecision> decisions)?  resolveIdentities,TResult Function()?  commit,TResult Function()?  reset,required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case SelectImportFile() when selectFile != null:
 return selectFile(_that.filePath,_that.fileName);case ApplyImportMapping() when applyMapping != null:
-return applyMapping(_that.mapping);case CommitImport() when commit != null:
+return applyMapping(_that.mapping);case SetImportSource() when setSource != null:
+return setSource(_that.source,_that.accountName);case ResolveImportIdentities() when resolveIdentities != null:
+return resolveIdentities(_that.decisions);case CommitImport() when commit != null:
 return commit();case ResetImport() when reset != null:
 return reset();case _:
   return orElse();
@@ -149,11 +157,13 @@ return reset();case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( String filePath,  String fileName)  selectFile,required TResult Function( CsvMapping mapping)  applyMapping,required TResult Function()  commit,required TResult Function()  reset,}) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( String filePath,  String fileName)  selectFile,required TResult Function( CsvMapping mapping)  applyMapping,required TResult Function( String source,  String accountName)  setSource,required TResult Function( List<ImportIdentityDecision> decisions)  resolveIdentities,required TResult Function()  commit,required TResult Function()  reset,}) {final _that = this;
 switch (_that) {
 case SelectImportFile():
 return selectFile(_that.filePath,_that.fileName);case ApplyImportMapping():
-return applyMapping(_that.mapping);case CommitImport():
+return applyMapping(_that.mapping);case SetImportSource():
+return setSource(_that.source,_that.accountName);case ResolveImportIdentities():
+return resolveIdentities(_that.decisions);case CommitImport():
 return commit();case ResetImport():
 return reset();}
 }
@@ -169,11 +179,13 @@ return reset();}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( String filePath,  String fileName)?  selectFile,TResult? Function( CsvMapping mapping)?  applyMapping,TResult? Function()?  commit,TResult? Function()?  reset,}) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( String filePath,  String fileName)?  selectFile,TResult? Function( CsvMapping mapping)?  applyMapping,TResult? Function( String source,  String accountName)?  setSource,TResult? Function( List<ImportIdentityDecision> decisions)?  resolveIdentities,TResult? Function()?  commit,TResult? Function()?  reset,}) {final _that = this;
 switch (_that) {
 case SelectImportFile() when selectFile != null:
 return selectFile(_that.filePath,_that.fileName);case ApplyImportMapping() when applyMapping != null:
-return applyMapping(_that.mapping);case CommitImport() when commit != null:
+return applyMapping(_that.mapping);case SetImportSource() when setSource != null:
+return setSource(_that.source,_that.accountName);case ResolveImportIdentities() when resolveIdentities != null:
+return resolveIdentities(_that.decisions);case CommitImport() when commit != null:
 return commit();case ResetImport() when reset != null:
 return reset();case _:
   return null;
@@ -311,6 +323,146 @@ class _$ApplyImportMappingCopyWithImpl<$Res>
   return _then(ApplyImportMapping(
 null == mapping ? _self.mapping : mapping // ignore: cast_nullable_to_non_nullable
 as CsvMapping,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class SetImportSource extends ImportIntent {
+  const SetImportSource(this.source, this.accountName): super._();
+  
+
+ final  String source;
+ final  String accountName;
+
+/// Create a copy of ImportIntent
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$SetImportSourceCopyWith<SetImportSource> get copyWith => _$SetImportSourceCopyWithImpl<SetImportSource>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is SetImportSource&&(identical(other.source, source) || other.source == source)&&(identical(other.accountName, accountName) || other.accountName == accountName));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,source,accountName);
+
+@override
+String toString() {
+  return 'ImportIntent.setSource(source: $source, accountName: $accountName)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $SetImportSourceCopyWith<$Res> implements $ImportIntentCopyWith<$Res> {
+  factory $SetImportSourceCopyWith(SetImportSource value, $Res Function(SetImportSource) _then) = _$SetImportSourceCopyWithImpl;
+@useResult
+$Res call({
+ String source, String accountName
+});
+
+
+
+
+}
+/// @nodoc
+class _$SetImportSourceCopyWithImpl<$Res>
+    implements $SetImportSourceCopyWith<$Res> {
+  _$SetImportSourceCopyWithImpl(this._self, this._then);
+
+  final SetImportSource _self;
+  final $Res Function(SetImportSource) _then;
+
+/// Create a copy of ImportIntent
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? source = null,Object? accountName = null,}) {
+  return _then(SetImportSource(
+null == source ? _self.source : source // ignore: cast_nullable_to_non_nullable
+as String,null == accountName ? _self.accountName : accountName // ignore: cast_nullable_to_non_nullable
+as String,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class ResolveImportIdentities extends ImportIntent {
+  const ResolveImportIdentities(final  List<ImportIdentityDecision> decisions): _decisions = decisions,super._();
+  
+
+ final  List<ImportIdentityDecision> _decisions;
+ List<ImportIdentityDecision> get decisions {
+  if (_decisions is EqualUnmodifiableListView) return _decisions;
+  // ignore: implicit_dynamic_type
+  return EqualUnmodifiableListView(_decisions);
+}
+
+
+/// Create a copy of ImportIntent
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$ResolveImportIdentitiesCopyWith<ResolveImportIdentities> get copyWith => _$ResolveImportIdentitiesCopyWithImpl<ResolveImportIdentities>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is ResolveImportIdentities&&const DeepCollectionEquality().equals(other._decisions, _decisions));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,const DeepCollectionEquality().hash(_decisions));
+
+@override
+String toString() {
+  return 'ImportIntent.resolveIdentities(decisions: $decisions)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $ResolveImportIdentitiesCopyWith<$Res> implements $ImportIntentCopyWith<$Res> {
+  factory $ResolveImportIdentitiesCopyWith(ResolveImportIdentities value, $Res Function(ResolveImportIdentities) _then) = _$ResolveImportIdentitiesCopyWithImpl;
+@useResult
+$Res call({
+ List<ImportIdentityDecision> decisions
+});
+
+
+
+
+}
+/// @nodoc
+class _$ResolveImportIdentitiesCopyWithImpl<$Res>
+    implements $ResolveImportIdentitiesCopyWith<$Res> {
+  _$ResolveImportIdentitiesCopyWithImpl(this._self, this._then);
+
+  final ResolveImportIdentities _self;
+  final $Res Function(ResolveImportIdentities) _then;
+
+/// Create a copy of ImportIntent
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? decisions = null,}) {
+  return _then(ResolveImportIdentities(
+null == decisions ? _self._decisions : decisions // ignore: cast_nullable_to_non_nullable
+as List<ImportIdentityDecision>,
   ));
 }
 

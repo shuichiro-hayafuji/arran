@@ -10,6 +10,7 @@ import 'transaction_item_dto.dart';
 
 class CsvMappingDto {
   const CsvMappingDto({
+    this.transactionIdColumn = "",
     this.dateColumn = '',
     this.descriptionColumn = '',
     this.amountColumn = '',
@@ -18,6 +19,7 @@ class CsvMappingDto {
   });
 
   factory CsvMappingDto.fromDomain(CsvMapping mapping) => CsvMappingDto(
+    transactionIdColumn: mapping.transactionIdColumn,
     dateColumn: mapping.dateColumn,
     descriptionColumn: mapping.descriptionColumn,
     amountColumn: mapping.amountColumn,
@@ -26,6 +28,7 @@ class CsvMappingDto {
   );
 
   factory CsvMappingDto.fromJson(Map<String, dynamic> json) => CsvMappingDto(
+    transactionIdColumn: json['transaction_id_column'] as String? ?? '',
     dateColumn: json['date_column'] as String? ?? '',
     descriptionColumn: json['description_column'] as String? ?? '',
     amountColumn: json['amount_column'] as String? ?? '',
@@ -33,6 +36,7 @@ class CsvMappingDto {
     creditColumn: json['credit_column'] as String? ?? '',
   );
 
+  final String transactionIdColumn;
   final String dateColumn;
   final String descriptionColumn;
   final String amountColumn;
@@ -40,6 +44,7 @@ class CsvMappingDto {
   final String creditColumn;
 
   Map<String, dynamic> toJson() => {
+    'transaction_id_column': transactionIdColumn,
     'date_column': dateColumn,
     'description_column': descriptionColumn,
     'amount_column': amountColumn,
@@ -50,6 +55,8 @@ class CsvMappingDto {
 
 class ImportPreviewDto {
   const ImportPreviewDto({
+    this.identityConflicts = const [],
+    this.identityNotice = "",
     required this.previewId,
     required this.detectedEncoding,
     required this.headers,
@@ -65,6 +72,23 @@ class ImportPreviewDto {
 
   factory ImportPreviewDto.fromJson(Map<String, dynamic> json) =>
       ImportPreviewDto(
+        identityConflicts: parseMaps(json["identity_conflicts"])
+            .map(
+              (value) => ImportIdentityConflict(
+                candidateSnapshots: parseMap(value["candidate_snapshots"]).map(
+                  (key, value) => MapEntry(int.parse(key), value as String),
+                ),
+                row: parseInt(value["row"]),
+                transaction: TransactionItemDto.fromJson(
+                  parseMap(value["transaction"]),
+                ).toDomain(),
+                candidates: parseMaps(value["candidates"])
+                    .map((t) => TransactionItemDto.fromJson(t).toDomain())
+                    .toList(),
+              ),
+            )
+            .toList(),
+        identityNotice: json["identity_notice"] as String? ?? "",
         previewId: json['preview_id'] as String? ?? '',
         detectedEncoding: json['detected_encoding'] as String? ?? '',
         headers: parseStrings(json['headers']),
@@ -78,6 +102,8 @@ class ImportPreviewDto {
         warnings: parseStrings(json['warnings']),
       );
 
+  final List<ImportIdentityConflict> identityConflicts;
+  final String identityNotice;
   final String previewId;
   final String detectedEncoding;
   final List<String> headers;
@@ -91,10 +117,13 @@ class ImportPreviewDto {
   final List<String> warnings;
 
   ImportPreview toDomain() => ImportPreview(
+    identityConflicts: identityConflicts,
+    identityNotice: identityNotice,
     previewId: previewId,
     detectedEncoding: detectedEncoding,
     headers: headers,
     mapping: CsvMapping(
+      transactionIdColumn: mapping.transactionIdColumn,
       dateColumn: mapping.dateColumn,
       descriptionColumn: mapping.descriptionColumn,
       amountColumn: mapping.amountColumn,
@@ -139,6 +168,7 @@ class ImportPreviewRequestDto {
     required this.source,
     required this.accountName,
     required this.mapping,
+    this.identityDecisions = const [],
   });
 
   final String filePath;
@@ -146,11 +176,24 @@ class ImportPreviewRequestDto {
   final String source;
   final String accountName;
   final CsvMapping? mapping;
+  final List<ImportIdentityDecision> identityDecisions;
 
   FormData toFormData() => FormData.fromMap({
     'file': MultipartFile.fromFileSync(filePath, filename: fileName),
     'source': source,
     'source_account_name': accountName,
+    'identity_decisions': jsonEncode(
+      identityDecisions
+          .map(
+            (d) => {
+              'row': d.row,
+              'action': d.action,
+              'transaction_id': d.transactionId,
+              'snapshot': d.snapshot,
+            },
+          )
+          .toList(),
+    ),
     if (mapping != null)
       'mapping': jsonEncode(CsvMappingDto.fromDomain(mapping!).toJson()),
   });

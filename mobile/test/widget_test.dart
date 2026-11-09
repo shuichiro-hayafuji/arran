@@ -301,6 +301,7 @@ class FakeTransactionsRepository implements TransactionsRepository {
     required String source,
     required String accountName,
     CsvMapping? mapping,
+    List<ImportIdentityDecision> identityDecisions = const [],
   }) async => ImportPreview(
     previewId: 'preview-1',
     detectedEncoding: 'UTF-8',

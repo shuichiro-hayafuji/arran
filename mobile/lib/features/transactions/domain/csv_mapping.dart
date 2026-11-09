@@ -1,5 +1,6 @@
 class CsvMapping {
   const CsvMapping({
+    this.transactionIdColumn = "",
     this.dateColumn = '',
     this.descriptionColumn = '',
     this.amountColumn = '',
@@ -7,6 +8,7 @@ class CsvMapping {
     this.creditColumn = '',
   });
 
+  final String transactionIdColumn;
   final String dateColumn;
   final String descriptionColumn;
   final String amountColumn;

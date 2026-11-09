@@ -26,6 +26,8 @@ psql "$DATABASE_URL" -c '\\dt'
 | `llm_model_prices` | モデル単価の履歴 | `(model, effective_from)` 主キー、公式資料URLと確認日時 |
 | `monthly_operating_costs` | 月次のインフラ費用とサポート実績 | `month` 主キー、USD、件数、分数 |
 | `profiles` | ユーザーごとの家計プロフィール | `id = 1`、`user_id` 一意 |
+| `csv_identity_file_rows` | scope付きCSV物理行と保存明細の一対一対応 | owner/file/source/account/type/rowの主キー、同scope/明細の一意性、所有者付き明細FK |
+| `csv_identity_aliases` | CSV確認済みstrategyキーと双方snapshot | `(user_id,row_key)`主キー、所有者付き明細FK、scope/行/明細を行対応へ結ぶ複合FK |
 | `transactions` | CSVから取り込む支出・入金明細 | `(user_id, fingerprint)` 一意、日付・カテゴリ索引 |
 | `merchant_rules` | 加盟店正規化名とカテゴリのローカル規則 | `(user_id, normalized_merchant)` 一意 |
 | `consultations` | 支出相談、助言、verdict、支出後結果 | `id` は `BIGSERIAL` |
@@ -121,3 +123,5 @@ docker compose down -v
 確認workerとモデル応答は利用者状態のversionとrow lockで直列化し、原チャットへの複数更新を原子的に保存する。SQLiteは004のテストスキーマを使い、本番保証は専用PostgreSQLで別に検証する。実績反映の金融計算はLLMが担い、SQL・Goでは金額を再計算しない。
 
 011 migrationの`chat_requests`は受付metadataと保存結果を保持する。期限はUnix epochミリ秒のBIGINT、結果はThread JSON。受付と月次予約、結果と業務保存、失敗と予約解放をそれぞれ同じtxで確定する。[受付契約](consultation-requests.md)を参照。
+
+012のCSVキー移行は[明細同一性・移行契約](csv-identity.md)を参照。transactionsにidentity_version/legacy_fingerprint/provider_transaction_id/import_file_keyを追加する。分類・row ID・原文を保持し、aliasと同時に原子的に移行する。

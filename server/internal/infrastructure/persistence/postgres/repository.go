@@ -233,47 +233,6 @@ func (r *Repository) PutProfile(ctx context.Context, profile domain.Profile) err
 
 // ImportTransactions は全明細を単一トランザクションで登録する。
 // 利用者内の fingerprint 重複だけを除外し、それ以外のDBエラーでは全件を戻す。
-func (r *Repository) ImportTransactions(
-	ctx context.Context,
-	transactions []domain.Transaction,
-) (domain.ImportCommitResult, error) {
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return domain.ImportCommitResult{}, err
-	}
-	defer tx.Rollback()
-
-	result := domain.ImportCommitResult{}
-	for _, transaction := range transactions {
-		rawJSON, _ := json.Marshal(transaction.RawData)
-		execResult, err := tx.ExecContext(ctx, userQuery(ctx, `
-			INSERT INTO transactions(user_id, 
-				transaction_date, description, normalized_merchant, amount,
-				transaction_type, category, source, source_account_name,
-				fingerprint, imported_at, raw_data_json
-			) VALUES(:user_id, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-			ON CONFLICT (user_id, fingerprint) DO NOTHING
-		`), transaction.TransactionDate, transaction.Description,
-			transaction.NormalizedMerchant, transaction.Amount,
-			transaction.TransactionType, transaction.Category, transaction.Source,
-			transaction.SourceAccountName, transaction.Fingerprint,
-			transaction.ImportedAt, string(rawJSON))
-		if err != nil {
-			return domain.ImportCommitResult{}, err
-		}
-		affected, _ := execResult.RowsAffected()
-		if affected == 0 {
-			result.DuplicateCount++
-		} else {
-			result.ImportedCount++
-		}
-	}
-	if err := tx.Commit(); err != nil {
-		return domain.ImportCommitResult{}, err
-	}
-	return result, nil
-}
-
 func (r *Repository) ListTransactions(
 	ctx context.Context,
 	month string,

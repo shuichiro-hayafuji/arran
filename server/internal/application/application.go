@@ -78,6 +78,7 @@ type ProfileRepository interface {
 // TransactionRepository は取引取込・一覧・集計に必要な永続化境界。
 type TransactionRepository interface {
 	MerchantRules(context.Context) (map[string]string, error)
+	PreviewTransactionIdentities(context.Context, []domain.Transaction) ([]domain.ImportIdentityConflict, error)
 	ImportTransactions(context.Context, []domain.Transaction) (domain.ImportCommitResult, error)
 	ListTransactions(context.Context, string, int) ([]domain.Transaction, error)
 	UpdateTransactionCategory(context.Context, int64, string, bool) (domain.Transaction, error)
@@ -200,6 +201,7 @@ func (s *Application) PreviewImport(
 	mapping domain.CSVMapping,
 	source string,
 	account string,
+	decisions ...[]domain.ImportIdentityDecision,
 ) (domain.ImportPreview, error) {
 	rules, err := s.repository.MerchantRules(ctx)
 	if err != nil {
@@ -215,14 +217,49 @@ func (s *Application) PreviewImport(
 	if err != nil {
 		return domain.ImportPreview{}, err
 	}
+
+	if len(decisions) > 0 {
+		usedRows := map[int]bool{}
+		for _, d := range decisions[0] {
+			if usedRows[d.Row] {
+				return domain.ImportPreview{}, fmt.Errorf("CSVの確認行が重複しています")
+			}
+			usedRows[d.Row] = true
+			found := false
+			for index := range parsed.Transactions {
+				if parsed.Transactions[index].ImportRow == d.Row {
+					parsed.Transactions[index].IdentityAction = d.Action
+					parsed.Transactions[index].IdentityTransactionID = d.TransactionID
+					parsed.Transactions[index].IdentityCandidateSnapshot = d.Snapshot
+					found = true
+					break
+				}
+			}
+			if !found || (d.Action != "same" && d.Action != "distinct") {
+				return domain.ImportPreview{}, fmt.Errorf("CSVの確認指定が不正です")
+			}
+		}
+	}
+	conflicts, err := s.repository.PreviewTransactionIdentities(ctx, parsed.Transactions)
+	if err != nil {
+		return domain.ImportPreview{}, err
+	}
+	for i := range conflicts {
+		conflicts[i].Transaction.RawData = nil
+		for j := range conflicts[i].Candidates {
+			conflicts[i].Candidates[j].RawData = nil
+		}
+	}
 	preview := domain.ImportPreview{
-		DetectedEncoding: parsed.Encoding,
-		Headers:          parsed.Headers,
-		Mapping:          parsed.Mapping,
-		NeedsMapping:     parsed.NeedsMapping,
-		ReadCount:        len(parsed.Transactions),
-		Warnings:         parsed.Warnings,
-		Rows:             parsed.Transactions,
+		IdentityConflicts: conflicts,
+		IdentityNotice:    "取引IDがない明細は、このCSV内の出現数で識別します。別CSVの同条件明細は同じ明細か別明細か確認してから保存します。取込元・口座・列指定は再取込でも同じにしてください。",
+		DetectedEncoding:  parsed.Encoding,
+		Headers:           parsed.Headers,
+		Mapping:           parsed.Mapping,
+		NeedsMapping:      parsed.NeedsMapping,
+		ReadCount:         len(parsed.Transactions),
+		Warnings:          parsed.Warnings,
+		Rows:              parsed.Transactions,
 	}
 	if len(preview.Rows) > 10 {
 		preview.Rows = preview.Rows[:10]
@@ -238,7 +275,7 @@ func (s *Application) PreviewImport(
 			preview.ExpenseTotal += transaction.Amount
 		}
 	}
-	if !parsed.NeedsMapping {
+	if !parsed.NeedsMapping && len(conflicts) == 0 {
 		preview.PreviewID = randomID()
 		s.previewMu.Lock()
 		s.cleanupPreviewsLocked()
