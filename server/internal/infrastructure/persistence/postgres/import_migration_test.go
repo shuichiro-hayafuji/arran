@@ -108,7 +108,7 @@ func verifyCSVMigration(t *testing.T, root *Repository) {
 		t.Fatal("cross-owner file binding FK accepted")
 	}
 	db.Close()
-	reopened, err := OpenDatabase(ctx, address.String())
+	reopened, err := openDatabase(ctx, address.String(), Migrate)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -18,8 +18,12 @@ type Repository struct {
 	db *database
 }
 
-func Open(ctx context.Context, url string) (*Repository, error) {
-	db, err := OpenDatabase(ctx, url)
+func Open(ctx context.Context, url string, autoMigrate bool) (*Repository, error) {
+	prepare := checkSchema
+	if autoMigrate {
+		prepare = Migrate
+	}
+	db, err := openDatabase(ctx, url, prepare)
 	if err != nil {
 		return nil, err
 	}
@@ -28,11 +32,6 @@ func Open(ctx context.Context, url string) (*Repository, error) {
 
 func (r *Repository) Close() error {
 	return r.db.Close()
-}
-
-// Migrate は明示的なスキーマ確認用の窓口。Open 時にも同じ移行を実行する。
-func (r *Repository) Migrate(ctx context.Context) error {
-	return Migrate(ctx, r.db.DB)
 }
 
 // MonthlyConsultationLimit は利用者別設定を優先し、未設定なら全体の既定値を返す。

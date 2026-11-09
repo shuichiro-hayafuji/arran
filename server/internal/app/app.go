@@ -30,8 +30,13 @@ type App struct {
 	workerDone   chan struct{}
 }
 
+// Migrate runs the release migration with only the one-off process credentials.
+func Migrate(ctx context.Context, cfg config.Config) error {
+	return postgres.MigrateURL(ctx, cfg.DatabaseURL)
+}
+
 func New(ctx context.Context, cfg config.Config) (*App, error) {
-	repo, err := postgres.Open(ctx, cfg.DatabaseURL)
+	repo, err := postgres.Open(ctx, cfg.DatabaseURL, cfg.AutoMigrate())
 	if err != nil {
 		return nil, err
 	}

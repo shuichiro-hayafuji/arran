@@ -19,6 +19,18 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	if len(os.Args) > 1 {
+		if len(os.Args) != 2 || os.Args[1] != "migrate" {
+			log.Fatal("usage: spendable-today [migrate]")
+		}
+		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer cancel()
+		if err := app.Migrate(ctx, cfg); err != nil {
+			log.Fatal("database migration failed: ", err)
+		}
+		log.Print("database migrations applied")
+		return
+	}
 	if cfg.UseMockLLM {
 		log.Printf("LLM mode: mock")
 	} else if cfg.OpenAIAPIKey == "" {

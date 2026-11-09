@@ -40,3 +40,16 @@ func TestLoadDatabaseURLBuildsLocalPostgresDefault(t *testing.T) {
 		t.Fatalf("database URL = %q", got)
 	}
 }
+
+func TestAutoMigrateOnlyInDevelopment(t *testing.T) {
+	for _, env := range []string{"prod", "production", "staging", "", "unexpected"} {
+		if (Config{Environment: env}).AutoMigrate() {
+			t.Errorf("%q permits automatic migrations", env)
+		}
+	}
+	for _, env := range []string{"local", "dev", "development"} {
+		if !(Config{Environment: env}).AutoMigrate() {
+			t.Errorf("%q no longer migrates", env)
+		}
+	}
+}
