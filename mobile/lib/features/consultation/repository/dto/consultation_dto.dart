@@ -3,6 +3,7 @@ import '../../domain/consultation.dart';
 
 class ConsultationDto {
   const ConsultationDto({
+    this.messages = const [],
     required this.id,
     required this.createdAt,
     required this.userMessage,
@@ -26,6 +27,17 @@ class ConsultationDto {
 
   factory ConsultationDto.fromJson(Map<String, dynamic> json) =>
       ConsultationDto(
+        messages: parseMaps(json['messages'])
+            .map(
+              (message) => ChatMessage(
+                reason: message['reason'] as String? ?? '',
+                assumptions: message['assumptions'] as String? ?? '',
+                role: message['role'] as String,
+                content: message['content'] as String,
+                createdAt: message['created_at'] as String,
+              ),
+            )
+            .toList(growable: false),
         id: parseInt(json['id']),
         createdAt: json['created_at'] as String? ?? '',
         userMessage: json['user_message'] as String? ?? '',
@@ -47,6 +59,7 @@ class ConsultationDto {
         followUpQuestion: json['follow_up_question'] as String? ?? '',
       );
 
+  final List<ChatMessage> messages;
   final int id;
   final String createdAt;
   final String userMessage;
@@ -68,6 +81,7 @@ class ConsultationDto {
   final String followUpQuestion;
 
   Consultation toDomain() => Consultation(
+    messages: List.unmodifiable(messages),
     id: id,
     createdAt: createdAt,
     userMessage: userMessage,

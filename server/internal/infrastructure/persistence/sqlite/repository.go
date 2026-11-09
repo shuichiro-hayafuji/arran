@@ -257,6 +257,13 @@ func (r *Repository) ImportTransactions(
 		if affected == 0 {
 			result.DuplicateCount++
 		} else {
+			id, err := execResult.LastInsertId()
+			if err != nil {
+				return domain.ImportCommitResult{}, err
+			}
+			if _, err := tx.ExecContext(ctx, "INSERT INTO chat_transaction_owners(transaction_id,user_id) VALUES(?,?)", id, identity.UserID(ctx)); err != nil {
+				return domain.ImportCommitResult{}, err
+			}
 			result.ImportedCount++
 		}
 	}

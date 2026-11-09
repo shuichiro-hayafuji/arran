@@ -2,8 +2,8 @@
 
 - A-S01: 業務処理への依存を内向きに保つ。現行の`handler → application → domain`でも、移行後の業務packageでも、HTTP境界へSQL・金融計算・プロバイダー呼出しを置かず、Application CoreからHTTP・DB・LLM固有型を参照しない。
 - A-S02: 外部機能を利用する業務packageが、必要最小限のRepository・Agent・Clock等のPortを所有する。interfaceは差し替え・テストが必要な境界に限定し、全依存へ一律に追加しない。現行のapplicationは用途別RepositoryとAgentのinterfaceを所有し、必要な境界を`Config`から注入する。
-- A-S03: 現行の`agentadapter`はApplication Coreと独立AgentのDTO変換、Agent呼出し、支出評価の接続を担当する。移行後の`adviceagent`はDTO変換とAgent呼出しに限定し、支出評価を呼ぶ順序は`consultation.Service`が制御する。取引情報は許可項目を明示転記し、業務モデルを丸ごとJSON化して渡さない。配置を移す際はAgent moduleの独立性と送信項目の検証を維持する。
-- A-S04: `server/agent` は独立Go module・Git submodule。親serverのinternalをimportしない。オーケストレーション・Model境界・検証・fallbackを担当し、金融ルールの正本を移さない。
+- A-S03: 現行の`agentadapter`はApplication Coreと独立AgentのDTO変換、Agent呼出し、支出評価の接続を担当する。旧金融判定を使う経路の移行後`adviceagent`はDTO変換とAgent呼出しに限定する。新チャットの`consultation.Service`は検索・LLM呼出し・保存を進行し、金額計算と助言はLLMが担当する。取引情報は許可項目を明示転記し、業務モデルを丸ごとJSON化して渡さない。配置を移す際はAgent moduleの独立性と送信項目の検証を維持する。
+- A-S04: `server/agent`は独立Go module・Git submoduleで親serverのinternalをimportしない。旧相談・月次レビュー・メモリの境界として残す。新しいチャット相談は`consultation`がAgent・Repository Portと会話の進行を所有し、OpenAI AdapterがLLMへ抽出・計算・助言を依頼する。固定金融判定や旧fallbackを新相談APIへ接続しない。
 - A-S05: 現行ではOpenAI固有処理を`infrastructure/openai`、SQLとmigrationを`infrastructure/persistence/postgres`に置く。移行後は`openai`と`postgres`をOutbound Adapterとし、PostgreSQL migrationは`postgres`が所有する。配置を移す際は既存import、埋込みSQL、テスト、DB資料の参照先を同時に更新する。SQLiteは既存テスト用で、本番の切替先にしない。
 - A-S06: 現行の`app`は構築、`config`は設定解釈、`auth`はHTTP認証、`identity`は認証済み利用者IDの伝達、`csvimport`はローカル入力の正規化を担当する。移行後は認証ユースケースを`identity`、認証endpoint・middlewareを`httpapi`へ分け、`config`やHTTP型をApplication Coreへ持ち込まない。
 - A-S07: API実装は `server/` の一つだけとし、HTTP契約は [OpenAPI](../../server/docs/openapi.yaml) に合わせる。

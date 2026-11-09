@@ -47,6 +47,13 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 	if err != nil {
 		return err
 	}
+	if _, err = db.ExecContext(ctx, string(sqlBytes)); err != nil {
+		return err
+	}
+	sqlBytes, err = migrations.Files.ReadFile("003_chat.sql")
+	if err != nil {
+		return err
+	}
 	_, err = db.ExecContext(ctx, string(sqlBytes))
 	return err
 }

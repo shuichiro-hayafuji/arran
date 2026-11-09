@@ -10,6 +10,7 @@ import (
 	"github.com/shuichirohayafuji/spendable-today/server/internal/application"
 	"github.com/shuichirohayafuji/spendable-today/server/internal/auth"
 	"github.com/shuichirohayafuji/spendable-today/server/internal/config"
+	"github.com/shuichirohayafuji/spendable-today/server/internal/consultation"
 	"github.com/shuichirohayafuji/spendable-today/server/internal/domain"
 	"github.com/shuichirohayafuji/spendable-today/server/internal/handler"
 	"github.com/shuichirohayafuji/spendable-today/server/internal/identity"
@@ -33,9 +34,15 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 	primary, source := modelClient(cfg, usageRecorder(repo))
 	fallback := agent.MockClient{}
 	agents := agentadapter.New(primary, fallback, source)
+	var chatAgent consultation.Agent
+	if !cfg.UseMockLLM {
+		client := openai.NewOpenAIClient(cfg.OpenAIAPIKey, cfg.OpenAIModel, cfg.OpenAIReasoningEffort)
+		client.SetUsageRecorder(usageRecorder(repo))
+		chatAgent = client
+	}
 	fallbackAgent := agentadapter.New(fallback, fallback, "quota_fallback")
 	adminNotifier := notification.NewPagerDuty(cfg.PagerDutyRoutingKey)
-	apiApplication := application.New(application.Config{Repository: repo,
+	apiApplication := application.New(application.Config{Repository: repo, ChatRepository: repo, ChatAgent: chatAgent,
 		ConsultationAgent: agents, FallbackAgent: fallbackAgent,
 		ReviewAgent: agents, FallbackReview: fallbackAgent,
 		MemoryAgent: agents, FallbackMemory: fallbackAgent, AdminNotifier: adminNotifier,

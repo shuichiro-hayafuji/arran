@@ -8,6 +8,7 @@ import 'package:spendable_today/features/consultation/repository/consultation_re
 import 'package:spendable_today/features/consultation/screens/consultation/consultation_intent.dart';
 
 import 'consultation_state.dart';
+import '../../domain/consultation.dart';
 
 @riverpod
 ConsultationViewModel consultationViewModelFactory(Ref ref) =>
@@ -43,6 +44,9 @@ class ConsultationViewModel
         plannedAmount: final amount,
       ):
         return continueWith(id, message, amount);
+      case SelectConsultation(consultation: final item):
+        select(item);
+        return Future.value();
       case ClearConsultation():
         clear();
         return Future.value();
@@ -50,32 +54,56 @@ class ConsultationViewModel
   }
 
   Future<void> submit(String message, int? plannedAmount) async {
-    state = state.copyWith(consultation: const AsyncLoading());
+    if (state.consultation.isLoading) return;
+    final previous = state.consultation;
+    state = state.copyWith(
+      consultation: const AsyncLoading<Consultation?>().copyWithPrevious(
+        previous,
+      ),
+    );
     try {
       final consultation = await ref
           .read(consultationRepositoryProvider)
           .start(message, plannedAmount);
       if (!mounted) return;
-      state = state.copyWith(consultation: AsyncData(consultation));
       await refreshHistory();
+      if (!mounted) return;
+      state = state.copyWith(consultation: AsyncData(consultation));
     } catch (error, stackTrace) {
       if (!mounted) return;
-      state = state.copyWith(consultation: AsyncError(error, stackTrace));
+      state = state.copyWith(
+        consultation: AsyncError<Consultation?>(
+          error,
+          stackTrace,
+        ).copyWithPrevious(previous),
+      );
     }
   }
 
   Future<void> continueWith(int id, String message, int? plannedAmount) async {
-    state = state.copyWith(consultation: const AsyncLoading());
+    if (state.consultation.isLoading) return;
+    final previous = state.consultation;
+    state = state.copyWith(
+      consultation: const AsyncLoading<Consultation?>().copyWithPrevious(
+        previous,
+      ),
+    );
     try {
       final consultation = await ref
           .read(consultationRepositoryProvider)
           .continueConversation(id, message, plannedAmount);
       if (!mounted) return;
-      state = state.copyWith(consultation: AsyncData(consultation));
       await refreshHistory();
+      if (!mounted) return;
+      state = state.copyWith(consultation: AsyncData(consultation));
     } catch (error, stackTrace) {
       if (!mounted) return;
-      state = state.copyWith(consultation: AsyncError(error, stackTrace));
+      state = state.copyWith(
+        consultation: AsyncError<Consultation?>(
+          error,
+          stackTrace,
+        ).copyWithPrevious(previous),
+      );
     }
   }
 
@@ -94,5 +122,13 @@ class ConsultationViewModel
     }
   }
 
-  void clear() => state = state.copyWith(consultation: const AsyncData(null));
+  void select(Consultation item) {
+    if (state.consultation.isLoading) return;
+    state = state.copyWith(consultation: AsyncData(item));
+  }
+
+  void clear() {
+    if (state.consultation.isLoading) return;
+    state = state.copyWith(consultation: const AsyncData(null));
+  }
 }

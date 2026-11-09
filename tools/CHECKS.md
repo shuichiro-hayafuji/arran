@@ -36,7 +36,7 @@ CDK synthが必要な変更ではinfraで `npm run cdk -- synth` を別途実行
 
 ## Goサーバー依存境界の検出範囲
 
-[server_architecture.py](server_architecture.py) はserverと独立Agentのproduction Goファイルを字句検査する。domainの外部技術依存、applicationの実装依存、Agentから親internalへの依存、OpenAI・PostgreSQL実装の不正参照、配置とpackage名の不一致、依存方針が未登録の新しいinternalパッケージを検出する。Agentの`Transaction` DTOはB-S08の許可項目（日付・金額・カテゴリ）との完全一致を確認する。server/allに組み込み済み。
+[server_architecture.py](server_architecture.py) はserverと独立Agentのproduction Goファイルを字句検査する。domainの外部技術依存、applicationの実装依存、Agentから親internalへの依存、OpenAI・PostgreSQL実装の不正参照、配置とpackage名の不一致、依存方針が未登録の新しいinternalパッケージを検出する。Agentの`Transaction` DTOはB-S08の許可項目（日付・金額・カテゴリ）との完全一致を確認する。新しいチャットの`consultation.Transaction` DTOも日付・金額・カテゴリの3項目だけに制限する。server/allに組み込み済み。
 
 Go ASTや型解決は行わず、`*_test.go`のimportは検査対象外とする。金融計算の処理内容、DTOの既存項目に入る値の意味、interfaceの実装充足、循環依存は差分レビューとGoのvet・testで確認する。例外はimport元・import先・ルールID・例外IDを完全一致で登録し、WORKFLOWにも理由と解消条件を記載する。
 

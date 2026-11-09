@@ -4,8 +4,6 @@ import 'package:go_router/go_router.dart';
 import '../../features/consultation/screens/consultation/consultation_screen.dart';
 import '../../features/consultation/screens/result/result_screen.dart';
 import '../../features/dashboard/screens/dashboard/dashboard_screen.dart';
-import '../../features/profile/screens/memories/memory_screen.dart';
-import '../../features/profile/screens/profile/profile_screen.dart';
 import '../../features/profile/screens/settings/settings_screen.dart';
 import '../../features/review/screens/review/review_screen.dart';
 import '../../features/startup/screens/startup/startup_screen.dart';
@@ -68,16 +66,6 @@ final appRouter = GoRouter(
           ResultScreen(consultationId: int.parse(state.pathParameters['id']!)),
     ),
     GoRoute(path: '/review', builder: (context, state) => const ReviewScreen()),
-    GoRoute(
-      path: '/profile',
-      builder: (context, state) => ProfileScreen(
-        onboarding: state.uri.queryParameters['onboarding'] == 'true',
-      ),
-    ),
-    GoRoute(
-      path: '/memories',
-      builder: (context, state) => const MemoryScreen(),
-    ),
   ],
   errorBuilder: (context, state) => Scaffold(
     appBar: AppBar(title: const Text('ページが見つかりません')),

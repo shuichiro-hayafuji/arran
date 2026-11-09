@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -117,7 +118,7 @@ func newTestHandler(t *testing.T) http.Handler {
 	fallback := agent.MockClient{}
 	agents := agentadapter.New(fallback, fallback, "mock")
 	return New(application.New(application.Config{
-		Repository: repo, ConsultationAgent: agents, ReviewAgent: agents, MemoryAgent: agents,
+		Repository: repo, ChatRepository: repo, ConsultationAgent: agents, ReviewAgent: agents, MemoryAgent: agents,
 		Now: func() time.Time { return now },
 	}))
 }
@@ -185,5 +186,35 @@ func decodeResponse(t *testing.T, response *httptest.ResponseRecorder, target an
 	t.Helper()
 	if err := json.NewDecoder(response.Body).Decode(target); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestChatWithoutProfileKeepsFullConversation(t *testing.T) {
+	api := newTestHandler(t)
+	response := jsonRequest(t, api, http.MethodPost, "/consultations", map[string]any{"message": "残高は約5万円。イヤホンを買いたい"})
+	if response.Code != http.StatusCreated {
+		t.Fatalf("chat without profile: %d %s", response.Code, response.Body.String())
+	}
+	var item domain.Consultation
+	decodeResponse(t, response, &item)
+	if item.Status != "unavailable" || item.PlannedAmount != nil || len(item.Messages) != 2 {
+		t.Fatalf("unavailable chat=%#v", item)
+	}
+	response = jsonRequest(t, api, http.MethodPost, fmt.Sprintf("/consultations/%d/messages", item.ID), map[string]any{"message": "もう一度答えて"})
+	if response.Code != http.StatusOK {
+		t.Fatalf("retry: %d %s", response.Code, response.Body.String())
+	}
+	var continued domain.Consultation
+	decodeResponse(t, response, &continued)
+	if continued.ID != item.ID || len(continued.Messages) != 4 || continued.Messages[0].Content != item.UserMessage {
+		t.Fatalf("continued=%#v", continued)
+	}
+	response = jsonRequest(t, api, http.MethodGet, "/consultations", nil)
+	var list struct {
+		Items []domain.Consultation `json:"items"`
+	}
+	decodeResponse(t, response, &list)
+	if len(list.Items) != 1 || len(list.Items[0].Messages) != 4 {
+		t.Fatalf("restored list=%#v", list)
 	}
 }

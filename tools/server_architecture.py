@@ -9,6 +9,7 @@ SERVER_MODULE = "github.com/shuichirohayafuji/spendable-today/server"
 INTERNAL_PREFIX = SERVER_MODULE + "/internal/"
 AGENT_MODULE = "github.com/shuichiro-hayafuji/arran_agent"
 TRANSACTION_FIELDS = {"TransactionDate", "Amount", "Category"}
+CHAT_TRANSACTION_FIELDS = {"Date", "Amount", "Category"}
 
 
 @dataclass(frozen=True)
@@ -33,6 +34,7 @@ ALLOWED_INTERNAL = {
 		"internal/application",
 		"internal/auth",
 		"internal/config",
+		"internal/consultation",
 		"internal/domain",
 		"internal/handler",
 		"internal/identity",
@@ -40,19 +42,20 @@ ALLOWED_INTERNAL = {
 		"internal/infrastructure/openai",
 		"internal/infrastructure/persistence/postgres",
     },
-    "internal/application": {"internal/csvimport", "internal/domain", "internal/identity"},
+    "internal/application": {"internal/consultation", "internal/csvimport", "internal/domain", "internal/identity"},
     "internal/auth": {"internal/identity"},
     "internal/config": set(),
+    "internal/consultation": set(),
     "internal/csvimport": {"internal/domain"},
     "internal/domain": set(),
-    "internal/handler": {"internal/application", "internal/domain"},
+    "internal/handler": {"internal/application", "internal/consultation", "internal/domain"},
 	"internal/identity": set(),
 	"internal/infrastructure/notification": {"internal/domain"},
-	"internal/infrastructure/openai": set(),
+	"internal/infrastructure/openai": {"internal/consultation"},
     "internal/infrastructure/persistence/postgres": {
-        "internal/auth", "internal/domain", "internal/identity",
+        "internal/auth", "internal/consultation", "internal/domain", "internal/identity",
     },
-	"internal/infrastructure/persistence/sqlite": {"internal/domain", "internal/identity"},
+	"internal/infrastructure/persistence/sqlite": {"internal/consultation", "internal/domain", "internal/identity"},
 }
 
 AGENT_IMPORTERS = {
@@ -258,6 +261,12 @@ def check_server_architecture(root, exceptions=DEPENDENCY_EXCEPTIONS):
             f"{relative}: A-S03/B-S08: Agent Transaction fields must be exactly "
             + ", ".join(sorted(TRANSACTION_FIELDS))
         )
+
+    chat_root = server_root / "internal" / "consultation"
+    if chat_root.exists():
+        chat_transaction_path, chat_fields = _agent_transaction_fields(chat_root)
+        if chat_transaction_path is None or chat_fields != CHAT_TRANSACTION_FIELDS:
+            errors.append("server/internal/consultation: B-S08: chat Transaction fields must be exactly Date, Amount, Category")
 
     for error in errors:
         print(error)
