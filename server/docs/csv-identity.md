@@ -40,7 +40,7 @@ PostgreSQLは所有者ごとのadvisory lockで確定を直列化し、同一候
 
 `POST /transactions/import/preview`のmultipartへ従来のsource/source_account_name/mappingに加えて`identity_decisions`のJSON配列を送る。各決定はrow/action/transaction_id/snapshot。mappingの任意transaction_id_columnは列名。応答のidentity_conflictsはrow/transaction/candidates/candidate_snapshots、identity_noticeは案内。候補にraw_dataを追加送信しない。snapshotのキーは候補IDの文字列。
 
-プレビューは保存せず所有者と30分期限を持つ。確定は従来のpreview_idを使い、imported_countは新規行、duplicate_countは既存行との対応と再取込を数える。プレビューのメモリは再起動で失われるが、確定したaliasはDBに残る。保存失敗は成功表示にせず、再プレビューを案内する。
+プレビューは所有者と30分の期限付きでDBへ保持し、取引にはまだ反映しない。確定はpreview_idを使い、imported_countは新規行、duplicate_countは既存行との対応と再取込を数える。全明細と本人確認のsnapshot、購入照合、復活確認を保持し、確定時に最新状態へ再検証する。DB保存失敗後は同じIDで再試行でき、成功済みは再起動・期限後も元の結果を返す。期限切れ・確認内容の失効時は再プレビューする。詳細は[永続化契約](csv-import-management.md)を参照。
 
 情報のない別期間CSVの完全自動照合や、名前変更した実口座の推定は保証しない。本人の明示確認を根拠に記録する。#111のチャット購入との照合、#34の全取込取消し・一般的な監査、#5の全CSV形式対応を含めない。新チャットの残高計算はLLMが担い、Goへ移さない。LLMの取引DTOは日付・金額・カテゴリのみで、merchant/account/raw/取引ID/確認snapshot/aliasを追加しない。
 

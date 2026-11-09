@@ -18,4 +18,6 @@
 | [FB-20261012-08](FB-20261012-08.md) | 購入・CSV照合 | B-S08/B-S10/A-S03/B-M02 | 金融包含、初期/最新receipt、推定・候補失効・取得順位 | 対応中 | 実装・正規検証・独立レビュー・chat-first/CSV-first実LLM完了。旧期限切れ保全、実機確認待ち |
 | [FB-20261012-09](FB-20261012-09.md) | CSV取込管理・金融保留・mobile | B-S08/A-S02/A-M02 | owner/partial/監査/銀行計算basisの境界不足 | 保留 | server/PG/mobile57/docs/YAML・独立再レビュー・修正後partial実LLM PASS。生成空白1行はC-M04/EX-M03に従い保留 |
 
+| [FB-20261019-01](FB-20261019-01.md) | CSVプレビュー・期限掃除 | B-S05、C-S02/C-S07 | 0行成功receiptが期限掃除との競合で失われる | 完了 | 行ロック・更新件数確認・並行回帰、正規server/docs/postgresと独立レビューを完了 |
+
 記録の雛形は [テンプレート](TEMPLATE.md) を使用する。

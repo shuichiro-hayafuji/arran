@@ -171,6 +171,9 @@ func (r *Repository) ImportCommit(ctx context.Context, key string) (domain.Impor
 	var raw string
 	err := r.db.QueryRowContext(ctx, chatQuery(ctx, "SELECT result FROM csv_import_batches WHERE user_id=:user_id AND commit_key=?"), key).Scan(&raw)
 	if errors.Is(err, sql.ErrNoRows) {
+		err = r.db.QueryRowContext(ctx, chatQuery(ctx, "SELECT result FROM csv_import_previews WHERE user_id=:user_id AND id=? AND result IS NOT NULL"), key).Scan(&raw)
+	}
+	if errors.Is(err, sql.ErrNoRows) {
 		return domain.ImportCommitResult{}, domain.ErrNotFound
 	}
 	var result domain.ImportCommitResult

@@ -18,7 +18,7 @@
 | 複数行明細・銀行独自形式 | encoding/csvの通常recordを読む。引用符内改行と、別recordに分かれる銀行の継続明細は同じものではない | 独自ヘッダー/継続行/和暦等の形式別方針は未決、実装しない |
 | 両入出金が非0の行 | 現行normalizerはdebit優先。単一金額列があればそちらを使う | 意味変更はしない。銀行形式の証拠と曖昧入力方針の検討が必要 |
 | 手動マッピングUI | 「金額1列」または「出金・入金の別列」を選び、その方式だけを送信する。残高ではなく取引額の列を選ぶ案内と、無効な旧列名の除外を追加。明細ID列は独立して任意指定 | 限定改善。必要列がなければプレビュー不可。実機での操作確認は未実施 |
-| プレビューの再起動耐性 | 所有者付きプロセス内cache、30分。再起動で未確定previewは失われる。確定結果のDB照会とは別 | 方式検討は未完了、既存B-S05を維持 |
+| プレビューの再起動耐性 | 所有者付きDB保存、30分。再起動・別プロセスの確定、DB失敗後の再試行と成功結果の再取得 | [永続化契約](csv-import-management.md)。旧版メモリ内previewの移行は対象外 |
 | 旧SQLite→PostgreSQL | SQLiteファイルを自動コピーしない。別途一回限り移行が必要とREADMEに記載 | 具体的移行/所有者/照合/rollback手順は未完了。DB操作なし |
 | subscriptionのカテゴリ分類 | ownerの加盟店規則とローカル語句でカテゴリ分類 | 意味変更なし。実データでの分類評価は未完了 |
 | subscriptionの月次候補検出 | applicationのDetectSubscriptionCandidatesが同一加盟店・25〜35日間隔・同額支出を候補化。TestDetectSubscriptionCandidatesあり | 検出条件は変更しない。実データ評価・精度改善は未完了 |
@@ -30,7 +30,7 @@
 - [CSV normalizer](../internal/csvimport/importer.go): columnCandidates/dateLayouts、ParseのCSV record・Warnings、normalizeRecordの金額列優先/debit優先、Categorizeのローカル語句。
 - [手動マッピング画面](../../mobile/lib/features/transactions/screens/import/import_screen.dart): _MappingFormと_ColumnDropdownによる手動列指定。金額方式を明示選択し、選択した方式の有効な列だけを送信する。
 - [月次サブスク候補検出](../internal/application/application.go)のDetectSubscriptionCandidatesと[既存回帰](../internal/application/application_test.go)のTestDetectSubscriptionCandidates: カテゴリ分類とは別の月次候補検出。今回未変更。
-- [プレビュー保存](../internal/application/application.go): previews map/cachedPreviewと30分期限。未確定preview永続化は未実装。
+- [プレビュー保存](../internal/application/application.go)と[DB Adapter](../internal/infrastructure/persistence/postgres/import_previews.go): 全明細・確認情報の保存、所有者と30分期限、原子的確定と同ID再送。
 - [server README](../README.md)のSQLite開発データ移行記述と[DB資料](database-schema.md): 自動移行・具体移行手順の完了証拠はない。
 - [fixture出自](../sample_data/README.md): 新規合成fixtureの出自・hash・生成手順。authentic銀行fixtureは未提供。
 

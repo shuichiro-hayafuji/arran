@@ -1,6 +1,6 @@
 # ER図
 
-PostgreSQLの`001_init.sql`から`014_import_management.sql`までを適用した後の物理スキーマです。認証・運用設定・家計データ・相談データに分けて示します。実DBを読み取った図ではなく、リポジトリ内のDDLに基づきます。
+PostgreSQLの`001_init.sql`から`015_import_previews.sql`までを適用した後の物理スキーマです。認証・運用設定・家計データ・相談データに分けて示します。実DBを読み取った図ではなく、リポジトリ内のDDLに基づきます。
 
 正本: [PostgreSQL migration](../server/internal/infrastructure/persistence/postgres/)
 
@@ -455,3 +455,19 @@ erDiagram
 ```
 
 `effective_transactions`は原行を削除せず、effective値とactive evidence/legacy_retainedを読むview。全件重複取込にもevidenceを記録する。DBはowner付きFK/主キーと非負訂正額を保証し、同論理IDのpayload、対象version/snapshot、状態version、他active evidence保護はtx内で検証する。銀行identity aliases/file rowsの制約は継続。旧file-row単位が証明できる履歴だけを日時不明で移行し、不明単位は保護する。金融完了は通常chatのSaveChatTurn/receiptと同じtxに保存し、LLMへローカルFKや銀行識別子を送らない。SQLite008はusers FKを持たない既存方式を維持し、新しいremember規則はmerchant_rules_ownedのowner/merchant主キーへ分離する。
+
+## 未確定CSVプレビュー（015）
+
+```mermaid
+erDiagram
+    users ||--o{ csv_import_previews : "所有者"
+    csv_import_previews {
+        BIGINT user_id PK,FK
+        TEXT id PK
+        TEXT payload "version付き全明細・本人確認"
+        BIGINT expires_at "Unix epochナノ秒"
+        TEXT result "NULL未確定・0行成功receipt"
+    }
+```
+
+所有者とexpires_atに索引を持つ。取引・集計への参照は確定まで持たず、成功した通常取込は同じtxでpreviewを削除し、csv_import_batchesのcommit_key/resultから再送結果を返す。0行成功はpayloadを空にしてresultだけを保持する。期限切れの未確定payloadは同所有者の次回preview保存時に削除する。SQLite009は既存方式に合わせusers FKを持たない。

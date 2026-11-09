@@ -42,6 +42,11 @@ func openReconciliationRepository(t *testing.T) *Repository {
 }
 func verifyReconciliationIntegration(t *testing.T) {
 	r := openReconciliationRepository(t)
+	verifyDurablePreviewRetryAndExpiry(t, openReconciliationRepository(t))
+	verifyDurablePreviewCleanupRace(t, openReconciliationRepository(t))
+	verifyPreviewFinishRequiresExistingRow(t, openReconciliationRepository(t))
+	verifyDurablePreviewLateFailure(t, openReconciliationRepository(t))
+	verifyPreviewMigration(t, openReconciliationRepository(t))
 	verifyPurchaseCSVDecisionAtomicityAndCount(t, r)
 	verifyReconciledCSVDoesNotPostAgainAndKeepsLatestCorrection(t, r)
 	verifyCSVFirstUnknownInclusionHoldsFinancialFacts(t, r)

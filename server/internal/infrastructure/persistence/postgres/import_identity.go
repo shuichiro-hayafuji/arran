@@ -9,6 +9,7 @@ import (
 	"github.com/shuichirohayafuji/spendable-today/server/internal/domain"
 	"github.com/shuichirohayafuji/spendable-today/server/internal/identity"
 	"strings"
+	"time"
 )
 
 const identityColumns = "t.id,t.transaction_date,t.description,t.normalized_merchant,t.amount,t.transaction_type,t.category,t.source,t.source_account_name,t.fingerprint,t.imported_at,t.raw_data_json,t.identity_version,t.provider_transaction_id,t.import_file_key,t.legacy_fingerprint"
@@ -35,6 +36,10 @@ func (r *Repository) PreviewTransactionIdentities(ctx context.Context, items []d
 	return conflicts, err
 }
 func (r *Repository) ImportTransactions(ctx context.Context, items []domain.Transaction) (domain.ImportCommitResult, error) {
+	return r.importTransactions(ctx, items, "", time.Time{})
+}
+func (r *Repository) importTransactions(ctx context.Context, items []domain.Transaction, previewID string, now time.Time) (domain.ImportCommitResult, error) {
+	started := time.Now()
 	seed, err := r.LoadChatState(ctx)
 	if err != nil {
 		return domain.ImportCommitResult{}, err
@@ -50,6 +55,16 @@ func (r *Repository) ImportTransactions(ctx context.Context, items []domain.Tran
 	state, err := reconciliationState(ctx, tx, &seed, true)
 	if err != nil {
 		return domain.ImportCommitResult{}, err
+	}
+	if previewID != "" {
+		var saved *domain.ImportCommitResult
+		items, saved, err = loadImportPreview(ctx, tx, previewID, now.Add(time.Since(started)))
+		if err != nil {
+			return domain.ImportCommitResult{}, err
+		}
+		if saved != nil {
+			return *saved, nil
+		}
 	}
 	if len(items) > 0 && items[0].ImportMetadata != nil && items[0].ImportMetadata.CommitKey != "" {
 		var payload string
@@ -102,6 +117,9 @@ func (r *Repository) ImportTransactions(ctx context.Context, items []domain.Tran
 		return domain.ImportCommitResult{}, e
 	}
 	if _, err = tx.ExecContext(ctx, userQuery(ctx, "UPDATE chat_states SET version=?,payload=? WHERE user_id=:user_id AND version=?"), state.Version, string(payload), state.Version-1); err != nil {
+		return domain.ImportCommitResult{}, err
+	}
+	if err = finishImportPreview(ctx, tx, previewID, items, result); err != nil {
 		return domain.ImportCommitResult{}, err
 	}
 	if err = tx.Commit(); err != nil {
