@@ -23,25 +23,26 @@ import (
 
 var columnCandidates = map[string][]string{
 	"date": {
-		"日付", "利用日", "ご利用日", "取引日", "date", "transaction_date",
+		"日付", "利用日", "ご利用日", "取引日", "date", "transaction_date", "年月日",
 	},
 	"description": {
-		"摘要", "内容", "利用先", "ご利用先", "加盟店名", "description", "merchant",
+		"摘要", "内容", "利用先", "ご利用先", "加盟店名", "description", "merchant", "お取り扱い内容",
 	},
 	"amount": {
 		"金額", "利用金額", "ご利用金額", "支払金額", "amount",
 	},
 	"debit": {
-		"出金", "出金額", "支出", "debit", "withdrawal",
+		"出金", "出金額", "支出", "debit", "withdrawal", "お引出し",
 	},
 	"credit": {
-		"入金", "入金額", "収入", "credit", "deposit",
+		"入金", "入金額", "収入", "credit", "deposit", "お預入れ",
 	},
 }
 
 var dateLayouts = []string{
 	"2006-01-02", "2006/01/02", "2006.01.02", "2006年1月2日",
 	"01/02/2006", "2-Jan-2006",
+	"2006/1/2", "2006-1-2", "2006.1.2",
 }
 
 type Options struct {
