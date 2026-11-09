@@ -2,19 +2,34 @@ package postgres
 
 import (
 	"context"
+	"database/sql"
+	"errors"
+	"github.com/jackc/pgx/v5/pgconn"
 	"sync"
 	"testing"
 )
 
-func verifyReconciliationMigrationRollbackAndConcurrentRestart(t *testing.T, r *Repository) {
+func verifyReconciliationMigrationRollbackAndConcurrentRestart(t *testing.T) {
 	ctx := context.Background()
-	for _, q := range []string{"DROP TABLE purchase_csv_receipts", "DROP TABLE purchase_csv_decisions", "DELETE FROM schema_migrations WHERE version=13", "CREATE TABLE purchase_csv_receipts(blocker TEXT)"} {
-		if _, err := r.db.Exec(q); err != nil {
-			t.Fatal(err)
+	// Build the actual version-12 schema, not a version-14 schema with a hole in its ledger.
+	r := openReconciliationSchema(t, func(ctx context.Context, db *sql.DB) error {
+		for _, migration := range migrations[:12] {
+			contents, err := migrationFiles.ReadFile(migration.file)
+			if err != nil {
+				return err
+			}
+			if _, err := db.ExecContext(ctx, string(contents)); err != nil {
+				return err
+			}
 		}
+		return nil
+	})
+	if _, err := r.db.Exec("CREATE TABLE purchase_csv_receipts(blocker TEXT)"); err != nil {
+		t.Fatal(err)
 	}
-	if err := Migrate(ctx, r.db.DB); err == nil {
-		t.Fatal("late migration failure not injected")
+	var pgErr *pgconn.PgError
+	if err := Migrate(ctx, r.db.DB); !errors.As(err, &pgErr) || pgErr.Code != "42P07" {
+		t.Fatal("did not encounter injected duplicate table", err)
 	}
 	var n int
 	if err := r.db.QueryRow("SELECT count(*) FROM schema_migrations WHERE version=13").Scan(&n); err != nil || n != 0 {
