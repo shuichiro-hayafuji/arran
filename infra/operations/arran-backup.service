@@ -1,0 +1,13 @@
+[Unit]
+Description=Arran PostgreSQL backup to S3
+After=docker.service network-online.target
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/arran
+ExecStart=/opt/arran/backup.sh
+TimeoutStartSec=3600
+User=root
+UMask=0077
