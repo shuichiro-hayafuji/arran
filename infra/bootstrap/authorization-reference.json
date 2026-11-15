@@ -1,0 +1,1655 @@
+{
+  "checkedOn": "2026-11-15",
+  "services": {
+    "lightsail": {
+      "source": "https://servicereference.us-east-1.amazonaws.com/v1/lightsail/lightsail.json",
+      "version": "v1.5",
+      "actions": {
+        "AllocateStaticIp": {},
+        "AttachStaticIp": {
+          "Resources": [
+            {
+              "Name": "Instance"
+            },
+            {
+              "Name": "StaticIp"
+            }
+          ]
+        },
+        "CreateInstances": {
+          "ActionConditionKeys": [
+            "aws:RequestTag/${TagKey}",
+            "aws:TagKeys"
+          ]
+        },
+        "DeleteInstance": {
+          "Resources": [
+            {
+              "Name": "Instance"
+            }
+          ]
+        },
+        "DetachStaticIp": {
+          "Resources": [
+            {
+              "Name": "StaticIp"
+            }
+          ]
+        },
+        "DisableAddOn": {},
+        "EnableAddOn": {},
+        "GetInstance": {},
+        "GetInstances": {},
+        "GetOperation": {},
+        "GetOperations": {},
+        "GetRegions": {},
+        "GetStaticIp": {},
+        "GetStaticIps": {},
+        "PutInstancePublicPorts": {
+          "Resources": [
+            {
+              "Name": "Instance"
+            }
+          ]
+        },
+        "ReleaseStaticIp": {
+          "Resources": [
+            {
+              "Name": "StaticIp"
+            }
+          ]
+        },
+        "StartInstance": {
+          "Resources": [
+            {
+              "Name": "Instance"
+            }
+          ]
+        },
+        "StopInstance": {
+          "Resources": [
+            {
+              "Name": "Instance"
+            }
+          ]
+        },
+        "TagResource": {
+          "ActionConditionKeys": [
+            "aws:RequestTag/${TagKey}",
+            "aws:TagKeys"
+          ],
+          "Resources": [
+            {
+              "Name": "Alarm"
+            },
+            {
+              "Name": "Bucket"
+            },
+            {
+              "Name": "Certificate"
+            },
+            {
+              "Name": "ContactMethod"
+            },
+            {
+              "Name": "ContainerService"
+            },
+            {
+              "Name": "Disk"
+            },
+            {
+              "Name": "DiskSnapshot"
+            },
+            {
+              "Name": "Distribution"
+            },
+            {
+              "Name": "Domain"
+            },
+            {
+              "Name": "Instance"
+            },
+            {
+              "Name": "InstanceSnapshot"
+            },
+            {
+              "Name": "KeyPair"
+            },
+            {
+              "Name": "LoadBalancer"
+            },
+            {
+              "Name": "RelationalDatabase"
+            },
+            {
+              "Name": "RelationalDatabaseSnapshot"
+            },
+            {
+              "Name": "StaticIp"
+            }
+          ]
+        },
+        "UntagResource": {
+          "ActionConditionKeys": [
+            "aws:TagKeys"
+          ],
+          "Resources": [
+            {
+              "Name": "Alarm"
+            },
+            {
+              "Name": "Bucket"
+            },
+            {
+              "Name": "Certificate"
+            },
+            {
+              "Name": "ContactMethod"
+            },
+            {
+              "Name": "ContainerService"
+            },
+            {
+              "Name": "Disk"
+            },
+            {
+              "Name": "DiskSnapshot"
+            },
+            {
+              "Name": "Distribution"
+            },
+            {
+              "Name": "Domain"
+            },
+            {
+              "Name": "Instance"
+            },
+            {
+              "Name": "InstanceSnapshot"
+            },
+            {
+              "Name": "KeyPair"
+            },
+            {
+              "Name": "LoadBalancer"
+            },
+            {
+              "Name": "RelationalDatabase"
+            },
+            {
+              "Name": "RelationalDatabaseSnapshot"
+            },
+            {
+              "Name": "StaticIp"
+            }
+          ]
+        }
+      }
+    },
+    "cloudformation": {
+      "source": "https://servicereference.us-east-1.amazonaws.com/v1/cloudformation/cloudformation.json",
+      "version": "v1.5",
+      "actions": {
+        "ContinueUpdateRollback": {
+          "ActionConditionKeys": [
+            "cloudformation:RoleArn"
+          ],
+          "Resources": [
+            {
+              "Name": "stack"
+            }
+          ]
+        },
+        "CreateChangeSet": {
+          "ActionConditionKeys": [
+            "aws:RequestTag/${TagKey}",
+            "aws:TagKeys",
+            "cloudformation:ChangeSetName",
+            "cloudformation:ImportResourceTypes",
+            "cloudformation:ResourceTypes",
+            "cloudformation:RoleArn",
+            "cloudformation:StackPolicyUrl",
+            "cloudformation:TemplateUrl"
+          ],
+          "Resources": [
+            {
+              "Name": "stack"
+            }
+          ]
+        },
+        "CreateStack": {
+          "ActionConditionKeys": [
+            "aws:RequestTag/${TagKey}",
+            "aws:TagKeys",
+            "cloudformation:ResourceTypes",
+            "cloudformation:RoleArn",
+            "cloudformation:StackPolicyUrl",
+            "cloudformation:TemplateUrl"
+          ],
+          "Resources": [
+            {
+              "Name": "stack"
+            }
+          ]
+        },
+        "DeleteChangeSet": {
+          "ActionConditionKeys": [
+            "cloudformation:ChangeSetName"
+          ],
+          "Resources": [
+            {
+              "Name": "stack"
+            }
+          ]
+        },
+        "DescribeChangeSet": {
+          "ActionConditionKeys": [
+            "cloudformation:ChangeSetName"
+          ],
+          "Resources": [
+            {
+              "Name": "stack"
+            }
+          ]
+        },
+        "DescribeStackEvents": {
+          "Resources": [
+            {
+              "Name": "stack"
+            }
+          ]
+        },
+        "DescribeStackResources": {
+          "Resources": [
+            {
+              "Name": "stack"
+            }
+          ]
+        },
+        "DescribeStacks": {
+          "Resources": [
+            {
+              "Name": "stack"
+            }
+          ]
+        },
+        "ExecuteChangeSet": {
+          "ActionConditionKeys": [
+            "cloudformation:ChangeSetName"
+          ],
+          "Resources": [
+            {
+              "Name": "stack"
+            }
+          ]
+        },
+        "GetTemplate": {
+          "Resources": [
+            {
+              "Name": "stack"
+            }
+          ]
+        },
+        "GetTemplateSummary": {
+          "ActionConditionKeys": [
+            "cloudformation:TemplateUrl"
+          ],
+          "Resources": [
+            {
+              "Name": "stack"
+            },
+            {
+              "Name": "stackset"
+            }
+          ]
+        },
+        "ListStackResources": {
+          "Resources": [
+            {
+              "Name": "stack"
+            }
+          ]
+        },
+        "RollbackStack": {
+          "ActionConditionKeys": [
+            "cloudformation:RoleArn"
+          ],
+          "Resources": [
+            {
+              "Name": "stack"
+            }
+          ]
+        },
+        "UpdateStack": {
+          "ActionConditionKeys": [
+            "aws:RequestTag/${TagKey}",
+            "aws:TagKeys",
+            "cloudformation:ResourceTypes",
+            "cloudformation:RoleArn",
+            "cloudformation:StackPolicyUrl",
+            "cloudformation:TemplateUrl"
+          ],
+          "Resources": [
+            {
+              "Name": "stack"
+            }
+          ]
+        },
+        "UpdateTerminationProtection": {
+          "Resources": [
+            {
+              "Name": "stack"
+            }
+          ]
+        }
+      }
+    },
+    "iam": {
+      "source": "https://servicereference.us-east-1.amazonaws.com/v1/iam/iam.json",
+      "version": "v1.5",
+      "actions": {
+        "CreatePolicyVersion": {
+          "Resources": [
+            {
+              "Name": "policy"
+            }
+          ]
+        },
+        "CreateUser": {
+          "ActionConditionKeys": [
+            "aws:RequestTag/${TagKey}",
+            "aws:TagKeys",
+            "iam:PermissionsBoundary"
+          ],
+          "Resources": [
+            {
+              "Name": "user"
+            }
+          ]
+        },
+        "DeletePolicy": {
+          "Resources": [
+            {
+              "Name": "policy"
+            }
+          ]
+        },
+        "DeletePolicyVersion": {
+          "Resources": [
+            {
+              "Name": "policy"
+            }
+          ]
+        },
+        "DeleteUserPermissionsBoundary": {
+          "ActionConditionKeys": [
+            "iam:PermissionsBoundary"
+          ],
+          "Resources": [
+            {
+              "Name": "user"
+            }
+          ]
+        },
+        "DeleteUserPolicy": {
+          "ActionConditionKeys": [
+            "iam:PermissionsBoundary"
+          ],
+          "Resources": [
+            {
+              "Name": "user"
+            }
+          ]
+        },
+        "GetLoginProfile": {
+          "Resources": [
+            {
+              "Name": "user"
+            }
+          ]
+        },
+        "GetPolicy": {
+          "Resources": [
+            {
+              "Name": "policy"
+            }
+          ]
+        },
+        "GetPolicyVersion": {
+          "Resources": [
+            {
+              "Name": "policy"
+            }
+          ]
+        },
+        "GetRole": {
+          "ActionConditionKeys": [
+            "iam:PermissionsBoundary",
+            "iam:RoleTemplateARN"
+          ],
+          "Resources": [
+            {
+              "Name": "role"
+            }
+          ]
+        },
+        "GetRolePolicy": {
+          "Resources": [
+            {
+              "Name": "role"
+            }
+          ]
+        },
+        "GetUser": {
+          "Resources": [
+            {
+              "Name": "user"
+            }
+          ]
+        },
+        "GetUserPolicy": {
+          "Resources": [
+            {
+              "Name": "user"
+            }
+          ]
+        },
+        "ListAttachedRolePolicies": {
+          "Resources": [
+            {
+              "Name": "role"
+            }
+          ]
+        },
+        "ListAttachedUserPolicies": {
+          "Resources": [
+            {
+              "Name": "user"
+            }
+          ]
+        },
+        "ListGroupsForUser": {
+          "Resources": [
+            {
+              "Name": "user"
+            }
+          ]
+        },
+        "ListRolePolicies": {
+          "Resources": [
+            {
+              "Name": "role"
+            }
+          ]
+        },
+        "ListUserPolicies": {
+          "Resources": [
+            {
+              "Name": "user"
+            }
+          ]
+        },
+        "ListUserTags": {
+          "Resources": [
+            {
+              "Name": "user"
+            }
+          ]
+        },
+        "PassRole": {
+          "ActionConditionKeys": [
+            "iam:AssociatedResourceArn",
+            "iam:PassedToService"
+          ],
+          "Resources": [
+            {
+              "Name": "role"
+            }
+          ]
+        },
+        "PutUserPermissionsBoundary": {
+          "ActionConditionKeys": [
+            "iam:PermissionsBoundary"
+          ],
+          "Resources": [
+            {
+              "Name": "user"
+            }
+          ]
+        },
+        "PutUserPolicy": {
+          "ActionConditionKeys": [
+            "iam:PermissionsBoundary"
+          ],
+          "Resources": [
+            {
+              "Name": "user"
+            }
+          ]
+        },
+        "SetDefaultPolicyVersion": {
+          "Resources": [
+            {
+              "Name": "policy"
+            }
+          ]
+        },
+        "TagUser": {
+          "ActionConditionKeys": [
+            "aws:RequestTag/${TagKey}",
+            "aws:TagKeys"
+          ],
+          "Resources": [
+            {
+              "Name": "user"
+            }
+          ]
+        },
+        "UntagUser": {
+          "ActionConditionKeys": [
+            "aws:TagKeys"
+          ],
+          "Resources": [
+            {
+              "Name": "user"
+            }
+          ]
+        }
+      }
+    },
+    "s3": {
+      "source": "https://servicereference.us-east-1.amazonaws.com/v1/s3/s3.json",
+      "version": "v1.5",
+      "actions": {
+        "AbortMultipartUpload": {
+          "ActionConditionKeys": [
+            "s3:AccessGrantsInstanceArn",
+            "s3:ResourceAccount",
+            "s3:TlsVersion",
+            "s3:authType",
+            "s3:signatureAge",
+            "s3:signatureversion",
+            "s3:x-amz-content-sha256"
+          ],
+          "Resources": [
+            {
+              "Name": "accesspointobject"
+            },
+            {
+              "Name": "object"
+            }
+          ]
+        },
+        "CreateBucket": {
+          "ActionConditionKeys": [
+            "aws:RequestTag/${TagKey}",
+            "aws:TagKeys",
+            "s3:ResourceAccount",
+            "s3:TlsVersion",
+            "s3:authType",
+            "s3:locationconstraint",
+            "s3:signatureAge",
+            "s3:signatureversion",
+            "s3:x-amz-acl",
+            "s3:x-amz-bucket-namespace",
+            "s3:x-amz-content-sha256",
+            "s3:x-amz-grant-full-control",
+            "s3:x-amz-grant-read",
+            "s3:x-amz-grant-read-acp",
+            "s3:x-amz-grant-write",
+            "s3:x-amz-grant-write-acp",
+            "s3:x-amz-object-ownership"
+          ],
+          "Resources": [
+            {
+              "Name": "bucket"
+            }
+          ]
+        },
+        "DeleteBucket": {
+          "ActionConditionKeys": [
+            "s3:ResourceAccount",
+            "s3:TlsVersion",
+            "s3:authType",
+            "s3:signatureAge",
+            "s3:signatureversion",
+            "s3:x-amz-content-sha256"
+          ],
+          "Resources": [
+            {
+              "Name": "bucket"
+            }
+          ]
+        },
+        "DeleteBucketPolicy": {
+          "ActionConditionKeys": [
+            "s3:ResourceAccount",
+            "s3:TlsVersion",
+            "s3:authType",
+            "s3:signatureAge",
+            "s3:signatureversion",
+            "s3:x-amz-content-sha256"
+          ],
+          "Resources": [
+            {
+              "Name": "bucket"
+            }
+          ]
+        },
+        "GetAccelerateConfiguration": {
+          "ActionConditionKeys": [
+            "s3:ResourceAccount",
+            "s3:TlsVersion",
+            "s3:authType",
+            "s3:signatureAge",
+            "s3:signatureversion",
+            "s3:x-amz-content-sha256"
+          ],
+          "Resources": [
+            {
+              "Name": "bucket"
+            }
+          ]
+        },
+        "GetAnalyticsConfiguration": {
+          "ActionConditionKeys": [
+            "s3:ResourceAccount",
+            "s3:TlsVersion",
+            "s3:authType",
+            "s3:signatureAge",
+            "s3:signatureversion",
+            "s3:x-amz-content-sha256"
+          ],
+          "Resources": [
+            {
+              "Name": "bucket"
+            }
+          ]
+        },
+        "GetBucketAbac": {
+          "ActionConditionKeys": [
+            "s3:ResourceAccount",
+            "s3:TlsVersion",
+            "s3:authType",
+            "s3:signatureAge",
+            "s3:signatureversion",
+            "s3:x-amz-content-sha256"
+          ],
+          "Resources": [
+            {
+              "Name": "bucket"
+            }
+          ]
+        },
+        "GetBucketAcl": {
+          "ActionConditionKeys": [
+            "s3:ResourceAccount",
+            "s3:TlsVersion",
+            "s3:authType",
+            "s3:signatureAge",
+            "s3:signatureversion",
+            "s3:x-amz-content-sha256"
+          ],
+          "Resources": [
+            {
+              "Name": "accesspoint"
+            },
+            {
+              "Name": "bucket"
+            }
+          ]
+        },
+        "GetBucketCORS": {
+          "ActionConditionKeys": [
+            "s3:ResourceAccount",
+            "s3:TlsVersion",
+            "s3:authType",
+            "s3:signatureAge",
+            "s3:signatureversion",
+            "s3:x-amz-content-sha256"
+          ],
+          "Resources": [
+            {
+              "Name": "accesspoint"
+            },
+            {
+              "Name": "bucket"
+            }
+          ]
+        },
+        "GetBucketLocation": {
+          "ActionConditionKeys": [
+            "s3:ResourceAccount",
+            "s3:TlsVersion",
+            "s3:authType",
+            "s3:signatureAge",
+            "s3:signatureversion",
+            "s3:x-amz-content-sha256"
+          ],
+          "Resources": [
+            {
+              "Name": "accesspoint"
+            },
+            {
+              "Name": "bucket"
+            }
+          ]
+        },
+        "GetBucketLogging": {
+          "ActionConditionKeys": [
+            "s3:ResourceAccount",
+            "s3:TlsVersion",
+            "s3:authType",
+            "s3:signatureAge",
+            "s3:signatureversion",
+            "s3:x-amz-content-sha256"
+          ],
+          "Resources": [
+            {
+              "Name": "bucket"
+            }
+          ]
+        },
+        "GetBucketMetadataTableConfiguration": {
+          "ActionConditionKeys": [
+            "s3:ResourceAccount",
+            "s3:TlsVersion",
+            "s3:authType",
+            "s3:signatureAge",
+            "s3:signatureversion",
+            "s3:x-amz-content-sha256"
+          ],
+          "Resources": [
+            {
+              "Name": "bucket"
+            }
+          ]
+        },
+        "GetBucketNotification": {
+          "ActionConditionKeys": [
+            "s3:ResourceAccount",
+            "s3:TlsVersion",
+            "s3:authType",
+            "s3:signatureAge",
+            "s3:signatureversion",
+            "s3:x-amz-content-sha256"
+          ],
+          "Resources": [
+            {
+              "Name": "accesspoint"
+            },
+            {
+              "Name": "bucket"
+            }
+          ]
+        },
+        "GetBucketObjectLockConfiguration": {
+          "ActionConditionKeys": [
+            "s3:ResourceAccount",
+            "s3:TlsVersion",
+            "s3:authType",
+            "s3:signatureAge",
+            "s3:signatureversion",
+            "s3:signatureversion"
+          ],
+          "Resources": [
+            {
+              "Name": "bucket"
+            }
+          ]
+        },
+        "GetBucketOwnershipControls": {
+          "ActionConditionKeys": [
+            "s3:ResourceAccount",
+            "s3:TlsVersion",
+            "s3:authType",
+            "s3:signatureAge",
+            "s3:signatureversion",
+            "s3:x-amz-content-sha256"
+          ],
+          "Resources": [
+            {
+              "Name": "bucket"
+            }
+          ]
+        },
+        "GetBucketPolicy": {
+          "ActionConditionKeys": [
+            "s3:ResourceAccount",
+            "s3:TlsVersion",
+            "s3:authType",
+            "s3:signatureAge",
+            "s3:signatureversion",
+            "s3:x-amz-content-sha256"
+          ],
+          "Resources": [
+            {
+              "Name": "accesspoint"
+            },
+            {
+              "Name": "bucket"
+            }
+          ]
+        },
+        "GetBucketPublicAccessBlock": {
+          "ActionConditionKeys": [
+            "s3:ResourceAccount",
+            "s3:TlsVersion",
+            "s3:authType",
+            "s3:signatureAge",
+            "s3:signatureversion",
+            "s3:x-amz-content-sha256"
+          ],
+          "Resources": [
+            {
+              "Name": "bucket"
+            }
+          ]
+        },
+        "GetBucketTagging": {
+          "ActionConditionKeys": [
+            "s3:ResourceAccount",
+            "s3:TlsVersion",
+            "s3:authType",
+            "s3:signatureAge",
+            "s3:signatureversion",
+            "s3:x-amz-content-sha256"
+          ],
+          "Resources": [
+            {
+              "Name": "bucket"
+            }
+          ]
+        },
+        "GetBucketVersioning": {
+          "ActionConditionKeys": [
+            "s3:ResourceAccount",
+            "s3:TlsVersion",
+            "s3:authType",
+            "s3:signatureAge",
+            "s3:signatureversion",
+            "s3:x-amz-content-sha256"
+          ],
+          "Resources": [
+            {
+              "Name": "bucket"
+            }
+          ]
+        },
+        "GetBucketWebsite": {
+          "ActionConditionKeys": [
+            "s3:ResourceAccount",
+            "s3:TlsVersion",
+            "s3:authType",
+            "s3:signatureAge",
+            "s3:signatureversion",
+            "s3:x-amz-content-sha256"
+          ],
+          "Resources": [
+            {
+              "Name": "bucket"
+            }
+          ]
+        },
+        "GetEncryptionConfiguration": {
+          "ActionConditionKeys": [
+            "s3:ResourceAccount",
+            "s3:TlsVersion",
+            "s3:authType",
+            "s3:signatureAge",
+            "s3:signatureversion",
+            "s3:x-amz-content-sha256"
+          ],
+          "Resources": [
+            {
+              "Name": "bucket"
+            }
+          ]
+        },
+        "GetIntelligentTieringConfiguration": {
+          "ActionConditionKeys": [
+            "s3:ResourceAccount",
+            "s3:TlsVersion",
+            "s3:authType",
+            "s3:signatureAge",
+            "s3:signatureversion",
+            "s3:x-amz-content-sha256"
+          ],
+          "Resources": [
+            {
+              "Name": "bucket"
+            }
+          ]
+        },
+        "GetInventoryConfiguration": {
+          "ActionConditionKeys": [
+            "s3:ResourceAccount",
+            "s3:TlsVersion",
+            "s3:authType",
+            "s3:signatureAge",
+            "s3:signatureversion",
+            "s3:x-amz-content-sha256"
+          ],
+          "Resources": [
+            {
+              "Name": "bucket"
+            }
+          ]
+        },
+        "GetLifecycleConfiguration": {
+          "ActionConditionKeys": [
+            "s3:ResourceAccount",
+            "s3:TlsVersion",
+            "s3:authType",
+            "s3:signatureAge",
+            "s3:signatureversion",
+            "s3:x-amz-content-sha256"
+          ],
+          "Resources": [
+            {
+              "Name": "bucket"
+            }
+          ]
+        },
+        "GetMetricsConfiguration": {
+          "ActionConditionKeys": [
+            "s3:ResourceAccount",
+            "s3:TlsVersion",
+            "s3:authType",
+            "s3:signatureAge",
+            "s3:signatureversion",
+            "s3:x-amz-content-sha256"
+          ],
+          "Resources": [
+            {
+              "Name": "bucket"
+            }
+          ]
+        },
+        "GetObject": {
+          "ActionConditionKeys": [
+            "s3:AccessGrantsInstanceArn",
+            "s3:ExistingObjectTag/<key>",
+            "s3:ResourceAccount",
+            "s3:TlsVersion",
+            "s3:authType",
+            "s3:signatureAge",
+            "s3:signatureversion",
+            "s3:x-amz-content-sha256"
+          ],
+          "Resources": [
+            {
+              "Name": "accesspointobject"
+            },
+            {
+              "Name": "object"
+            }
+          ]
+        },
+        "GetObjectVersion": {
+          "ActionConditionKeys": [
+            "s3:AccessGrantsInstanceArn",
+            "s3:ExistingObjectTag/<key>",
+            "s3:ResourceAccount",
+            "s3:TlsVersion",
+            "s3:authType",
+            "s3:signatureAge",
+            "s3:signatureversion",
+            "s3:versionid",
+            "s3:x-amz-content-sha256"
+          ],
+          "Resources": [
+            {
+              "Name": "accesspointobject"
+            },
+            {
+              "Name": "object"
+            }
+          ]
+        },
+        "GetReplicationConfiguration": {
+          "ActionConditionKeys": [
+            "s3:ResourceAccount",
+            "s3:TlsVersion",
+            "s3:authType",
+            "s3:signatureAge",
+            "s3:signatureversion",
+            "s3:x-amz-content-sha256"
+          ],
+          "Resources": [
+            {
+              "Name": "bucket"
+            }
+          ]
+        },
+        "ListBucket": {
+          "ActionConditionKeys": [
+            "s3:AccessGrantsInstanceArn",
+            "s3:ResourceAccount",
+            "s3:TlsVersion",
+            "s3:authType",
+            "s3:delimiter",
+            "s3:max-keys",
+            "s3:prefix",
+            "s3:signatureAge",
+            "s3:signatureversion",
+            "s3:x-amz-content-sha256"
+          ],
+          "Resources": [
+            {
+              "Name": "accesspoint"
+            },
+            {
+              "Name": "bucket"
+            }
+          ]
+        },
+        "ListBucketMultipartUploads": {
+          "ActionConditionKeys": [
+            "aws:ResourceTag/${TagKey}",
+            "s3:AccessGrantsInstanceArn",
+            "s3:AccessPointNetworkOrigin",
+            "s3:AccessPointTag/${TagKey}",
+            "s3:DataAccessPointAccount",
+            "s3:DataAccessPointArn",
+            "s3:ResourceAccount",
+            "s3:TlsVersion",
+            "s3:authType",
+            "s3:signatureAge",
+            "s3:signatureversion",
+            "s3:x-amz-content-sha256"
+          ],
+          "Resources": [
+            {
+              "Name": "bucket"
+            }
+          ]
+        },
+        "ListMultipartUploadParts": {
+          "ActionConditionKeys": [
+            "s3:AccessGrantsInstanceArn",
+            "s3:ResourceAccount",
+            "s3:TlsVersion",
+            "s3:authType",
+            "s3:signatureAge",
+            "s3:signatureversion",
+            "s3:x-amz-content-sha256"
+          ],
+          "Resources": [
+            {
+              "Name": "accesspointobject"
+            },
+            {
+              "Name": "object"
+            }
+          ]
+        },
+        "ListTagsForResource": {
+          "ActionConditionKeys": [
+            "s3:ResourceAccount",
+            "s3:TlsVersion",
+            "s3:authType",
+            "s3:signatureAge",
+            "s3:signatureversion",
+            "s3:x-amz-content-sha256"
+          ],
+          "Resources": [
+            {
+              "Name": "accessgrant"
+            },
+            {
+              "Name": "accessgrantsinstance"
+            },
+            {
+              "Name": "accessgrantslocation"
+            },
+            {
+              "Name": "accesspoint"
+            },
+            {
+              "Name": "bucket"
+            },
+            {
+              "Name": "storagelensgroup"
+            }
+          ]
+        },
+        "PutBucketOwnershipControls": {
+          "ActionConditionKeys": [
+            "s3:ResourceAccount",
+            "s3:TlsVersion",
+            "s3:authType",
+            "s3:signatureAge",
+            "s3:signatureversion",
+            "s3:x-amz-content-sha256"
+          ],
+          "Resources": [
+            {
+              "Name": "bucket"
+            }
+          ]
+        },
+        "PutBucketPolicy": {
+          "ActionConditionKeys": [
+            "s3:ResourceAccount",
+            "s3:TlsVersion",
+            "s3:authType",
+            "s3:signatureAge",
+            "s3:signatureversion",
+            "s3:x-amz-content-sha256"
+          ],
+          "Resources": [
+            {
+              "Name": "bucket"
+            }
+          ]
+        },
+        "PutBucketPublicAccessBlock": {
+          "ActionConditionKeys": [
+            "s3:ResourceAccount",
+            "s3:TlsVersion",
+            "s3:authType",
+            "s3:signatureAge",
+            "s3:signatureversion",
+            "s3:x-amz-content-sha256"
+          ],
+          "Resources": [
+            {
+              "Name": "bucket"
+            }
+          ]
+        },
+        "PutBucketTagging": {
+          "ActionConditionKeys": [
+            "s3:ResourceAccount",
+            "s3:TlsVersion",
+            "s3:authType",
+            "s3:signatureAge",
+            "s3:signatureversion",
+            "s3:x-amz-content-sha256"
+          ],
+          "Resources": [
+            {
+              "Name": "bucket"
+            }
+          ]
+        },
+        "PutBucketVersioning": {
+          "ActionConditionKeys": [
+            "s3:ResourceAccount",
+            "s3:TlsVersion",
+            "s3:authType",
+            "s3:signatureAge",
+            "s3:signatureversion",
+            "s3:x-amz-content-sha256"
+          ],
+          "Resources": [
+            {
+              "Name": "bucket"
+            }
+          ]
+        },
+        "PutEncryptionConfiguration": {
+          "ActionConditionKeys": [
+            "s3:ResourceAccount",
+            "s3:TlsVersion",
+            "s3:authType",
+            "s3:signatureAge",
+            "s3:signatureversion",
+            "s3:x-amz-content-sha256"
+          ],
+          "Resources": [
+            {
+              "Name": "bucket"
+            }
+          ]
+        },
+        "PutLifecycleConfiguration": {
+          "ActionConditionKeys": [
+            "s3:ResourceAccount",
+            "s3:TlsVersion",
+            "s3:authType",
+            "s3:signatureAge",
+            "s3:signatureversion",
+            "s3:x-amz-content-sha256"
+          ],
+          "Resources": [
+            {
+              "Name": "bucket"
+            }
+          ]
+        },
+        "PutObject": {
+          "ActionConditionKeys": [
+            "s3:AccessGrantsInstanceArn",
+            "s3:ObjectCreationOperation",
+            "s3:RequestObjectTag/<key>",
+            "s3:RequestObjectTagKeys",
+            "s3:ResourceAccount",
+            "s3:TlsVersion",
+            "s3:authType",
+            "s3:if-match",
+            "s3:if-none-match",
+            "s3:object-lock-event-hold",
+            "s3:object-lock-event-hold-duration-days",
+            "s3:object-lock-legal-hold",
+            "s3:object-lock-mode",
+            "s3:object-lock-remaining-retention-days",
+            "s3:object-lock-retain-until-date",
+            "s3:signatureAge",
+            "s3:signatureversion",
+            "s3:x-amz-acl",
+            "s3:x-amz-content-sha256",
+            "s3:x-amz-copy-source",
+            "s3:x-amz-grant-full-control",
+            "s3:x-amz-grant-read",
+            "s3:x-amz-grant-read-acp",
+            "s3:x-amz-grant-write",
+            "s3:x-amz-grant-write-acp",
+            "s3:x-amz-metadata-directive",
+            "s3:x-amz-object-annotation-directive",
+            "s3:x-amz-server-side-encryption",
+            "s3:x-amz-server-side-encryption-aws-kms-key-id",
+            "s3:x-amz-server-side-encryption-customer-algorithm",
+            "s3:x-amz-storage-class",
+            "s3:x-amz-website-redirect-location"
+          ],
+          "Resources": [
+            {
+              "Name": "accesspointobject"
+            },
+            {
+              "Name": "object"
+            }
+          ]
+        }
+      }
+    },
+    "ssm": {
+      "source": "https://servicereference.us-east-1.amazonaws.com/v1/ssm/ssm.json",
+      "version": "v1.5",
+      "actions": {
+        "GetParameter": {
+          "ActionConditionKeys": [
+            "aws:ResourceTag/${TagKey}"
+          ],
+          "Resources": [
+            {
+              "Name": "parameter"
+            }
+          ]
+        },
+        "GetParameters": {
+          "ActionConditionKeys": [
+            "aws:ResourceTag/${TagKey}"
+          ],
+          "Resources": [
+            {
+              "Name": "parameter"
+            }
+          ]
+        }
+      }
+    },
+    "sts": {
+      "source": "https://servicereference.us-east-1.amazonaws.com/v1/sts/sts.json",
+      "version": "v1.5",
+      "actions": {
+        "AssumeRole": {
+          "ActionConditionKeys": [
+            "accounts.google.com:aud",
+            "accounts.google.com:sub",
+            "aws:RequestTag/${TagKey}",
+            "aws:TagKeys",
+            "cognito-identity.amazonaws.com:amr",
+            "cognito-identity.amazonaws.com:aud",
+            "cognito-identity.amazonaws.com:sub",
+            "graph.facebook.com:app_id",
+            "graph.facebook.com:id",
+            "iam:ResourceTag/${TagKey}",
+            "saml:namequalifier",
+            "saml:sub",
+            "saml:sub_type",
+            "sts:ExternalId",
+            "sts:RoleSessionName",
+            "sts:SourceIdentity",
+            "sts:TransitiveTagKeys",
+            "www.amazon.com:app_id",
+            "www.amazon.com:user_id"
+          ],
+          "Resources": [
+            {
+              "Name": "role"
+            }
+          ]
+        },
+        "TagSession": {
+          "ActionConditionKeys": [
+            "aws:RequestTag/${TagKey}",
+            "aws:TagKeys",
+            "saml:aud",
+            "sts:TransitiveTagKeys"
+          ],
+          "Resources": [
+            {
+              "Name": "role"
+            }
+          ]
+        }
+      }
+    }
+  },
+  "providers": {
+    "AWS::Lightsail::Instance": {
+      "source": "https://schema.cloudformation.us-east-1.amazonaws.com/CloudformationSchema.zip",
+      "schemaSha256": "14627eb3857774f46e40fe8b8ff646e06e619aa5278ccbc46b73c39ad3ae4b3f",
+      "handlers": {
+        "create": {
+          "permissions": [
+            "lightsail:CreateInstances",
+            "lightsail:GetInstances",
+            "lightsail:EnableAddOn",
+            "lightsail:GetInstance",
+            "lightsail:DisableAddOn",
+            "lightsail:PutInstancePublicPorts",
+            "lightsail:AttachDisk",
+            "lightsail:DetachDisk",
+            "lightsail:StartInstance",
+            "lightsail:StopInstance",
+            "lightsail:GetDisk",
+            "lightsail:GetRegions",
+            "lightsail:TagResource",
+            "lightsail:UntagResource"
+          ]
+        },
+        "read": {
+          "permissions": [
+            "lightsail:GetInstances",
+            "lightsail:GetInstance"
+          ]
+        },
+        "delete": {
+          "permissions": [
+            "lightsail:GetInstances",
+            "lightsail:GetInstance",
+            "lightsail:DeleteInstance"
+          ]
+        },
+        "list": {
+          "permissions": [
+            "lightsail:GetInstances"
+          ]
+        },
+        "update": {
+          "permissions": [
+            "lightsail:GetInstances",
+            "lightsail:GetInstance",
+            "lightsail:DeleteInstance",
+            "lightsail:EnableAddOn",
+            "lightsail:DisableAddOn",
+            "lightsail:PutInstancePublicPorts",
+            "lightsail:AttachDisk",
+            "lightsail:DetachDisk",
+            "lightsail:StartInstance",
+            "lightsail:StopInstance",
+            "lightsail:GetDisk",
+            "lightsail:TagResource",
+            "lightsail:UntagResource"
+          ],
+          "timeoutInMinutes": 2160
+        }
+      }
+    },
+    "AWS::Lightsail::StaticIp": {
+      "source": "https://schema.cloudformation.us-east-1.amazonaws.com/CloudformationSchema.zip",
+      "schemaSha256": "3429df539d3fb7a546bbfdf7a7002863239c17873b0b12ed2dfe3723b6a0a931",
+      "handlers": {
+        "create": {
+          "permissions": [
+            "lightsail:AllocateStaticIp",
+            "lightsail:AttachStaticIp",
+            "lightsail:DetachStaticIp",
+            "lightsail:GetInstance",
+            "lightsail:GetStaticIp",
+            "lightsail:GetStaticIps"
+          ]
+        },
+        "read": {
+          "permissions": [
+            "lightsail:GetStaticIp",
+            "lightsail:GetStaticIps"
+          ]
+        },
+        "update": {
+          "permissions": [
+            "lightsail:AttachStaticIp",
+            "lightsail:DetachStaticIp",
+            "lightsail:GetInstance",
+            "lightsail:GetStaticIp",
+            "lightsail:GetStaticIps"
+          ]
+        },
+        "delete": {
+          "permissions": [
+            "lightsail:GetStaticIp",
+            "lightsail:GetStaticIps",
+            "lightsail:ReleaseStaticIp"
+          ]
+        },
+        "list": {
+          "permissions": [
+            "lightsail:GetStaticIps"
+          ]
+        }
+      }
+    },
+    "AWS::S3::Bucket": {
+      "source": "https://schema.cloudformation.us-east-1.amazonaws.com/CloudformationSchema.zip",
+      "schemaSha256": "f088686b5b32ae381ad6efaf5994169a5ab7a13cae7ed26165fc7eccd64d2589",
+      "handlers": {
+        "read": {
+          "permissions": [
+            "s3:GetAccelerateConfiguration",
+            "s3:GetLifecycleConfiguration",
+            "s3:GetBucketPublicAccessBlock",
+            "s3:GetAnalyticsConfiguration",
+            "s3:GetBucketCORS",
+            "s3:GetEncryptionConfiguration",
+            "s3:GetInventoryConfiguration",
+            "s3:GetBucketLogging",
+            "s3:GetMetricsConfiguration",
+            "s3:GetBucketNotification",
+            "s3:GetBucketVersioning",
+            "s3:GetReplicationConfiguration",
+            "s3:GetBucketWebsite",
+            "s3:GetBucketObjectLockConfiguration",
+            "s3:GetBucketTagging",
+            "s3:ListTagsForResource",
+            "s3:GetBucketAbac",
+            "s3:GetBucketOwnershipControls",
+            "s3:GetIntelligentTieringConfiguration",
+            "s3:GetBucketMetadataTableConfiguration",
+            "s3:GetBucketDefaultStorageClass",
+            "s3:ListBucket"
+          ]
+        },
+        "create": {
+          "permissions": [
+            "s3:CreateBucket",
+            "s3:PutBucketTagging",
+            "s3:TagResource",
+            "s3:PutBucketAbac",
+            "s3:PutBucketDefaultStorageClass",
+            "s3:PutAnalyticsConfiguration",
+            "s3:PutEncryptionConfiguration",
+            "s3:PutBucketCORS",
+            "s3:PutInventoryConfiguration",
+            "s3:PutLifecycleConfiguration",
+            "s3:PutMetricsConfiguration",
+            "s3:PutBucketNotification",
+            "s3:PutBucketReplication",
+            "s3:PutBucketWebsite",
+            "s3:PutAccelerateConfiguration",
+            "s3:PutBucketPublicAccessBlock",
+            "s3:PutReplicationConfiguration",
+            "s3:PutObjectAcl",
+            "s3:PutBucketObjectLockConfiguration",
+            "s3:GetBucketAcl",
+            "s3:ListBucket",
+            "iam:PassRole",
+            "s3:DeleteObject",
+            "s3:PutBucketLogging",
+            "s3:PutBucketVersioning",
+            "s3:PutObjectLockConfiguration",
+            "s3:PutBucketOwnershipControls",
+            "s3:PutIntelligentTieringConfiguration",
+            "s3:GetBucketMetadataTableConfiguration",
+            "s3:CreateBucketMetadataTableConfiguration",
+            "s3tables:CreateNamespace",
+            "s3tables:CreateTable",
+            "s3tables:CreateTableBucket",
+            "s3tables:GetTable",
+            "s3tables:PutTableBucketPolicy",
+            "s3tables:PutTableEncryption",
+            "s3tables:PutTablePolicy",
+            "s3tables:GetTableMetadataLocation",
+            "s3tables:UpdateTableMetadataLocation"
+          ]
+        },
+        "update": {
+          "permissions": [
+            "s3:PutBucketAcl",
+            "s3:PutBucketTagging",
+            "s3:TagResource",
+            "s3:UntagResource",
+            "s3:PutBucketAbac",
+            "s3:PutBucketDefaultStorageClass",
+            "s3:PutAnalyticsConfiguration",
+            "s3:PutEncryptionConfiguration",
+            "s3:PutBucketCORS",
+            "s3:PutInventoryConfiguration",
+            "s3:PutLifecycleConfiguration",
+            "s3:PutMetricsConfiguration",
+            "s3:PutBucketNotification",
+            "s3:PutBucketReplication",
+            "s3:PutBucketWebsite",
+            "s3:PutAccelerateConfiguration",
+            "s3:GetBucketMetadataTableConfiguration",
+            "s3:DeleteBucketMetadataTableConfiguration",
+            "s3:CreateBucketMetadataTableConfiguration",
+            "s3:UpdateBucketMetadataJournalTableConfiguration",
+            "s3:UpdateBucketMetadataInventoryTableConfiguration",
+            "s3:UpdateBucketMetadataAnnotationTableConfiguration",
+            "s3tables:CreateNamespace",
+            "s3tables:CreateTable",
+            "s3tables:CreateTableBucket",
+            "s3tables:GetTable",
+            "s3tables:PutTableBucketPolicy",
+            "s3tables:PutTableEncryption",
+            "s3tables:PutTablePolicy",
+            "s3tables:GetTableMetadataLocation",
+            "s3tables:UpdateTableMetadataLocation",
+            "s3:PutBucketPublicAccessBlock",
+            "s3:PutReplicationConfiguration",
+            "s3:PutBucketOwnershipControls",
+            "s3:PutIntelligentTieringConfiguration",
+            "s3:DeleteBucketWebsite",
+            "s3:PutBucketLogging",
+            "s3:PutBucketVersioning",
+            "s3:PutObjectLockConfiguration",
+            "s3:PutBucketObjectLockConfiguration",
+            "s3:DeleteBucketAnalyticsConfiguration",
+            "s3:DeleteBucketCors",
+            "s3:DeleteBucketMetricsConfiguration",
+            "s3:DeleteBucketEncryption",
+            "s3:DeleteBucketLifecycle",
+            "s3:DeleteBucketReplication",
+            "iam:PassRole",
+            "s3:ListBucket"
+          ]
+        },
+        "list": {
+          "permissions": [
+            "s3:ListAllMyBuckets"
+          ]
+        },
+        "delete": {
+          "permissions": [
+            "s3:DeleteBucket",
+            "s3:ListBucket"
+          ]
+        }
+      }
+    },
+    "AWS::IAM::User": {
+      "source": "https://schema.cloudformation.us-east-1.amazonaws.com/CloudformationSchema.zip",
+      "schemaSha256": "df9ca5c5f9194f932b8e12b792d90b439ea255146e367ed549b556a1a4edf364",
+      "handlers": {
+        "create": {
+          "permissions": [
+            "iam:CreateLoginProfile",
+            "iam:AddUserToGroup",
+            "iam:PutUserPolicy",
+            "iam:AttachUserPolicy",
+            "iam:CreateUser",
+            "iam:GetUser",
+            "iam:TagUser"
+          ]
+        },
+        "read": {
+          "permissions": [
+            "iam:GetUserPolicy",
+            "iam:ListGroupsForUser",
+            "iam:ListAttachedUserPolicies",
+            "iam:ListUserPolicies",
+            "iam:GetUser",
+            "iam:GetLoginProfile"
+          ]
+        },
+        "update": {
+          "permissions": [
+            "iam:UpdateLoginProfile",
+            "iam:UpdateUser",
+            "iam:PutUserPermissionsBoundary",
+            "iam:AttachUserPolicy",
+            "iam:DeleteUserPolicy",
+            "iam:DeleteUserPermissionsBoundary",
+            "iam:TagUser",
+            "iam:UntagUser",
+            "iam:CreateLoginProfile",
+            "iam:RemoveUserFromGroup",
+            "iam:AddUserToGroup",
+            "iam:PutUserPolicy",
+            "iam:DetachUserPolicy",
+            "iam:GetLoginProfile",
+            "iam:DeleteLoginProfile",
+            "iam:GetUser",
+            "iam:ListUserTags"
+          ]
+        },
+        "delete": {
+          "permissions": [
+            "iam:DeleteAccessKey",
+            "iam:RemoveUserFromGroup",
+            "iam:DeleteUserPolicy",
+            "iam:DeleteUser",
+            "iam:DetachUserPolicy",
+            "iam:DeleteLoginProfile",
+            "iam:ListAccessKeys",
+            "iam:GetUserPolicy",
+            "iam:ListGroupsForUser",
+            "iam:ListAttachedUserPolicies",
+            "iam:ListUserPolicies",
+            "iam:GetUser",
+            "iam:GetLoginProfile"
+          ]
+        },
+        "list": {
+          "permissions": [
+            "iam:listUsers"
+          ]
+        }
+      }
+    }
+  }
+}

@@ -4,6 +4,7 @@ import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import { Construct } from 'constructs';
 import { EnvironmentConfig } from '../config/environment';
+import { backupBoundaryName, backupBucketName } from '../bootstrap/template';
 
 export class SpendableTodayStack extends cdk.Stack {
   public constructor(scope: Construct, id: string, config: EnvironmentConfig, props?: cdk.StackProps) {
@@ -33,13 +34,17 @@ export class SpendableTodayStack extends cdk.Stack {
     });
     ip.applyRemovalPolicy(cdk.RemovalPolicy.RETAIN);
     const backups = new s3.Bucket(this, 'Backups', {
+      bucketName: cdk.Fn.sub(backupBucketName),
       encryption: s3.BucketEncryption.S3_MANAGED, blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       enforceSSL: true, versioned: true, removalPolicy: cdk.RemovalPolicy.RETAIN,
       lifecycleRules: [{ id: 'ExpireDatabaseBackups', prefix: 'postgres/', expiration: cdk.Duration.days(30),
         noncurrentVersionExpiration: cdk.Duration.days(7), abortIncompleteMultipartUploadAfter: cdk.Duration.days(1) }],
     });
     // Lightsail cannot attach EC2 instance profiles. Create no access key in CloudFormation.
-    const writer = new iam.User(this, 'BackupWriter', { userName: 'arran-production-backup-writer' });
+    const writer = new iam.User(this, 'BackupWriter', { userName: 'arran-production-backup-writer',
+      permissionsBoundary: iam.ManagedPolicy.fromManagedPolicyArn(this, 'BackupBoundary',
+        this.formatArn({ service: 'iam', region: '', resource: 'policy', resourceName: backupBoundaryName })),
+    });
     writer.addToPolicy(new iam.PolicyStatement({
       actions: ['s3:PutObject', 's3:AbortMultipartUpload'], resources: [backups.arnForObjects('postgres/*')],
     }));
