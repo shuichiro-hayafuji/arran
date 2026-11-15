@@ -19,6 +19,18 @@ describe('Tokyo production', () => {
   ])('rejects unsafe or unusable configuration %j', override => {
     expect(() => loadEnvironmentConfig(new cdk.App({ context: { ...context, ...override } }))).toThrow();
   });
+  test('Lightsail physical names are unique across resource types', () => {
+    const resources = template().toJSON().Resources as Record<string, { Type: string; Properties: Record<string, unknown> }>;
+    const names = Object.values(resources)
+      .filter(resource => resource.Type.startsWith('AWS::Lightsail::'))
+      .flatMap(resource => Object.entries(resource.Properties)
+        .filter(([key]) => key === `${resource.Type.split('::').at(-1)}Name`)
+        .map(([, value]) => value));
+    expect(names).toHaveLength(2);
+    expect(new Set(names).size).toBe(names.length);
+    expect(names).toContain('arran-production-ip');
+  });
+
   test('contains one retained host and static IP, no legacy services', () => {
     const t = template();
     t.resourceCountIs('AWS::Lightsail::Instance', 1);

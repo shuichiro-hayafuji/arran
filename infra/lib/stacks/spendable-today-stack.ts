@@ -30,7 +30,7 @@ export class SpendableTodayStack extends cdk.Stack {
     });
     instance.applyRemovalPolicy(cdk.RemovalPolicy.RETAIN);
     const ip = new lightsail.CfnStaticIp(this, 'PublicAddress', {
-      staticIpName: 'arran-production', attachedTo: instance.ref,
+      staticIpName: 'arran-production-ip', attachedTo: instance.ref,
     });
     ip.applyRemovalPolicy(cdk.RemovalPolicy.RETAIN);
     const backups = new s3.Bucket(this, 'Backups', {
