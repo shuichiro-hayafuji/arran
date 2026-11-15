@@ -38,6 +38,8 @@ const role = (kind: string, policy: Record<string, unknown>): Record<string, unk
 
 export function bootstrapTemplate(): Record<string, unknown> {
   const execution = document(
+    // CloudFormation resolves AWS::SSM::Parameter::Value parameters using this role.
+    allow(['ssm:GetParameters'], versionArn),
     allow(['lightsail:CreateInstances'], '*', { StringEquals: {
       'aws:RequestedRegion': 'ap-northeast-1', 'aws:RequestTag/Project': 'arran', 'aws:RequestTag/Environment': 'production',
     } }),
