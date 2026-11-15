@@ -80,6 +80,20 @@ test('writer creation requires exact immutable boundary; execution cannot admini
   expect(resources.OperatorBootstrapReadPolicy.Properties.Users).toEqual([{ Ref: 'OperatorUserName' }]);
 });
 
+test('restore operator reads only backup objects and lists only the postgres prefix', () => {
+  const statements = resources.OperatorBootstrapReadPolicy.Properties.PolicyDocument.Statement
+    .filter(statement => asText(statement.Resource).includes('s3:::arran-production-backups-'));
+  expect(statements).toEqual([
+    { Effect: 'Allow', Action: ['s3:GetObject', 's3:GetObjectVersion'],
+      Resource: { 'Fn::Sub': 'arn:${AWS::Partition}:s3:::arran-production-backups-${AWS::AccountId}-${AWS::Region}/postgres/*' } },
+    { Effect: 'Allow', Action: ['s3:ListBucket'],
+      Resource: { 'Fn::Sub': 'arn:${AWS::Partition}:s3:::arran-production-backups-${AWS::AccountId}-${AWS::Region}' },
+      Condition: { StringLike: { 's3:prefix': ['postgres/*'] } } },
+    { Effect: 'Allow', Action: ['s3:GetLifecycleConfiguration', 's3:GetBucketVersioning'],
+      Resource: { 'Fn::Sub': 'arn:${AWS::Partition}:s3:::arran-production-backups-${AWS::AccountId}-${AWS::Region}' } },
+  ]);
+});
+
 test('allow actions match official SAR; wildcard resources are only Tokyo Lightsail operations without ARN support', () => {
   const actions = new Map<string, unknown>(Object.entries(reference.services).flatMap(([service, value]) =>
     Object.entries(value.actions).map(([name, action]) => [`${service}:${name}`, action] as const)));

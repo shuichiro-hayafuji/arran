@@ -60,8 +60,9 @@ describe('Tokyo production', () => {
         VersioningConfiguration: { Status: 'Enabled' },
         BucketEncryption: { ServerSideEncryptionConfiguration: [{ ServerSideEncryptionByDefault: { SSEAlgorithm: 'AES256' } }] },
         PublicAccessBlockConfiguration: { BlockPublicAcls: true, BlockPublicPolicy: true, IgnorePublicAcls: true, RestrictPublicBuckets: true },
-        LifecycleConfiguration: { Rules: [Match.objectLike({ Prefix: 'postgres/', ExpirationInDays: 30,
-          NoncurrentVersionExpiration: { NoncurrentDays: 7 } })] },
+        LifecycleConfiguration: { Rules: [Match.objectLike({ Prefix: 'postgres/', Status: 'Enabled', ExpirationInDays: 7,
+          NoncurrentVersionExpiration: { NoncurrentDays: 1 } }),
+          Match.objectLike({ Prefix: 'postgres/', Status: 'Enabled', ExpiredObjectDeleteMarker: true })] },
       }),
     });
     t.hasResourceProperties('AWS::S3::BucketPolicy', { PolicyDocument: { Statement: Match.arrayWith([
