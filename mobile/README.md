@@ -91,3 +91,15 @@ Dartファイルを変更して `Command+S` で保存すると標準フォーマ
 ネイティブプラグインを追加する前のアプリを動かしたままHot Reload／Hot Restartしても、保存機能は組み込まれません。実行を停止し、`mobile/`で`fvm flutter pub get`、`ios/`で`pod install`を実行したうえで、以前と同じ接続先設定のRunから再ビルドしてください。ユーザーの再登録やDBの再起動は不要です。
 
 `ios/Podfile.lock`と`ios/Pods/Manifest.lock`に`flutter_secure_storage`が存在することが依存解決の確認になります。端末に再ビルドしたアプリを入れてログイン・再起動後のセッション復元まで確認してください。
+
+## App Store向けiOS IPAの作成
+
+macOSにXcode、iOS SDK、CocoaPods、FVMと `.fvmrc` で指定されたFlutterを用意します。XcodeにはApple Developer ProgramのTeam、Apple Distribution証明書と対応するプロビジョニングプロファイルが必要です。
+
+リポジトリのルートで次を実行します。接続先は `https://getarran.com` です。
+
+```bash
+./scripts/build-ios-release-ipa.sh
+```
+
+成功すると `mobile/build/ios/ipa/spendable_today.ipa` にApp Store向けIPAが作成されます。自動アップロードは行いません。新しいIPAとApp Store向けの書き出し設定を確認できない場合は失敗します。制限された実行環境ではFlutterやXcodeが権限エラーで停止する場合があるため、通常のmacOSターミナルで実行してください。アプリアイコン、起動画面、App Store Connectへの登録など配布前の準備は別途必要です。
