@@ -24,7 +24,7 @@
 | 既存ArranCdkDeployerTokyo | deploy/file-publishing roleの引受け | bootstrap変更、直接の本番サービス操作 |
 | deploy role | arran-productionのCloudFormation変更と参照、専用execution roleのPassRole、toolkit file/version参照 | 他stack変更、bootstrap変更、任意roleのPassRole、stack削除 |
 | file-publishing role | toolkitの専用S3 bucketへのfile読み書き | 他bucket、ECR、KMS管理 |
-| CloudFormation execution role | 東京Lightsail、名前を固定したbackup bucket、backup writer user | IAM role管理、任意user、アクセスキー作成、boundary変更/除去、operator policy編集 |
+| CloudFormation execution role | 東京Lightsail、名前を固定したbackup bucket、backup writer user、専用bootstrap versionのGetParameters | IAM role管理、任意user、アクセスキー作成、boundary変更/除去、operator policy編集 |
 | backup writer boundary | 専用bucketのpostgres/*へのPutObject/AbortMultipartUploadのみ | 他bucket、Get/DeleteObject、IAM操作 |
 | operator参照ManagedPolicy | CDKToolkit、3role、boundary、versionの参照 | bootstrap作成/更新、権限変更 |
 
@@ -68,3 +68,9 @@ policy guardはtrust、PassRole、boundary、非admin、Resource:*例外、公�
 - [CloudFormation service role](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/using-iam-servicerole.html)
 - [CloudFormation最小権限のservice role](https://docs.aws.amazon.com/prescriptive-guidance/latest/least-privilege-cloudformation/service-roles-for-cloudformation.html)
 - [IAM permissions boundaryの評価](https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies_boundaries.html)
+
+## 既存bootstrapの修正: version参照権限
+
+2026-11-16の本番CreateChangeSetで、CloudFormation execution roleに `ssm:GetParameters` がないため、テンプレート内のbootstrap versionを解決できないことを確認しました。deploy roleの参照権限だけでは不足します。修正版はexecution roleに `/cdk-bootstrap/hnb659fds/version` の正確なARNへの `ssm:GetParameters` だけを追加します。他parameterの読取り・パス列挙・書込みは許可しません。
+
+既にCDKToolkitがある場合、管理者が上記の生成JSONで**既存スタックを更新**します。新規スタック作成や通常の `cdk bootstrap` は実行しません。既存Parameters、サービスロール空欄、削除保護を維持し、変更セットがexecution roleのinline policy追加だけであることを確認して適用します。更新後に限定roleで本番CreateChangeSetを再試行します。ローカルの検証成功とAWSでの再試行成功は区別して記録します。

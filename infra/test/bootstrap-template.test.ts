@@ -51,6 +51,14 @@ test('application deployment is stack scoped, and PassRole can target only its e
   expect(execution.some(s => s.Action.includes('iam:PassRole'))).toBe(false);
 });
 
+test('CloudFormation execution can resolve only the exact CDK bootstrap version parameter', () => {
+  const statements = execution.filter(s => s.Action.some(a => a.startsWith('ssm:')));
+  expect(statements).toEqual([{
+    Effect: 'Allow', Action: ['ssm:GetParameters'],
+    Resource: { 'Fn::Sub': 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/cdk-bootstrap/hnb659fds/version' },
+  }]);
+});
+
 test('writer creation requires exact immutable boundary; execution cannot administer bootstrap identities', () => {
   const creation = execution.find(s => s.Effect === 'Allow' && s.Action.includes('iam:CreateUser'));
   expect(asText(creation?.Resource)).toContain('user/arran-production-backup-writer');
