@@ -15,6 +15,8 @@ Internet → static IPv4 → Lightsail firewall (80/443, SSHは管理CIDRのみ)
 
 実装と運用の正本は [運用手順](operations/README.md)、配備前のチェックリストは [残課題](REMAINING_TASKS.md) です。API認証・利用上限は既存サーバーに従います。HTTPSだけでAPIの認可や利用料金が保証されるわけではありません。
 
+初回の権限設定は [限定CDK bootstrap](bootstrap/README.md) を参照してください。管理者操作と通常配備の資格情報を分離します。
+
 ## 検証
 
 ```bash

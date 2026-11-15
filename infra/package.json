@@ -6,7 +6,8 @@
     "build": "tsc --noEmit",
     "test": "jest --runInBand",
     "lint": "eslint .",
-    "cdk": "cdk"
+    "cdk": "cdk",
+    "bootstrap:template": "ts-node bin/bootstrap-template.ts"
   },
   "devDependencies": {
     "@types/jest": "^29.5.14",

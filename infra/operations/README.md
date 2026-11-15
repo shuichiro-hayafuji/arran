@@ -9,7 +9,7 @@
 3. `aws lightsail get-bundles --region ap-northeast-1` と `get-blueprints` で `small_3_0`（2GB、IPv4、$12/月）と `ubuntu_24_04` が利用可能か確認します。利用不可なら別プランを暗黙選択せず、構成と費用を見直します。
 4. 旧スタックやRDS/ALB/ECS/NAT等が残っていないか確認します。本CDKは名前の異なるproductionスタックなので、旧リソースの停止・移行・削除は自動ではありません。
 5. リポジトリルートで `python3 tools/harness.py check infra`、`check docs`、`python3 infra/operations/verify-compose.py` を実行します。[DB権限回帰](../../tools/CHECKS.md) は専用DBを使う `check postgres-roles` で別途確認します。
-6. `infra` で `npm run cdk -- synth -c domainName=... -c adminCidr=... -c keyPairName=...`、同じcontextで `diff` を確認後に `deploy` します。初回bootstrapが必要なら対象アカウント・東京と配備用権限を確認して行います。CDK bootstrapの既定AdministratorAccessを無条件に付与せず、必要なCloudFormation実行権限を別途確定します。deployのIAM権限にはCloudFormation、Lightsail、S3、IAMユーザー/ポリシー等が必要です。権限不足をrootアクセスキー作成で回避しません。
+6. `infra` で `npm run cdk -- synth -c domainName=... -c adminCidr=... -c keyPairName=...`、同じcontextで `diff` を確認後に `deploy` します。初回は [専用bootstrap手順](../bootstrap/README.md) の限定テンプレートを管理者がCloudFormationへアップロードします。通常の `cdk bootstrap` は使いません。deployのIAM権限にはCloudFormation、Lightsail、S3、IAMユーザー/ポリシー等が必要です。権限不足をrootアクセスキー作成で回避しません。
 
 CloudFormationはホスト・static IP・backup bucket・書込み専用IAMユーザーを作成します。秘密鍵やAWS access keyは作りません。ホストとIPとbucketはRETAIN、スタックはtermination protectionです。ただしLightsailコンソールからの直接削除まで防止するものではありません。
 

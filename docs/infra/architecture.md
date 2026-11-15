@@ -9,3 +9,5 @@
 - A-I07: ホスト/static IP/S3は保持、S3はprivate・暗号化・versioning・30日expiry/旧version7日。日次snapshotとpg_dumpは別の復旧経路。restoreは新規DBのみ、公開切替は確認後に別途行う。
 
 詳細・料金・検証境界は [構成概要](overview.md) と [運用手順](../../infra/operations/README.md)。
+
+- A-I08: 初回権限は [専用bootstrap](../../infra/bootstrap/README.md) を管理者が作成する。通常配備roleは本番stackだけ、CF実行roleは本番資源だけを扱い、backup writerには管理者所有のpermissions boundaryを必須とする。生成元とJSON、公式権限照合、逸脱防止テストを同じ変更で更新する。
