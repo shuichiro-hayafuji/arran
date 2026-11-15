@@ -1,0 +1,97 @@
+name: arran-production
+x-logging: &logging
+  driver: json-file
+  options: { max-size: "10m", max-file: "3" }
+x-api: &api
+  image: ${API_IMAGE:?Set a tested API image tag or digest}
+  platform: linux/amd64
+  restart: unless-stopped
+  logging: *logging
+  mem_limit: 512m
+  pids_limit: 128
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  read_only: true
+  tmpfs: ["/tmp:size=32m,mode=1777"]
+  networks: [backend, outbound]
+  environment:
+    APP_ENVIRONMENT: production
+    API_ADDR: 0.0.0.0:8080
+    USE_MOCK_LLM: "false"
+    OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.6-terra}
+  depends_on:
+    db: { condition: service_healthy }
+  volumes:
+    - ./api-entrypoint.sh:/app/entrypoint.sh:ro
+  entrypoint: ["/bin/sh", "/app/entrypoint.sh"]
+services:
+  db:
+    image: ${POSTGRES_IMAGE:?Set a tested postgres:16 image digest}
+    platform: linux/amd64
+    restart: unless-stopped
+    logging: *logging
+    mem_limit: 768m
+    pids_limit: 128
+    networks: [backend]
+    environment:
+      POSTGRES_PASSWORD_FILE: /run/secrets/bootstrap_password
+      POSTGRES_INITDB_ARGS: --data-checksums
+    secrets: [bootstrap_password, migration_password, runtime_password]
+    volumes:
+      - postgres:/var/lib/postgresql/data
+      - ./db-init.sh:/docker-entrypoint-initdb.d/10-arran.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d arran"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  migrate:
+    <<: *api
+    restart: "no"
+    profiles: [maintenance]
+    command: [migrate]
+    secrets:
+      - source: migration_url
+        target: database_url
+  api:
+    <<: *api
+    secrets:
+      - source: runtime_url
+        target: database_url
+      - openai_key
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:8080/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+  caddy:
+    image: ${CADDY_IMAGE:?Set a tested Caddy 2 image digest}
+    platform: linux/amd64
+    restart: unless-stopped
+    logging: *logging
+    mem_limit: 128m
+    pids_limit: 128
+    networks: [outbound]
+    ports: ["80:80", "443:443"]
+    environment:
+      DOMAIN: ${DOMAIN:?Set the owned public DNS name}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      api: { condition: service_healthy }
+networks:
+  backend: { internal: true }
+  outbound: {}
+volumes:
+  postgres: {}
+  caddy_data: {}
+  caddy_config: {}
+secrets:
+  bootstrap_password: { file: ./secrets/bootstrap_password }
+  migration_password: { file: ./secrets/migration_password }
+  runtime_password: { file: ./secrets/runtime_password }
+  migration_url: { file: ./secrets/migration_url }
+  runtime_url: { file: ./secrets/runtime_url }
+  openai_key: { file: ./secrets/openai_key }

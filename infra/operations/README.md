@@ -1,0 +1,98 @@
+# Lightsail運用手順
+
+この手順のAWS作業・秘密入力は認証した管理者が行います。コードだけでは配備完了になりません。設定ファイルはホストの `/opt/arran` に置き、root所有・ディレクトリ0700で管理します。秘密はGit・チャット・Issue・コマンド引数・CloudFormationへ貼りません。`set -x`、`docker inspect` 全量や環境変数全量のログ保存を避けてください。
+
+## 1. 配備前
+
+1. 所有するAPI用DNS名を決めます。CDKの `domainName` とComposeの `DOMAIN` に同じ値を使います。ドメイン未確定のままIPだけで本番公開しません。
+2. AWS CLIの短期ログインで対象アカウントを確認します。東京 `ap-northeast-1` のLightsail鍵ペアを作成/選択し、秘密鍵は管理者端末だけで保管します。SSH管理CIDRは管理者の固定IP `/32` を基本にします。開放目的で `0.0.0.0/0` に変更しません。
+3. `aws lightsail get-bundles --region ap-northeast-1` と `get-blueprints` で `small_3_0`（2GB、IPv4、$12/月）と `ubuntu_24_04` が利用可能か確認します。利用不可なら別プランを暗黙選択せず、構成と費用を見直します。
+4. 旧スタックやRDS/ALB/ECS/NAT等が残っていないか確認します。本CDKは名前の異なるproductionスタックなので、旧リソースの停止・移行・削除は自動ではありません。
+5. リポジトリルートで `python3 tools/harness.py check infra`、`check docs`、`python3 infra/operations/verify-compose.py` を実行します。[DB権限回帰](../../tools/CHECKS.md) は専用DBを使う `check postgres-roles` で別途確認します。
+6. `infra` で `npm run cdk -- synth -c domainName=... -c adminCidr=... -c keyPairName=...`、同じcontextで `diff` を確認後に `deploy` します。初回bootstrapが必要なら対象アカウント・東京と配備用権限を確認して行います。CDK bootstrapの既定AdministratorAccessを無条件に付与せず、必要なCloudFormation実行権限を別途確定します。deployのIAM権限にはCloudFormation、Lightsail、S3、IAMユーザー/ポリシー等が必要です。権限不足をrootアクセスキー作成で回避しません。
+
+CloudFormationはホスト・static IP・backup bucket・書込み専用IAMユーザーを作成します。秘密鍵やAWS access keyは作りません。ホストとIPとbucketはRETAIN、スタックはtermination protectionです。ただしLightsailコンソールからの直接削除まで防止するものではありません。
+
+## 2. ホストの準備
+
+1. Outputsのstatic IPへDNS Aレコードを向けます。IPv6公開は未設定なのでAAAAは作りません。Lightsail firewallは80/443全体、SSHは指定CIDRだけを確認します。ホストにも独自の公開DB/API portを追加しません。Docker公開portはUFW設定だけに依存しないため、Composeのport定義を確認します。
+2. SSHで接続しOS更新を行い、[Docker公式Ubuntu手順](https://docs.docker.com/engine/install/ubuntu/) でDocker EngineとCompose plugin、[AWS公式手順](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html) でAWS CLI v2を導入します。提供元の署名確認を行います。Docker権限はroot相当なので一般ユーザーへ無条件に配布しません。OS再起動/更新の保守時間を確保します。
+3. 本ディレクトリの追跡対象ファイルだけを `/opt/arran` へコピーしroot所有にします。`secrets/`、`deploy.env`、`backups/` は端末から共有しません。スクリプトは実行可能、設定はroot以外書込み不可にします。`state/` はこのホストのDB適用状態なので、更新時に削除・上書き・別ホストからのコピーをしません。
+4. 開発端末で同じ `server/Dockerfile` をビルドします。例: `docker build --platform linux/amd64 -t arran-api:COMMIT_SHA server`。検証済みイメージを `docker save` → SSH転送 → ホストで `docker load` します。ホスト上の2GBでコンパイルしません。タグを上書きしない運用とし、`docker image inspect --format '{{.Id}}' arran-api:COMMIT_SHA` をrelease記録へ残します。
+5. `deployment.conf.example` を `deploy.env` へコピーします。APIイメージ、所有DOMAIN、backup bucketを設定し、PostgreSQL16とCaddy2は検証済みlinux/amd64の `repository@sha256:...` を指定します。適当なdigestを捏造せず、取得元とplatformを確認してpullします。設定ファイルはshellとして読み込むためroot所有0600にします。秘密はここへ記載しません。
+6. rootで `./init-secrets.py` を一度だけ実行します。既存秘密の上書きを拒否します。`secrets/` は0700、API用URLとOpenAIキーはuid10001・0400。PostgreSQL用パスワードはイメージのUID差を許容するためroot所有0444ですが、rootのみ入れる親ディレクトリで保護し、必要なファイルだけをDBへマウントします。Composeのfile secretは暗号化保管ではなくbind mountです。
+7. OpenAIを利用する場合は安全なホスト側入力で `secrets/openai_key` を埋めます。ファイルのuid10001/0400を維持し、キーをshell履歴や引数へ含めません。`init-secrets.py` はDB初期化後に再実行しません。パスワード変更はDBのALTER ROLEと対応URLファイルを保守時間に同期変更します。APIへ移行者/管理者のパスワードを渡しません。
+
+## 3. 外部バックアップの資格情報
+
+LightsailにEC2 instance profileは付けられません。この構成はCDKが作成した `arran-production-backup-writer` だけにアクセスキーを発行し、ホストrootの `~/.aws/credentials`（0600、親0700）へ `aws configure --profile arran-backup` の対話入力で保存します。IAMコンソールログイン権限は付けません。個人の管理者/rootキーを置きません。
+
+ポリシーは対象bucketの `postgres/*` へのPutObject/AbortMultipartUploadのみです。読取り・一覧・削除は許可しません。versioningにより同名上書きから旧versionを保持しますが、Object Lockによる不変保証ではありません。書込みを悪用した容量増加は防げないため費用監視が必要です。S3復元は別の短期operator資格情報で行い、backup writerへ読取権限を追加しません。
+
+鍵は定期ローテーションし、新キーでbackupを成功確認後に旧キーを無効化・削除します。snapshotにはホスト秘密も含まれるため、復元先の管理権限を絞り、漏えい疑い時はAWSキー・OpenAIキー・DBパスワードを更新します。バックアップ本体も個人データなので公開しません。
+
+## 4. 初回配備と日次運用
+
+rootで `/opt/arran/deploy.sh initial` を実行します。新しいDB volumeだけにbootstrap roleがDBと2つのLOGINロールを作ります。migrateは移行用URLだけを受け取り、API通常起動はDDL権限のないruntime用URLだけを受け取ります。移行後にruntimeへDML権限を付け、移行履歴はSELECTだけに戻します。外部backupが成功するまでは公開API/Caddyを起動しません。APP_ENVIRONMENT=productionなのでAPIは未適用/未知スキーマを拒否します。
+
+初回backup成功後にAPIのhealthyを待ってCaddyを起動し、DNSの80/443経由で証明書を取得します。初回backupと公開 `https://DOMAIN/health` の確認まで成功して初回スクリプトが完了します。ACME障害やDNS未反映の場合は公開完了としません。稼働開始後に次を確認します。
+
+- 外部から443でhealth、認証なし業務API拒否、別ユーザーのデータ拒否、モバイルの主要操作。
+- 外部から5432/8080に接続できず、SSHは管理CIDRだけ。DB/APIの `docker compose ps` に公開portがないこと。
+- Linuxの空きメモリ・ディスク、Lightsail CPU burst capacity、API/DB再起動回数。負荷によるOOM、disk full、継続CPU使用を確認するまで収容人数を保証しないこと。
+- S3にdump/checksum/release manifestが揃い、下記restoreに成功すること。dump内容の一覧検査だけで復元確認済みとしないこと。
+
+rootでtimerを導入します。
+
+```bash
+install -m 0644 /opt/arran/arran-backup.service /etc/systemd/system/
+install -m 0644 /opt/arran/arran-backup.timer /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now arran-backup.timer
+systemctl list-timers arran-backup.timer
+```
+
+日次18:30 UTC（日本時間03:30）にpg_dumpを取得します。整合したcustom形式dump・SHA256・image情報をS3へアップロードし、全成功後だけ `backups/last-success-at` を更新します。失敗はservice非0とjournalに残ります。**毎日最終成功時刻と `systemctl --failed` / `journalctl -u arran-backup.service` を確認し、24時間超の遅延や失敗を放置しません。自動PagerDuty通知はまだありません。** ホスト停止時はtimerも実行できません。日次snapshotは18:00 UTCで別に動き、Lightsail側で成功状態を確認します。
+
+S3は30日で現行object、7日で旧versionを期限切れにします。自動snapshotの保持仕様/最新成功をコンソールで確認し、必要な長期保管は追加料金込みで別途決めます。S3 lifecycleのため「保持=永久」ではありません。
+
+## 5. 更新
+
+1. 新APIイメージをローカル検証・搬入し `deploy.env` のAPI_IMAGEを新しい不変tagにします。旧imageとrelease記録を保持します。DB/Caddy更新もdigest単位で検証し、PostgreSQL majorをこの手順で変更しません。
+2. 保守時間を案内し `./deploy.sh update`。公開CaddyとAPIを止め、現DBをS3 backup → one-off migrate → runtime権限付与 → backup → API/Caddy起動 → HTTPS healthの順に進みます。
+3. backup/migration失敗時は停止状態を調べます。DDL適用後に旧APIを盲目的に起動しません。移行は冪等ですが、未知/欠損履歴は失敗させます。修正済みimageで再実行するか、下記の別DB復元を確認して切り替えます。
+
+### 途中失敗からの再開とrelease記録
+
+`deploy.env` のAPI_IMAGEは次回予定、実行中コンテナは現在のプロセス、`state/applied-release` はDBに移行を適用済みのreleaseです。この3つを混同しません。日次backupの `release.txt` は `state/applied-release` をコピーし、予定値や旧コンテナから推測しません。API tagと実image ID、PostgreSQL imageを記録します。
+
+配備はschema変更前に `state/pending-release` へ実行モードと対象image IDを保存し、移行成功直後に `state/applied-release` を更新します。権限付与・S3 backup・公開healthのいずれかが失敗してもpendingを保持します。初回にmigration後のbackupが失敗した場合も、DB volumeや秘密を作り直さず、AWS権限等の原因を直し、**同じ設定・同じimageで `./deploy.sh initial` を再実行**します。更新途中なら同様に `./deploy.sh update` です。再開には以前のAPIコンテナは不要です。対象tagの上書きやmode/imageの変更は拒否します。別imageが必要になった場合はDB履歴と移行の適合性を調べる復旧作業に切り替え、pendingを単に削除して突破しません。
+
+移行途中のDBを古いrelease名で保存しないよう、日次backupと配備は共通lockを取り、pendingが残る間は日次backupを拒否します。配備内では同じlockを継承し、適用済みreleaseを書いた後のbackupだけを許可します。途中失敗はサービス停止だけでなく日次backupにも影響するため、次の日まで放置せず再開します。`--deployment-lock-held` は配備スクリプト内部用で、手動実行には使いません。既存DBに対応記録がない場合も、予定設定からreleaseを自動作成せず失敗します。
+
+停止前に新DB imageのpull/互換性確認を終え、同時にmajor変更をしないでください。リリース直前のbackupがアップロードできない状態ではschemaを変更しません。
+
+## 6. 復旧・復元訓練
+
+復元は本番DBを直接上書きしません。初回公開前・変更後・定期的に行い、所要時間と復元データ時点を記録します。ホスト喪失時はsnapshot復元で新ホストを用意するか、同じOS/Composeと新しい秘密でホストを再構築します。既存ホスト/IPをCDKで無断置換せず、静的IP切替は復旧確認後に行います。
+
+1. operator短期資格情報でS3の成功した同一prefixから `database.dump`、`database.sha256`、`release.txt` を管理者端末に取得し、復元先のroot専用ディレクトリへ転送します。backup writer資格情報では取得できません。bucket、日時、3ファイルの揃い、対象releaseを確認します。データ内容をログ出力しません。
+2. 復元先でPostgreSQL16を起動し、新ホストの場合はdb-initで新しいロールと空のarran DBを作ります。dumpはrole秘密を含まないため、新ホストの秘密とロールを使います。
+3. rootで `./restore.sh /ABSOLUTE/BACKUP_DIR arran_restore_YYYYMMDD`。checksum確認後、存在しないDBのみ作り、single transactionでrestoreします。同名DBがあれば失敗します。失敗した練習用DBの削除も対象を確認して別途行います。
+4. スキーマ履歴・行数/所有者・主要データを本番の期待値と照合します。対応するreleaseのAPIを、復元DB専用runtime URLで検証します。外部送信が起こる操作はキーを与える前に範囲を決めます。runtimeで通常起動でき、DDLと移行履歴書込みが拒否されることを確認します。
+5. **ここまででは本番接続先を変更しません。** 公開切替はデータ時点・欠損許容量・利用者影響を確認した管理者が保守時間に行います。API/Caddy/timerを停止し、postgresへ接続中のアプリがないことを確認します。既存 `arran` は削除せず一意な退避名へrenameし、検証済み復元DBを `arran` へrenameします。既存名がある場合は止めます。SQLの対象名を事前レビューし、postgres DBへの管理接続で実行します。通常runtime URLのDB名とbackup対象は `arran` 固定なので、名前を変えたまま起動しません。切替後のDBと対応imageを検証してから、選んだbackupの `release.txt`（BACKUP_UTC行を除く）を `state/applied-release` に保存します。退避DBの古いapplied/pending記録は別途保管し、復元先のDBと混在させません。pendingを解除するのは復旧内容を確認した管理者だけです。
+6. 対応するAPI imageで起動し、HTTPSと主要操作、backupを再確認してtimerを再開します。旧DB/旧ホストの削除は保管期間・請求を確認した別作業にします。旧imageへの単純切戻しはschema互換性を確認できる場合だけにします。
+
+全ホストdisk snapshotは補助です。DB整合性を確認したpg_dump restoreを省略しません。ホスト/DB/S3へのアクセスを失った状態、期限切れ後のbackupは復旧を保証できません。
+
+## 7. ローカルでの検証
+
+`verify-compose.py` はdaemon不要でComposeを実際に解決し、公開portがCaddyだけ、APIとmigrateの同一image、秘密の分離、内部DBnetworkを検査します。AWSへのアクセスはしません。
+
+DBの実行検証は本番secretを使わず、別の一時ディレクトリにoperationsファイルをコピーし、別のCompose project名を `-p arran-lightsail-test` で指定します。ダミー秘密でdbだけ起動 → migrate → grant-runtime → runtime URLのAPIでhealth → runtimeによるCREATE拒否 → pg_dump → 新規DBへのpg_restore → 履歴/件数比較を実行します。本番のdeploy.envやAWS profileは持ち込みません。終了時は**検証projectだけ** `down -v` します。本番で `down -v` は実行しません。
+
+Linux/amd64 API・PostgreSQL・Caddyの組合せ、TLS/ACME、S3実書込み・snapshot・systemd timerはそれぞれ実環境での検証が必要です。ARMの開発機で代替imageを使ったDB試験をamd64本番起動の証拠にはしません。
+
+OpenAIキー未設定時はサーバーの既存fallback/unavailable動作を保ちます。既定モデル `gpt-5.6-terra` はサーバー設定と同じですが、契約アカウントでの提供可否・単価を配備時に確認します。AWSの月5,000円目安にOpenAI API課金は含みません。キー設定後はサーバー側相談上限とプロバイダー側予算を確認してから利用を開始します。
+
+配備再開・manifestの回帰は通常 `check infra` からPythonで実shellを実行します。Docker/AWSのコマンドは分離したダブルで、初回backup失敗、変更image拒否、予定imageとDB適用imageの差、更新後backup失敗、移行途中失敗、競合lockを確認します。これはS3実通信やDB実移行の代用ではありません。

@@ -6,3 +6,4 @@
 - C-I04: CDKテストはネットワーク、同一APIの利用、Secret参照などの重要な性質を検証する。スナップショット一致だけを完了条件にしない。
 - C-I05: build・lint・test・synthの結果とAWSでの動作確認を区別する。synthはコンテナビルド等を伴う場合があるため通常checkと分離する。
 - C-I06: 検証コマンドは [tool](../../tools/INDEX.md)。依存インストール、deploy、destroyを通常のチェックへ組み込まない。
+- C-I07: 配備の途中失敗はDB・秘密を保持して再開できる状態として記録する。予定image、稼働中image、DB適用済みreleaseを区別し、backupはDB適用済み記録を使う。初回/更新の移行後backup失敗・再試行・競合を回帰で確認する。
