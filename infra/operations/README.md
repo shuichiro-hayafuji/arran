@@ -54,7 +54,7 @@ systemctl list-timers arran-backup.timer
 
 日次18:30 UTC（日本時間03:30）にpg_dumpを取得します。整合したcustom形式dump・SHA256・image情報をS3へアップロードし、全成功後だけ `backups/last-success-at` を更新します。失敗はservice非0とjournalに残ります。**毎日最終成功時刻と `systemctl --failed` / `journalctl -u arran-backup.service` を確認し、24時間超の遅延や失敗を放置しません。自動PagerDuty通知はまだありません。** ホスト停止時はtimerも実行できません。日次snapshotは18:00 UTCで別に動き、Lightsail側で成功状態を確認します。
 
-S3は30日で現行object、7日で旧versionを期限切れにします。自動snapshotの保持仕様/最新成功をコンソールで確認し、必要な長期保管は追加料金込みで別途決めます。S3 lifecycleのため「保持=永久」ではありません。
+S3の `postgres/` は現行objectを作成から7日で論理的に期限切れにし、旧versionは旧版になってから1日で削除対象にします。期限切れdelete markerも別ruleで除去します。日次取得した直近7日分を対象とする方針ですが、versioningとS3の非同期削除があるため、全データが厳密に7×24時間以内に物理削除される保証ではありません。短縮前の古いbackupも適用後は削除対象になるため、必要な復旧点は事前確認します。自動snapshotの保持仕様/最新成功をコンソールで確認し、必要な長期保管は追加料金込みで別途決めます。S3 lifecycleのため「保持=永久」ではありません。
 
 ## 5. 更新
 
@@ -73,6 +73,16 @@ S3は30日で現行object、7日で旧versionを期限切れにします。自�
 停止前に新DB imageのpull/互換性確認を終え、同時にmajor変更をしないでください。リリース直前のbackupがアップロードできない状態ではschemaを変更しません。
 
 ## 6. 復旧・復元訓練
+
+### CloudFormation rollback後の保持資源
+
+失敗stackを削除してもRETAINの資源は残るため、同名資源を通常deployで作り直す手順にはしません。保持資源・削除されたpolicy・logical IDと物理IDを確認し、手動IMPORTで管理へ戻します。削除保護解除や失敗stack削除は、保持対象と復旧手順を確認した管理者が行います。
+
+2026-11-16の復旧では、新stackへのIMPORT時にRoleArn/Tagsを同時追加すると拒否されました（資源変更なし）。同名 `arran-production` に一時的な `AWS::CloudFormation::WaitConditionHandle`（`ImportScaffold`）だけのstackを、既存execution role・tags・削除保護付きで先に作成しました。同じscaffoldを残したテンプレートで保持Host/S3/Userの3資源だけをIMPORTし、変更セットが3Importのみであることを確認しました。IMPORT_COMPLETE後、保持3資源に変更がないCDK差分を確認し、固定IP・bucket policy・user inline policy追加とscaffold除去だけを通常更新しました。
+
+任意のstackを自動修復する手順ではありません。IMPORTに通常の追加・更新・削除を混ぜず、対象と差分を都度確認します。UPDATE_COMPLETE・削除保護ON・SSH指紋一致はインフラ復旧の確認であり、API/DB起動やHTTPS公開完了とは分けて扱います。
+
+### DBの復元
 
 復元は本番DBを直接上書きしません。初回公開前・変更後・定期的に行い、所要時間と復元データ時点を記録します。ホスト喪失時はsnapshot復元で新ホストを用意するか、同じOS/Composeと新しい秘密でホストを再構築します。既存ホスト/IPをCDKで無断置換せず、静的IP切替は復旧確認後に行います。
 

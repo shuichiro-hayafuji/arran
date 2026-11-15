@@ -37,8 +37,9 @@ export class SpendableTodayStack extends cdk.Stack {
       bucketName: cdk.Fn.sub(backupBucketName),
       encryption: s3.BucketEncryption.S3_MANAGED, blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       enforceSSL: true, versioned: true, removalPolicy: cdk.RemovalPolicy.RETAIN,
-      lifecycleRules: [{ id: 'ExpireDatabaseBackups', prefix: 'postgres/', expiration: cdk.Duration.days(30),
-        noncurrentVersionExpiration: cdk.Duration.days(7), abortIncompleteMultipartUploadAfter: cdk.Duration.days(1) }],
+      lifecycleRules: [{ id: 'ExpireDatabaseBackups', prefix: 'postgres/', expiration: cdk.Duration.days(7),
+        noncurrentVersionExpiration: cdk.Duration.days(1), abortIncompleteMultipartUploadAfter: cdk.Duration.days(1) },
+      { id: 'RemoveExpiredDatabaseBackupMarkers', prefix: 'postgres/', expiredObjectDeleteMarker: true }],
     });
     // Lightsail cannot attach EC2 instance profiles. Create no access key in CloudFormation.
     const writer = new iam.User(this, 'BackupWriter', { userName: 'arran-production-backup-writer',

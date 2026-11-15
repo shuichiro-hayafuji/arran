@@ -18,7 +18,7 @@
 | [FB-20261012-08](FB-20261012-08.md) | 購入・CSV照合 | B-S08/B-S10/A-S03/B-M02 | 金融包含、初期/最新receipt、推定・候補失効・取得順位 | 対応中 | 実装・正規検証・独立レビュー・chat-first/CSV-first実LLM完了。旧期限切れ保全、実機確認待ち |
 | [FB-20261012-09](FB-20261012-09.md) | CSV取込管理・金融保留・mobile | B-S08/A-S02/A-M02 | owner/partial/監査/銀行計算basisの境界不足 | 保留 | server/PG/mobile57/docs/YAML・独立再レビュー・修正後partial実LLM PASS。生成空白1行はC-M04/EX-M03に従い保留 |
 | [FB-20261115-01](FB-20261115-01.md) | Lightsail配備・backup | C-I03/C-I04/C-I07、A-I07 | 初回途中失敗の再開不能とDB/backup release不一致 | 完了 | checkpoint/適用済み記録、6回帰、infra/docs PASS。AWS実通信は配備時確認 |
-| [FB-20261116-01](FB-20261116-01.md) | CDK bootstrap・CF実行権限 | A-I08、C-I04/C-I05 | execution roleのSSM bootstrap version参照不足 | 完了 | 限定GetParameters・回帰、infra/docs/cfn-lint PASS。AWS更新・再試行待ち |
-| [FB-20261116-02](FB-20261116-02.md) | Lightsail本番配備 | C-I03/C-I04/C-I05、A-I03 | InstanceとStaticIpの物理名衝突 | 対応中 | 固定IP名・一意性回帰、infra/docs/synth/cfn-lint PASS。残存資源復旧待ち |
+| [FB-20261116-01](FB-20261116-01.md) | CDK bootstrap・CF実行権限 | A-I08、C-I04/C-I05 | execution roleのSSM bootstrap version参照不足 | 完了 | 限定GetParameters・回帰・静的検証、AWS更新と本番CreateChangeSet PASS |
+| [FB-20261116-02](FB-20261116-02.md) | Lightsail本番配備 | C-I03/C-I04/C-I05、A-I03 | InstanceとStaticIpの物理名衝突 | 完了 | 名前修正・回帰PASS。保持3資源IMPORTとCDK更新成功、削除保護ON。アプリ起動は別工程 |
 
 記録の雛形は [テンプレート](TEMPLATE.md) を使用する。

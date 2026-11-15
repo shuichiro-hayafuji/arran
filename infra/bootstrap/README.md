@@ -26,7 +26,7 @@
 | file-publishing role | toolkitの専用S3 bucketへのfile読み書き | 他bucket、ECR、KMS管理 |
 | CloudFormation execution role | 東京Lightsail、名前を固定したbackup bucket、backup writer user、専用bootstrap versionのGetParameters | IAM role管理、任意user、アクセスキー作成、boundary変更/除去、operator policy編集 |
 | backup writer boundary | 専用bucketのpostgres/*へのPutObject/AbortMultipartUploadのみ | 他bucket、Get/DeleteObject、IAM操作 |
-| operator参照ManagedPolicy | CDKToolkit、3role、boundary、versionの参照 | bootstrap作成/更新、権限変更 |
+| operator参照ManagedPolicy | CDKToolkit、3role、boundary、versionの参照とDB backupのpostgres/*読取り | bootstrap作成/更新、権限変更 |
 
 operatorの既存inline policy合計上限へ影響させないため、参照権限は別のManagedPolicyを付与します。既存ポリシーは上書きしません。3roleは1時間セッションです。deploy/file-publishingのtrustはアカウントrootではなく既存broker roleだけです。
 
@@ -74,3 +74,9 @@ policy guardはtrust、PassRole、boundary、非admin、Resource:*例外、公�
 2026-11-16の本番CreateChangeSetで、CloudFormation execution roleに `ssm:GetParameters` がないため、テンプレート内のbootstrap versionを解決できないことを確認しました。deploy roleの参照権限だけでは不足します。修正版はexecution roleに `/cdk-bootstrap/hnb659fds/version` の正確なARNへの `ssm:GetParameters` だけを追加します。他parameterの読取り・パス列挙・書込みは許可しません。
 
 既にCDKToolkitがある場合、管理者が上記の生成JSONで**既存スタックを更新**します。新規スタック作成や通常の `cdk bootstrap` は実行しません。既存Parameters、サービスロール空欄、削除保護を維持し、変更セットがexecution roleのinline policy追加だけであることを確認して適用します。更新後に限定roleで本番CreateChangeSetを再試行します。ローカルの検証成功とAWSでの再試行成功は区別して記録します。
+
+## 復元用operatorのbackup参照
+
+復元に使う短期operatorへ、専用backup bucketの `postgres/*` に限るGetObject/GetObjectVersionと、`s3:prefix=postgres/*` 条件付きListBucketを追加します。`s3://BUCKET/postgres/` 配下を指定して一覧・取得し、bucket rootの一覧は許可しません。他bucketや削除・書込み・ListBucketVersionsは追加しません。同じbackup bucketのGetLifecycleConfiguration/GetBucketVersioningも別statementで許可し、実保持設定を検証します。これらの設定取得にprefix条件は付けません。ホストのbackup writerとそのboundaryは書込み専用のままです。
+
+この参照権限はbootstrap ManagedPolicyの変更なので、管理者による既存CDKToolkitへの生成テンプレート更新が必要です。アプリ側の7日保持へのCDK更新とは別の変更として確認します。必要なbackup取得権限を管理者/rootの長期キーで代用しません。

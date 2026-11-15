@@ -790,6 +790,42 @@
             {
               "Effect": "Allow",
               "Action": [
+                "s3:GetObject",
+                "s3:GetObjectVersion"
+              ],
+              "Resource": {
+                "Fn::Sub": "arn:${AWS::Partition}:s3:::arran-production-backups-${AWS::AccountId}-${AWS::Region}/postgres/*"
+              }
+            },
+            {
+              "Effect": "Allow",
+              "Action": [
+                "s3:ListBucket"
+              ],
+              "Resource": {
+                "Fn::Sub": "arn:${AWS::Partition}:s3:::arran-production-backups-${AWS::AccountId}-${AWS::Region}"
+              },
+              "Condition": {
+                "StringLike": {
+                  "s3:prefix": [
+                    "postgres/*"
+                  ]
+                }
+              }
+            },
+            {
+              "Effect": "Allow",
+              "Action": [
+                "s3:GetLifecycleConfiguration",
+                "s3:GetBucketVersioning"
+              ],
+              "Resource": {
+                "Fn::Sub": "arn:${AWS::Partition}:s3:::arran-production-backups-${AWS::AccountId}-${AWS::Region}"
+              }
+            },
+            {
+              "Effect": "Allow",
+              "Action": [
                 "s3:GetEncryptionConfiguration",
                 "s3:GetBucketPublicAccessBlock",
                 "s3:GetBucketPolicy",
