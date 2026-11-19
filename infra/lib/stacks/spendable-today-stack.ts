@@ -8,7 +8,13 @@ import { backupBoundaryName, backupBucketName } from '../bootstrap/template';
 
 export class SpendableTodayStack extends cdk.Stack {
   public constructor(scope: Construct, id: string, config: EnvironmentConfig, props?: cdk.StackProps) {
-    super(scope, id, { ...props, env: { account: process.env.CDK_DEFAULT_ACCOUNT, region: config.region },
+    super(scope, id, { ...props,
+      // CDK diff reads the deployed template through the lookup role. Reuse the
+      // stack-scoped deploy role; do not introduce general context lookup access.
+      synthesizer: new cdk.DefaultStackSynthesizer({
+        lookupRoleArn: 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-deploy-role-${AWS::AccountId}-${AWS::Region}',
+      }),
+      env: { account: process.env.CDK_DEFAULT_ACCOUNT, region: config.region },
       stackName: 'arran-production', description: 'Tokyo single-host production API and PostgreSQL; no NAT, ECS, ALB or RDS',
       terminationProtection: true });
     cdk.Tags.of(this).add('Project', config.projectName);

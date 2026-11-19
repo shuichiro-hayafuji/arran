@@ -462,7 +462,7 @@
       "Type": "AWS::IAM::Role",
       "Metadata": {
         "com.aws.cloudformation.Context": {
-          "why": "Existing deployment broker is the sole caller; one hour sessions.",
+          "why": "Existing deployment broker and GitHub OIDC role are the only callers; one hour sessions.",
           "must": [
             "No account-root or cross-account trust",
             "No managed administrator policies"
@@ -484,9 +484,14 @@
                 "sts:TagSession"
               ],
               "Principal": {
-                "AWS": {
-                  "Fn::Sub": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/ArranCdkDeployerTokyo"
-                }
+                "AWS": [
+                  {
+                    "Fn::Sub": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/ArranCdkDeployerTokyo"
+                  },
+                  {
+                    "Fn::Sub": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/ArranGitHubCdkDeployerTokyo"
+                  }
+                ]
               },
               "Condition": {
                 "Null": {
@@ -621,7 +626,7 @@
       "Type": "AWS::IAM::Role",
       "Metadata": {
         "com.aws.cloudformation.Context": {
-          "why": "Existing deployment broker is the sole caller; one hour sessions.",
+          "why": "Existing deployment broker and GitHub OIDC role are the only callers; one hour sessions.",
           "must": [
             "No account-root or cross-account trust",
             "No managed administrator policies"
@@ -643,9 +648,14 @@
                 "sts:TagSession"
               ],
               "Principal": {
-                "AWS": {
-                  "Fn::Sub": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/ArranCdkDeployerTokyo"
-                }
+                "AWS": [
+                  {
+                    "Fn::Sub": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/ArranCdkDeployerTokyo"
+                  },
+                  {
+                    "Fn::Sub": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/ArranGitHubCdkDeployerTokyo"
+                  }
+                ]
               },
               "Condition": {
                 "Null": {
