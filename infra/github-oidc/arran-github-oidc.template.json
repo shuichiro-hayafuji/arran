@@ -1,0 +1,46 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "GitHub Actions OIDC access for Arran CDK production only; create or reuse provider explicitly.",
+  "Parameters": {
+    "ProviderMode": { "Type": "String", "AllowedValues": ["Create", "Reuse"], "Description": "Choose Reuse only after checking the existing provider accepts sts.amazonaws.com." }
+  },
+  "Rules": {
+    "AccountAndRegion": {
+      "Assertions": [{
+        "Assert": { "Fn::And": [{"Fn::Equals": [{"Ref": "AWS::AccountId"}, "435013325489"]}, {"Fn::Equals": [{"Ref": "AWS::Region"}, "ap-northeast-1"]}] },
+        "AssertDescription": "Use only the Arran production account and Tokyo region."
+      }]
+    }
+  },
+  "Conditions": { "CreateProvider": { "Fn::Equals": [{"Ref": "ProviderMode"}, "Create"] } },
+  "Resources": {
+    "GitHubProvider": {
+      "Type": "AWS::IAM::OIDCProvider", "Condition": "CreateProvider",
+      "DeletionPolicy": "Retain", "UpdateReplacePolicy": "Retain",
+      "Properties": { "Url": "https://token.actions.githubusercontent.com", "ClientIdList": ["sts.amazonaws.com"] }
+    },
+    "GitHubCdkRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "RoleName": "ArranGitHubCdkDeployerTokyo", "MaxSessionDuration": 3600,
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17", "Statement": [{
+            "Effect": "Allow", "Action": "sts:AssumeRoleWithWebIdentity",
+            "Principal": { "Federated": { "Fn::If": ["CreateProvider", {"Ref": "GitHubProvider"}, {"Fn::Sub": "arn:${AWS::Partition}:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com"}] } },
+            "Condition": { "StringEquals": {
+              "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+              "token.actions.githubusercontent.com:sub": "repo:shuichiro-hayafuji@107348618/arran@1318128437:ref:refs/heads/main"
+            } }
+          }]
+        },
+        "Policies": [{ "PolicyName": "AssumeArranBootstrapRoles", "PolicyDocument": {
+          "Version": "2012-10-17", "Statement": [{ "Effect": "Allow", "Action": ["sts:AssumeRole", "sts:TagSession"], "Resource": [
+            {"Fn::Sub": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-deploy-role-${AWS::AccountId}-ap-northeast-1"},
+            {"Fn::Sub": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-file-publishing-role-${AWS::AccountId}-ap-northeast-1"}
+          ] }]
+        }}]
+      }
+    }
+  },
+  "Outputs": { "RoleArn": { "Value": {"Fn::GetAtt": ["GitHubCdkRole", "Arn"]} } }
+}

@@ -26,11 +26,12 @@ const stackArn = arn('cloudformation', 'stack/arran-production/*');
 const toolkitStack = arn('cloudformation', 'stack/CDKToolkit/*');
 const tokyo = { StringEquals: { 'aws:RequestedRegion': 'ap-northeast-1' } };
 const trustedDeployer = arn('iam', 'role/ArranCdkDeployerTokyo', false);
+const githubDeployer = arn('iam', 'role/ArranGitHubCdkDeployerTokyo', false);
 const assume = document({ Effect: 'Allow', Action: ['sts:AssumeRole', 'sts:TagSession'],
-  Principal: { AWS: trustedDeployer }, Condition: { Null: { 'sts:ExternalId': 'true' } } });
+  Principal: { AWS: [trustedDeployer, githubDeployer] }, Condition: { Null: { 'sts:ExternalId': 'true' } } });
 const role = (kind: string, policy: Record<string, unknown>): Record<string, unknown> => ({
   Type: 'AWS::IAM::Role',
-  Metadata: context('Existing deployment broker is the sole caller; one hour sessions.', 'No account-root or cross-account trust', 'No managed administrator policies'),
+  Metadata: context('Existing deployment broker and GitHub OIDC role are the only callers; one hour sessions.', 'No account-root or cross-account trust', 'No managed administrator policies'),
   Properties: { RoleName: sub(roleName(kind)), MaxSessionDuration: 3600, AssumeRolePolicyDocument: assume,
     Tags: [{ Key: 'aws-cdk:bootstrap-role', Value: kind === 'file-publishing' ? 'file-publishing' : 'deploy' }],
     Policies: [{ PolicyName: 'arran-limited', PolicyDocument: policy }] },

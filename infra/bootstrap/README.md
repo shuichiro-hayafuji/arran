@@ -1,6 +1,6 @@
 # Arran専用のCDK初期設定
 
-管理者が東京で `CDKToolkit` を一度作成し、その後は既存の `ArranCdkDeployerTokyo` を入口として限定roleで `arran-production` だけを配備します。標準bootstrap version 32の命名・SSM version・file asset契約を残した専用版です。AdministratorAccessへのfallback、アカウント全体へのtrust、lookup/image-publishing role、ECR、独自KMSキーは含みません。
+管理者が東京で `CDKToolkit` を一度作成し、その後は `ArranCdkDeployerTokyo` または `ArranGitHubCdkDeployerTokyo` を入口として限定roleで `arran-production` だけを配備します。標準bootstrap version 32の命名・SSM version・file asset契約を残した専用版です。AdministratorAccessへのfallback、アカウント全体へのtrust、lookup/image-publishing role、ECR、独自KMSキーは含みません。
 
 ## 管理者に渡すファイル
 
@@ -10,7 +10,7 @@
 
 1. MFA付き管理者セッションで東京 `ap-northeast-1` のCloudFormationを開き、対象アカウントを確認する。既存 `CDKToolkit` がある場合は新規作成せず、現在の構成と利用者を調べる。
 2. 新しいスタックを「標準」で作成し、上記JSONをアップロードする。stack名は **CDKToolkit**。
-3. Parametersは `BootstrapVariant=Arran limited production v1`、`OperatorUserName=arran-operator`。既存の `ArranCdkDeployerTokyo` roleとoperator userがあることを確認する。
+3. Parametersは `BootstrapVariant=Arran limited production v1`、`OperatorUserName=arran-operator`。既存の `ArranCdkDeployerTokyo` roleとoperator userがあることを確認する。先に [GitHub OIDC手順](../github-oidc/README.md) でGitHub roleを作成する。両roleが存在しない場合、IAMはtrustを作成できない。
 4. サービスロールは空欄。今回のbootstrap管理用権限を、本番配備用execution roleで代用しない。削除保護（termination protection）を有効にする。
 5. IAM資源の作成を確認し **CAPABILITY_NAMED_IAM** に相当する確認欄をチェックして作成する。作成するのは下表のbootstrap資源で、本番Lightsailホストではない。
 6. CREATE_COMPLETE後に親作業でrole trust、inline policies、boundary、S3保護、version32、削除保護を読み取り確認する。失敗した場合はイベントを確認し、AdministratorAccess追加で突破しない。
@@ -28,7 +28,7 @@
 | backup writer boundary | 専用bucketのpostgres/*へのPutObject/AbortMultipartUploadのみ | 他bucket、Get/DeleteObject、IAM操作 |
 | operator参照ManagedPolicy | CDKToolkit、3role、boundary、versionの参照とDB backupのpostgres/*読取り | bootstrap作成/更新、権限変更 |
 
-operatorの既存inline policy合計上限へ影響させないため、参照権限は別のManagedPolicyを付与します。既存ポリシーは上書きしません。3roleは1時間セッションです。deploy/file-publishingのtrustはアカウントrootではなく既存broker roleだけです。
+operatorの既存inline policy合計上限へ影響させないため、参照権限は別のManagedPolicyを付与します。既存ポリシーは上書きしません。3roleは1時間セッションです。deploy/file-publishingのtrustはアカウントrootではなく既存brokerとGitHub OIDC roleだけです。
 
 CloudFormationの通常stack service roleは公式標準例どおり `cloudformation.amazonaws.com` のtrustです。`SourceArn` / `SourceAccount` が通常stackのAssumeRoleへ伝わるという裏付けがないため、extension用例を転用しません。代わりにPassRoleを専用roleへ限定し、stack変更もarran-productionだけに限定します。既存の別主体が持つ管理者権限やPassRoleを制限するSCPではありません。
 
@@ -40,7 +40,7 @@ CloudFormationの通常stack service roleは公式標準例どおり `cloudforma
 - backup userには境界付きCreate/PutUserPermissionsBoundaryと必要なread/tag/inline policyだけを許可します。login profile、group参加、managed policy付与、鍵作成、boundary削除、user削除を許可しません。RETAIN設定を維持します。作成失敗でuserが残る場合は管理者が対象と保持状態を確認して復旧します。
 - S3のread handlerが参照する設定読み取りは専用bucketに許可します。replication、metadata tables、website等の未使用機能の書込みや任意PassRoleは許可しません。Lightsailの追加disk attach/detachも未対応です。機能を追加した場合はschemaとポリシーを同時に見直します。
 - 取得した公開S3 schemaには `s3:GetBucketDefaultStorageClass` が記載されていますが、同時点の公式SARでは定義がなくcfn-lintも不明actionと判定するため付与していません。未知のpermissionを捏造せず、実配備時のproviderイベントで必要性を確認します。
-- template/version32は未実装のECRやlookup対応を意味しません。現アプリにはcontext lookupもDockerImageAssetもなく、APIは別途搬入します。synthのmissing contextが空、docker assetが空、file destinationが専用file-publishing roleであることをテストします。DefaultStackSynthesizerのlookup ARNフィールドが存在しても、lookupを実行する構成は対応対象外です。
+- template/version32は未実装のECRやlookup対応を意味しません。現アプリにはcontext lookupもDockerImageAssetもなく、APIは別途搬入します。synthのmissing contextが空、docker assetが空、file destinationが専用file-publishing roleであることをテストします。CDKのdiffによる既存stack template読取りは、lookup roleのARNに本番stack限定deploy roleを指定して実行します。一般的なcontext lookup権限は付与せず、Actionsのsynthは `--no-lookups` で実行します。
 - bootstrap bucketはSSE-S3・versioning・private・TLS必須・保持、旧version30日と未完了multipart1日で期限切れです。bootstrap削除やdefault版への更新は行いません。IAMにはtermination protectionのON/OFFだけを区別する条件がないため、deploy roleのUpdateTerminationProtectionは本番stackだけに限定し、ONを維持する運用です。
 
 ## 配備用ログインと確認
@@ -80,3 +80,7 @@ policy guardはtrust、PassRole、boundary、非admin、Resource:*例外、公�
 復元に使う短期operatorへ、専用backup bucketの `postgres/*` に限るGetObject/GetObjectVersionと、`s3:prefix=postgres/*` 条件付きListBucketを追加します。`s3://BUCKET/postgres/` 配下を指定して一覧・取得し、bucket rootの一覧は許可しません。他bucketや削除・書込み・ListBucketVersionsは追加しません。同じbackup bucketのGetLifecycleConfiguration/GetBucketVersioningも別statementで許可し、実保持設定を検証します。これらの設定取得にprefix条件は付けません。ホストのbackup writerとそのboundaryは書込み専用のままです。
 
 この参照権限はbootstrap ManagedPolicyの変更なので、管理者による既存CDKToolkitへの生成テンプレート更新が必要です。アプリ側の7日保持へのCDK更新とは別の変更として確認します。必要なbackup取得権限を管理者/rootの長期キーで代用しません。
+
+## GitHub Actions経由のCDK配備
+
+GitHub OIDCの導入手順は [専用手順](../github-oidc/README.md) を参照します。更新後のdeploy/file-publishing roleは、既存brokerに加えて `ArranGitHubCdkDeployerTokyo` だけを信頼します。後者はGitHub OIDCの対象リポジトリとmainに限定し、標準のbootstrapや任意のAWSサービス権限は付与しません。導入前のAWS実機検証が必要です。

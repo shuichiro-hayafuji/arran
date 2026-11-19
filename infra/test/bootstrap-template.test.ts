@@ -23,12 +23,13 @@ test('generated upload artifact stays synchronized and contains no administrator
   expect(Buffer.byteLength(asText(committed))).toBeLessThan(51200);
 });
 
-test('only existing deployment broker can assume publishing and deployment roles', () => {
+test('only deployment broker and GitHub role can assume publishing and deployment roles', () => {
   for (const role of [resources.DeploymentActionRole, resources.FilePublishingRole]) {
     expect(role.Properties.MaxSessionDuration).toBe(3600);
     expect(role.Properties.AssumeRolePolicyDocument.Statement).toEqual([{
       Effect: 'Allow', Action: ['sts:AssumeRole', 'sts:TagSession'],
-      Principal: { AWS: { 'Fn::Sub': 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/ArranCdkDeployerTokyo' } },
+      Principal: { AWS: [{ 'Fn::Sub': 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/ArranCdkDeployerTokyo' },
+        { 'Fn::Sub': 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/ArranGitHubCdkDeployerTokyo' }] },
       Condition: { Null: { 'sts:ExternalId': 'true' } },
     }]);
   }
@@ -129,6 +130,10 @@ test('application requires boundary and synth uses file publishing without looku
     t.hasResourceProperties('AWS::S3::Bucket', { BucketName: { 'Fn::Sub': 'arran-production-backups-${AWS::AccountId}-${AWS::Region}' } });
     const assembly = app.synth();
     expect(assembly.manifest.missing ?? []).toHaveLength(0);
+    const stackArtifact = assembly.manifest.artifacts?.TestStack;
+    const stackProperties = stackArtifact?.properties as { assumeRoleArn?: string; lookupRole?: { arn?: string } };
+    expect(stackProperties.lookupRole?.arn).toBe(stackProperties.assumeRoleArn);
+    expect(stackProperties.lookupRole?.arn).toContain('cdk-hnb659fds-deploy-role-');
     const artifact = assembly.manifest.artifacts?.['TestStack.assets'];
     const file = (artifact?.properties as { file?: string })?.file;
     expect(file).toBeDefined();
