@@ -21,4 +21,6 @@
 | [FB-20261116-01](FB-20261116-01.md) | CDK bootstrap・CF実行権限 | A-I08、C-I04/C-I05 | execution roleのSSM bootstrap version参照不足 | 完了 | 限定GetParameters・回帰、infra/docs/cfn-lint PASS。AWS更新・再試行待ち |
 | [FB-20261116-02](FB-20261116-02.md) | Lightsail本番配備 | C-I03/C-I04/C-I05、A-I03 | InstanceとStaticIpの物理名衝突 | 対応中 | 固定IP名・一意性回帰、infra/docs/synth/cfn-lint PASS。残存資源復旧待ち |
 
+| [FB-20261120-01](FB-20261120-01.md) | mobile/startup | B-M03/A-M04/C-M02/C-M09 | 初期完了状態の取り逃しでログイン後の画面遷移が停止 | 対応中 | 購読修正・3回帰とmobile69テスト/docs PASS。独立レビュー・実機確認待ち |
+
 記録の雛形は [テンプレート](TEMPLATE.md) を使用する。

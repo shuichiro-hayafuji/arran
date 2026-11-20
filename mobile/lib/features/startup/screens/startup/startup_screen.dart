@@ -5,20 +5,34 @@ import 'package:go_router/go_router.dart';
 import 'package:spendable_today/features/startup/screens/startup/startup_intent.dart';
 import 'package:spendable_today/features/startup/screens/startup/startup_view_model.dart';
 
-class StartupScreen extends ConsumerWidget {
+class StartupScreen extends ConsumerStatefulWidget {
   const StartupScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final state = ref.watch(startupViewModelProvider);
-    ref.listen(startupViewModelProvider, (previous, next) {
+  ConsumerState<StartupScreen> createState() => _StartupScreenState();
+}
+
+class _StartupScreenState extends ConsumerState<StartupScreen> {
+  @override
+  void initState() {
+    super.initState();
+    ref.listenManual(startupViewModelProvider, (previous, next) {
       final path = next.decision.valueOrNull?.path;
       if (path != null && path != previous?.decision.valueOrNull?.path) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (context.mounted) context.go(path);
+          if (!mounted) return;
+          if (ref.read(startupViewModelProvider).decision.valueOrNull?.path ==
+              path) {
+            context.go(path);
+          }
         });
       }
-    });
+    }, fireImmediately: true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = ref.watch(startupViewModelProvider);
     return Scaffold(
       body: Center(
         child: state.decision.when(
