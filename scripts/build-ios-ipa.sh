@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Set API_BASE_URL to override the production endpoint when needed.
-api_base_url="${API_BASE_URL:-https://getarran.com}"
+api_base_url="${API_BASE_URL:-https://api.getarran.com}"
 export_method="${IOS_EXPORT_METHOD:-development}"
 
 python3 - "$api_base_url" <<'PY'
