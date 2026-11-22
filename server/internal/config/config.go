@@ -23,6 +23,11 @@ type Config struct {
 	PagerDutyRoutingKey   string
 }
 
+// AutoMigrate keeps automatic migrations limited to local and development runs.
+func (c Config) AutoMigrate() bool {
+	return c.Environment == "local" || c.Environment == "dev" || c.Environment == "development"
+}
+
 func Load() (Config, error) {
 	if err := loadDotEnv(); err != nil {
 		return Config{}, err

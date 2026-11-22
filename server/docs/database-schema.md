@@ -2,7 +2,7 @@
 
 [ER図（認証・家計・相談データ）](../../docs/ER_DIAGRAM.md)でテーブル間の関係と全カラムを確認できます。
 
-実行時の正本は`internal/infrastructure/persistence/postgres/`の番号付きSQLです。Go APIは起動時に未適用バージョンをトランザクション内で適用します。[認証・既存データ移行](authentication.md)も参照してください。ローカルではDocker ComposeのPostgreSQL 16に接続します。
+実行時の正本は`internal/infrastructure/persistence/postgres/`の番号付きSQLです。本番では、配備時の `migrate` コマンドが未適用バージョンをトランザクション内で適用します。通常のAPIは移行履歴を読み取り、バージョンが一致した場合にだけ起動します。ローカル・開発環境では起動時に自動で移行します。[DBの起動手順](../README.md)を参照してください。[認証・既存データ移行](authentication.md)も参照してください。ローカルではDocker ComposeのPostgreSQL 16に接続します。
 
 ```sh
 docker compose up -d postgres

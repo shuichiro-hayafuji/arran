@@ -17,7 +17,13 @@
 | [FB-20261012-07](FB-20261012-07.md) | OpenAPI契約 | C-S03 | 別source契約へ購入項目が混入しYAML構文不正 | 完了 | 誤混入3行削除、標準Ruby YAML解析と項目所在PASS。docs参照検査とは区別 |
 | [FB-20261012-08](FB-20261012-08.md) | 購入・CSV照合 | B-S08/B-S10/A-S03/B-M02 | 金融包含、初期/最新receipt、推定・候補失効・取得順位 | 対応中 | 実装・正規検証・独立レビュー・chat-first/CSV-first実LLM完了。旧期限切れ保全、実機確認待ち |
 | [FB-20261012-09](FB-20261012-09.md) | CSV取込管理・金融保留・mobile | B-S08/A-S02/A-M02 | owner/partial/監査/銀行計算basisの境界不足 | 保留 | server/PG/mobile57/docs/YAML・独立再レビュー・修正後partial実LLM PASS。生成空白1行はC-M04/EX-M03に従い保留 |
+| [FB-20261115-01](FB-20261115-01.md) | Lightsail配備・backup | C-I03/C-I04/C-I07、A-I07 | 初回途中失敗の再開不能とDB/backup release不一致 | 完了 | checkpoint/適用済み記録、6回帰、infra/docs PASS。AWS実通信は配備時確認 |
+| [FB-20261116-01](FB-20261116-01.md) | CDK bootstrap・CF実行権限 | A-I08、C-I04/C-I05 | execution roleのSSM bootstrap version参照不足 | 完了 | 限定GetParameters・回帰・静的検証、AWS更新と本番CreateChangeSet PASS |
+| [FB-20261116-02](FB-20261116-02.md) | Lightsail本番配備 | C-I03/C-I04/C-I05、A-I03 | InstanceとStaticIpの物理名衝突 | 完了 | 名前修正・回帰PASS。保持3資源IMPORTとCDK更新成功、削除保護ON。アプリ起動は別工程 |
+
+| [FB-20261120-01](FB-20261120-01.md) | mobile/startup | B-M03/A-M04/C-M02/C-M09 | 初期完了状態の取り逃しでログイン後の画面遷移が停止 | 対応中 | 購読修正・3回帰とmobile69テスト/docs PASS。独立レビュー・実機確認待ち |
 
 | [FB-20261019-01](FB-20261019-01.md) | CSVプレビュー・期限掃除 | B-S05、C-S02/C-S07 | 0行成功receiptが期限掃除との競合で失われる | 完了 | 行ロック・更新件数確認・並行回帰、正規server/docs/postgresと独立レビューを完了 |
+| [FB-20261122-03](FB-20261122-03.md) | PostgreSQL移行・CSVプレビュー | C-S03/C-S07、A-I04 | 移行一覧の競合と旧スキーマのテスト準備に欠番が生じる | 完了 | 共通一覧に15を登録し、直前の実スキーマからの移行を専用PostgreSQLで検証 |
 
 記録の雛形は [テンプレート](TEMPLATE.md) を使用する。

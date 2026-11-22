@@ -12,7 +12,7 @@
 
 ```text
 server/          Go REST API、PostgreSQL、CSV取込、Agent境界、OpenAI Adapter
-infra/           AWS CDK、ECS Fargate、RDS PostgreSQLの配備構成
+infra/           AWS CDK、東京LightsailとPostgreSQLの本番配備構成
 mobile/          Flutter iOS/Androidアプリ（Android Studioで開く）
 ```
 

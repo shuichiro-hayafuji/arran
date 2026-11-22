@@ -13,7 +13,7 @@ from mobile_architecture import check_mobile_architecture
 from server_architecture import check_server_architecture
 
 ROOT = Path(__file__).resolve().parent.parent
-SCOPES = ("docs", "mobile", "server", "infra", "postgres", "all", "mobile-architecture")
+SCOPES = ("docs", "mobile", "server", "infra", "postgres", "postgres-roles", "all", "mobile-architecture")
 
 
 def commands(scope):
@@ -33,6 +33,10 @@ def commands(scope):
     if scope == "postgres":
         return [("server", ["go", "test", "-count=1", "-v", "-run",
                             "^TestPostgresOwnershipAndSessions$",
+                            "./internal/infrastructure/persistence/postgres"])]
+    if scope == "postgres-roles":
+        return [("server", ["go", "test", "-count=1", "-v", "-run",
+                            "^TestRuntimeRoleChecksMigrationsWithoutDDL$",
                             "./internal/infrastructure/persistence/postgres"])]
     return []
 
@@ -127,10 +131,13 @@ def main(argv=None):
                 record("server format", check_go_format(ROOT))
             print("[NOT RUN] PostgreSQL integration; use postgres scope", flush=True)
         env = os.environ.copy()
-        if scope != "postgres":
-            env.pop("ARRAN_TEST_DATABASE_URL", None)
-        elif not args.dry_run and not env.get("ARRAN_TEST_DATABASE_URL"):
-            record("postgres: ARRAN_TEST_DATABASE_URL is required", "BLOCKED")
+        required_url = {"postgres": "ARRAN_TEST_DATABASE_URL",
+                        "postgres-roles": "ARRAN_ROLE_TEST_DATABASE_URL"}.get(scope)
+        for key in ("ARRAN_TEST_DATABASE_URL", "ARRAN_ROLE_TEST_DATABASE_URL"):
+            if key != required_url:
+                env.pop(key, None)
+        if required_url and not args.dry_run and not env.get(required_url):
+            record(f"{scope}: {required_url} is required", "BLOCKED")
             continue
         for cwd, command in commands(scope):
             label = f"{cwd}: {' '.join(command)}"

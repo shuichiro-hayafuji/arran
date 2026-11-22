@@ -12,7 +12,7 @@ System ArchitectureにはModular Monolith、server内部のSoftware Architecture
 cmd/api/main.go
   → config.Config
   → app.New
-      → postgres.Open(PostgreSQL + migration)
+      → postgres.Open(PostgreSQL。本番は移行履歴を確認、開発環境は自動移行)
       → agent.MockClient または infrastructure/openai
       → application.New + agentadapter
       → handler.New

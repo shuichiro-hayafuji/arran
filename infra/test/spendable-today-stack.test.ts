@@ -3,103 +3,84 @@ import { Match, Template } from 'aws-cdk-lib/assertions';
 import { loadEnvironmentConfig } from '../lib/config/environment';
 import { SpendableTodayStack } from '../lib/stacks/spendable-today-stack';
 
+const context = { domainName: 'api.arran-test.net', adminCidr: '203.0.113.7/32', keyPairName: 'operator' };
 function template(): Template {
-  const app = new cdk.App();
-  const stack = new SpendableTodayStack(app, 'TestStack', loadEnvironmentConfig(app));
-  return Template.fromStack(stack);
+  const app = new cdk.App({ context });
+  return Template.fromStack(new SpendableTodayStack(app, 'TestStack', loadEnvironmentConfig(app)));
 }
 
-describe('SpendableTodayStack', () => {
-  test('creates a VPC and internet-facing ALB', () => {
-    const t = template();
-    t.resourceCountIs('AWS::EC2::VPC', 1);
-    t.hasResourceProperties('AWS::ElasticLoadBalancingV2::LoadBalancer', {
-      Scheme: 'internet-facing',
-    });
+describe('Tokyo production', () => {
+  test.each(['domainName', 'adminCidr', 'keyPairName'])('requires explicit %s', key => {
+    expect(() => loadEnvironmentConfig(new cdk.App({ context: { ...context, [key]: '' } }))).toThrow();
+  });
+  test.each([
+    { domainName: '127.0.0.1' }, { domainName: 'example.com' }, { domainName: 'api.invalid' },
+    { adminCidr: '0.0.0.0/0' }, { adminCidr: '999.0.0.1/32' }, { region: 'ap-southeast-2' },
+  ])('rejects unsafe or unusable configuration %j', override => {
+    expect(() => loadEnvironmentConfig(new cdk.App({ context: { ...context, ...override } }))).toThrow();
+  });
+  test('Lightsail physical names are unique across resource types', () => {
+    const resources = template().toJSON().Resources as Record<string, { Type: string; Properties: Record<string, unknown> }>;
+    const names = Object.values(resources)
+      .filter(resource => resource.Type.startsWith('AWS::Lightsail::'))
+      .flatMap(resource => Object.entries(resource.Properties)
+        .filter(([key]) => key === `${resource.Type.split('::').at(-1)}Name`)
+        .map(([, value]) => value));
+    expect(names).toHaveLength(2);
+    expect(new Set(names).size).toBe(names.length);
+    expect(names).toContain('arran-production-ip');
   });
 
-  test('uses public task subnets without a NAT gateway and isolates the database', () => {
+  test('contains one retained host and static IP, no legacy services', () => {
     const t = template();
-    t.resourceCountIs('AWS::EC2::NatGateway', 0);
-    t.resourceCountIs('AWS::EC2::EIP', 0);
-
-    const subnets = t.findResources('AWS::EC2::Subnet');
-    const publicSubnetIds = Object.keys(subnets).filter(id => id.includes('PublicSubnet'));
-    const databaseSubnetIds = Object.keys(subnets).filter(id => id.includes('DatabaseSubnet'));
-    expect(publicSubnetIds).toHaveLength(2);
-    expect(databaseSubnetIds).toHaveLength(2);
-
-    t.hasResourceProperties('AWS::ECS::Service', {
-      DesiredCount: 1,
-      NetworkConfiguration: {
-        AwsvpcConfiguration: {
-          AssignPublicIp: 'ENABLED',
-          Subnets: Match.arrayWith(publicSubnetIds.map(id => ({ Ref: id }))),
-        },
-      },
-    });
-    t.hasResourceProperties('AWS::RDS::DBSubnetGroup', {
-      SubnetIds: Match.arrayWith(databaseSubnetIds.map(id => ({ Ref: id }))),
-    });
-    const publicRoutes = t.findResources('AWS::EC2::Route');
-    expect(Object.keys(publicRoutes)).toHaveLength(2);
-    expect(Object.keys(publicRoutes).every(routeId => routeId.includes('PublicSubnet'))).toBe(true);
-  });
-
-  test('uses private PostgreSQL and does not create an EFS or S3 data store', () => {
-    const t = template();
-    t.hasResourceProperties('AWS::RDS::DBInstance', { PubliclyAccessible: false, DBName: 'spendable_today', Port: '5432' });
-    t.resourceCountIs('AWS::EFS::FileSystem', 0);
-    t.resourceCountIs('AWS::S3::Bucket', 0);
-  });
-
-  test('uses server/ settings and permits only ALB and PostgreSQL task ingress', () => {
-    const t = template();
-    t.hasResourceProperties('AWS::ECS::TaskDefinition', {
-      ContainerDefinitions: Match.arrayWith([Match.objectLike({
-        Environment: Match.arrayWith([
-          { Name: 'API_ADDR', Value: '0.0.0.0:8080' },
-          { Name: 'DB_NAME', Value: 'spendable_today' },
-          { Name: 'OPENAI_MODEL', Value: 'gpt-5.6-terra' },
-          { Name: 'OPENAI_REASONING_EFFORT', Value: 'medium' },
-          { Name: 'APP_ENVIRONMENT', Value: 'dev' },
-        ]),
-      })]),
-    });
-    t.hasResourceProperties('AWS::ECS::TaskDefinition', {
-      ContainerDefinitions: Match.arrayWith([Match.objectLike({
-        Secrets: Match.arrayWith([
-          Match.objectLike({ Name: 'OPENAI_API_KEY' }),
-          Match.objectLike({ Name: 'PAGERDUTY_ROUTING_KEY' }),
-        ]),
-      })]),
-    });
-    const groups = t.findResources('AWS::EC2::SecurityGroup');
-    const groupId = (description: string): string => {
-      const ids = Object.keys(groups).filter(id => groups[id].Properties.GroupDescription === description);
-      expect(ids).toHaveLength(1);
-      return ids[0];
-    };
-    const albGroupId = groupId('Internet HTTP ingress and ECS-only egress for the ALB');
-    const ecsGroupId = groupId('ALB-only ingress for the Go API tasks');
-    const databaseGroupId = groupId('ECS-only PostgreSQL ingress');
-    expect(groups[ecsGroupId].Properties.SecurityGroupIngress).toBeUndefined();
-    expect(groups[databaseGroupId].Properties.SecurityGroupIngress).toBeUndefined();
-    const ingressRules = Object.values(t.findResources('AWS::EC2::SecurityGroupIngress'));
-    expect(ingressRules).toHaveLength(2);
-    expect(ingressRules.map(rule => rule.Properties)).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        GroupId: { 'Fn::GetAtt': [ecsGroupId, 'GroupId'] },
-        SourceSecurityGroupId: { 'Fn::GetAtt': [albGroupId, 'GroupId'] },
-        FromPort: 8080,
-        ToPort: 8080,
+    t.resourceCountIs('AWS::Lightsail::Instance', 1);
+    t.resourceCountIs('AWS::Lightsail::StaticIp', 1);
+    for (const type of ['AWS::EC2::VPC', 'AWS::EC2::NatGateway', 'AWS::ECS::Service',
+      'AWS::RDS::DBInstance', 'AWS::ElasticLoadBalancingV2::LoadBalancer', 'AWS::IAM::AccessKey']) {
+      t.resourceCountIs(type, 0);
+    }
+    t.hasResource('AWS::Lightsail::Instance', {
+      DeletionPolicy: 'Retain', UpdateReplacePolicy: 'Retain',
+      Properties: Match.objectLike({ BundleId: 'small_3_0', BlueprintId: 'ubuntu_24_04',
+        KeyPairName: 'operator',
+        AddOns: [{ AddOnType: 'AutoSnapshot', Status: 'Enabled', AutoSnapshotAddOnRequest: { SnapshotTimeOfDay: '18:00' } }],
+        Networking: { Ports: [
+          { Protocol: 'tcp', FromPort: 80, ToPort: 80, Cidrs: ['0.0.0.0/0'], Ipv6Cidrs: [] },
+          { Protocol: 'tcp', FromPort: 443, ToPort: 443, Cidrs: ['0.0.0.0/0'], Ipv6Cidrs: [] },
+          { Protocol: 'tcp', FromPort: 22, ToPort: 22, Cidrs: ['203.0.113.7/32'], Ipv6Cidrs: [] },
+        ] },
       }),
-      expect.objectContaining({
-        GroupId: { 'Fn::GetAtt': [databaseGroupId, 'GroupId'] },
-        SourceSecurityGroupId: { 'Fn::GetAtt': [ecsGroupId, 'GroupId'] },
-        FromPort: 5432,
-        ToPort: 5432,
+    });
+    t.hasResource('AWS::Lightsail::StaticIp', { DeletionPolicy: 'Retain', UpdateReplacePolicy: 'Retain' });
+  });
+  test('retains encrypted versioned private backups with bounded retention', () => {
+    const t = template();
+    t.hasResource('AWS::S3::Bucket', { DeletionPolicy: 'Retain', UpdateReplacePolicy: 'Retain',
+      Properties: Match.objectLike({
+        VersioningConfiguration: { Status: 'Enabled' },
+        BucketEncryption: { ServerSideEncryptionConfiguration: [{ ServerSideEncryptionByDefault: { SSEAlgorithm: 'AES256' } }] },
+        PublicAccessBlockConfiguration: { BlockPublicAcls: true, BlockPublicPolicy: true, IgnorePublicAcls: true, RestrictPublicBuckets: true },
+        LifecycleConfiguration: { Rules: [Match.objectLike({ Prefix: 'postgres/', Status: 'Enabled', ExpirationInDays: 7,
+          NoncurrentVersionExpiration: { NoncurrentDays: 1 } }),
+          Match.objectLike({ Prefix: 'postgres/', Status: 'Enabled', ExpiredObjectDeleteMarker: true })] },
       }),
-    ]));
+    });
+    t.hasResourceProperties('AWS::S3::BucketPolicy', { PolicyDocument: { Statement: Match.arrayWith([
+      Match.objectLike({ Effect: 'Deny', Condition: { Bool: { 'aws:SecureTransport': 'false' } } }),
+    ]) } });
+  });
+  test('backup credentials are not generated and permissions cannot read or delete backups', () => {
+    const t = template();
+    t.resourceCountIs('AWS::IAM::AccessKey', 0);
+    const policies = Object.values(t.findResources('AWS::IAM::Policy'));
+    expect(policies).toHaveLength(1);
+    expect(policies[0].Properties.PolicyDocument.Statement).toEqual([
+      expect.objectContaining({ Action: ['s3:PutObject', 's3:AbortMultipartUpload'], Effect: 'Allow',
+        Resource: expect.objectContaining({ 'Fn::Join': expect.any(Array) }) }),
+    ]);
+    const raw = t.toJSON();
+    expect(JSON.stringify(raw.Outputs)).not.toMatch(/password|secret|accesskey|token/i);
+    const host = Object.values(t.findResources('AWS::Lightsail::Instance'))[0];
+    expect(host.Properties.UserData).toBe('#!/bin/sh\nset -eu\ninstall -d -m 0700 /opt/arran/secrets\n');
   });
 });

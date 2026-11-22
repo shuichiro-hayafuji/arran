@@ -53,3 +53,12 @@ key.properties
 *~
 __pycache__/
 *.pyc
+
+# Local deployment secrets
+infra/operations/secrets/
+infra/operations/deploy.env
+infra/operations/backups/
+
+/infra/node_modules
+
+/infra/operations/state/

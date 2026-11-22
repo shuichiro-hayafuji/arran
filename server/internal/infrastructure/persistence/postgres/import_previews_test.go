@@ -3,7 +3,9 @@ package postgres
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/shuichirohayafuji/spendable-today/server/internal/csvimport"
 	"github.com/shuichirohayafuji/spendable-today/server/internal/domain"
 	"github.com/shuichirohayafuji/spendable-today/server/internal/identity"
@@ -78,7 +80,7 @@ func verifyDurablePreviewRetryAndExpiry(t *testing.T, r *Repository) {
 	params := address.Query()
 	params.Set("search_path", schema)
 	address.RawQuery = params.Encode()
-	alternate, err := Open(owner, address.String())
+	alternate, err := Open(owner, address.String(), false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -204,17 +206,19 @@ func verifyDurablePreviewLateFailure(t *testing.T, r *Repository) {
 }
 func verifyPreviewMigration(t *testing.T, r *Repository) {
 	ctx := identity.WithUser(context.Background(), 712)
+	if _, err := r.db.Exec("INSERT INTO users(id,username,password_hash) VALUES(712,'preview-owner','synthetic')"); err != nil {
+		t.Fatal(err)
+	}
 	original, err := r.ImportTransactions(ctx, previewItems(t, "before-migration"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, q := range []string{"DROP TABLE csv_import_previews", "DELETE FROM schema_migrations WHERE version=15", "CREATE INDEX idx_csv_preview_expiry ON transactions(user_id)"} {
-		if _, err = r.db.Exec(q); err != nil {
-			t.Fatal(err)
-		}
+	if _, err = r.db.Exec("CREATE INDEX idx_csv_preview_expiry ON transactions(user_id)"); err != nil {
+		t.Fatal(err)
 	}
-	if err = r.Migrate(ctx); err == nil {
-		t.Fatal("late DDL failure not injected")
+	var pgErr *pgconn.PgError
+	if err = Migrate(ctx, r.db.DB); !errors.As(err, &pgErr) || pgErr.Code != "42P07" {
+		t.Fatal("expected injected duplicate index", err)
 	}
 	var n int
 	if err = r.db.QueryRow("SELECT count(*) FROM schema_migrations WHERE version=15").Scan(&n); err != nil || n != 0 {
@@ -227,7 +231,7 @@ func verifyPreviewMigration(t *testing.T, r *Repository) {
 	errs := make(chan error, 2)
 	for i := 0; i < 2; i++ {
 		wg.Add(1)
-		go func() { defer wg.Done(); errs <- r.Migrate(ctx) }()
+		go func() { defer wg.Done(); errs <- Migrate(ctx, r.db.DB) }()
 	}
 	wg.Wait()
 	close(errs)
@@ -236,7 +240,7 @@ func verifyPreviewMigration(t *testing.T, r *Repository) {
 			t.Fatal(err)
 		}
 	}
-	if err = r.Migrate(ctx); err != nil {
+	if err = Migrate(ctx, r.db.DB); err != nil {
 		t.Fatal("restart migration", err)
 	}
 	receipt, err := r.ImportCommit(ctx, "before-migration")

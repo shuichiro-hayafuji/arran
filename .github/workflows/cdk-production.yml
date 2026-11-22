@@ -1,0 +1,65 @@
+name: Deploy production CDK
+on:
+  workflow_dispatch:
+permissions: {}
+concurrency:
+  group: arran-production-cdk
+  cancel-in-progress: false
+jobs:
+  deploy:
+    if: github.repository == 'shuichiro-hayafuji/arran' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: ap-northeast-1
+      CDK_DEFAULT_ACCOUNT: '435013325489'
+      CDK_DEFAULT_REGION: ap-northeast-1
+      DOMAIN_NAME: ${{ vars.ARRAN_DOMAIN_NAME }}
+      ADMIN_CIDR: ${{ vars.ARRAN_ADMIN_CIDR }}
+      KEY_PAIR_NAME: ${{ vars.ARRAN_LIGHTSAIL_KEY_PAIR_NAME }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: infra/package-lock.json
+      - name: Validate exact main revision and context
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/main
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git ls-remote https://github.com/shuichiro-hayafuji/arran.git refs/heads/main | cut -f1)" = "$GITHUB_SHA"
+          test -n "$DOMAIN_NAME" && test -n "$ADMIN_CIDR" && test -n "$KEY_PAIR_NAME"
+      - name: Install and test infrastructure
+        run: npm ci --prefix infra && python3 tools/harness.py check infra && python3 tools/harness.py check docs
+      - name: Validate OIDC subject without logging the token
+        run: python3 infra/github-oidc/verify-subject.py
+      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
+        with:
+          role-to-assume: arn:aws:iam::435013325489:role/ArranGitHubCdkDeployerTokyo
+          aws-region: ap-northeast-1
+          allowed-account-ids: '435013325489'
+          role-session-name: arran-github-cdk
+      - name: Synthesize and inspect diff
+        working-directory: infra
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run cdk -- synth --no-lookups ArranProductionStack -c "domainName=$DOMAIN_NAME" -c "adminCidr=$ADMIN_CIDR" -c "keyPairName=$KEY_PAIR_NAME"
+          npm run cdk -- --app cdk.out diff ArranProductionStack --no-change-set
+      - name: Confirm latest main and deploy
+        working-directory: infra
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/main
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git ls-remote https://github.com/shuichiro-hayafuji/arran.git refs/heads/main | cut -f1)" = "$GITHUB_SHA"
+          npm run cdk -- --app cdk.out deploy ArranProductionStack --require-approval never

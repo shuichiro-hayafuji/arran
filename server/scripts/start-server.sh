@@ -16,7 +16,6 @@ export DATABASE_URL="${DATABASE_URL:-postgres://spendable_today:local-only-passw
 
 cd "${ROOT_DIR}"
 echo "Starting Spendable Today API at http://${API_ADDR}"
-echo "Database: PostgreSQL at ${DATABASE_URL%%\?*}"
 echo "LLM configuration: ${USE_MOCK_LLM:-load from .env or use mock default}"
 
 if [ "${API_ADDR%%:*}" = "0.0.0.0" ] && command -v ipconfig >/dev/null 2>&1; then
