@@ -51,22 +51,22 @@ for path in (ipa, options):
     def test_app_store_entry_uses_production_url_and_export_method(self):
         result = self.run_script('build-ios-release-ipa.sh')
         self.assertEqual(result.returncode, 0, result.stderr)
-        args = (self.root / 'mobile/arguments').read_text()
+        args = (self.root / 'mobile/arguments').read_text().splitlines()
         self.assertIn('--dart-define=API_BASE_URL=https://api.getarran.com', args)
-        self.assertIn('--export-method\napp-store', args)
+        self.assertEqual(args[args.index('--export-method') + 1], 'app-store')
 
     def test_development_entry_uses_production_url(self):
         result = self.run_script('build-ios-ipa.sh', FAKE_METHOD='development')
         self.assertEqual(result.returncode, 0, result.stderr)
-        args = (self.root / 'mobile/arguments').read_text()
+        args = (self.root / 'mobile/arguments').read_text().splitlines()
         self.assertIn('--dart-define=API_BASE_URL=https://api.getarran.com', args)
-        self.assertIn('--export-method\ndevelopment', args)
+        self.assertEqual(args[args.index('--export-method') + 1], 'development')
 
     def test_custom_https_url_is_passed_to_flutter(self):
         result = self.run_script('build-ios-release-ipa.sh', API_BASE_URL='https://example.com')
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn('--dart-define=API_BASE_URL=https://example.com',
-                      (self.root / 'mobile/arguments').read_text())
+        args = (self.root / 'mobile/arguments').read_text().splitlines()
+        self.assertIn('--dart-define=API_BASE_URL=https://example.com', args)
 
     def test_unsafe_urls_are_rejected_before_build(self):
         for url in ('http://localhost:8080', 'https://user:pass@example.com', 'https://example.com/?token=x'):
