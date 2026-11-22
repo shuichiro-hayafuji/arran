@@ -36,6 +36,22 @@ func openReconciliationSchema(t *testing.T, prepare func(context.Context, *sql.D
 	t.Cleanup(func() { repo.Close() })
 	return repo
 }
+func openMigrationFixture(t *testing.T, version int) *Repository {
+	t.Helper()
+	return openReconciliationSchema(t, func(ctx context.Context, db *sql.DB) error {
+		for _, migration := range migrations[:version] {
+			contents, err := migrationFiles.ReadFile(migration.file)
+			if err != nil {
+				return err
+			}
+			if _, err := db.ExecContext(ctx, string(contents)); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
 func openReconciliationRepository(t *testing.T) *Repository {
 	t.Helper()
 	repo := openReconciliationSchema(t, Migrate)
@@ -48,6 +64,11 @@ func openReconciliationRepository(t *testing.T) *Repository {
 }
 func verifyReconciliationIntegration(t *testing.T) {
 	r := openReconciliationRepository(t)
+	verifyDurablePreviewRetryAndExpiry(t, openReconciliationRepository(t))
+	verifyDurablePreviewCleanupRace(t, openReconciliationRepository(t))
+	verifyPreviewFinishRequiresExistingRow(t, openReconciliationRepository(t))
+	verifyDurablePreviewLateFailure(t, openReconciliationRepository(t))
+	verifyPreviewMigration(t, openMigrationFixture(t, 14))
 	verifyPurchaseCSVDecisionAtomicityAndCount(t, r)
 	verifyReconciledCSVDoesNotPostAgainAndKeepsLatestCorrection(t, r)
 	verifyCSVFirstUnknownInclusionHoldsFinancialFacts(t, r)
@@ -62,5 +83,5 @@ func verifyReconciliationIntegration(t *testing.T) {
 	verifyPartialBankChangesAllowOnlyExplicitBothUserBaselines(t, r)
 	verifyBankCorrectionExcludesPendingTripletAndCancelKeepsSamePurchase(t, r)
 	verifyReconciliationMigrationRollbackAndConcurrentRestart(t)
-	verifyImportManagementMigrationPreservesProvenAndUnknownLegacyAndRollsBack(t, r)
+	verifyImportManagementMigrationPreservesProvenAndUnknownLegacyAndRollsBack(t, openMigrationFixture(t, 13))
 }

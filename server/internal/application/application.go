@@ -45,15 +45,6 @@ type Application struct {
 	adminNotifier      AdminNotifier
 	environment        string
 	now                func() time.Time
-
-	previewMu sync.Mutex
-	previews  map[string]cachedPreview
-}
-
-type cachedPreview struct {
-	userID       int64
-	transactions []domain.Transaction
-	expiresAt    time.Time
 }
 
 // ConsultationAgent はアプリケーションのドメイン型で相談を受け付ける境界。
@@ -79,6 +70,8 @@ type ProfileRepository interface {
 
 // TransactionRepository は取引取込・一覧・集計に必要な永続化境界。
 type TransactionRepository interface {
+	SaveImportPreview(context.Context, string, []domain.Transaction, time.Time, time.Time) error
+	CommitImportPreview(context.Context, string, time.Time) (domain.ImportCommitResult, error)
 	MerchantRules(context.Context) (map[string]string, error)
 	PreviewTransactionIdentities(context.Context, []domain.Transaction) ([]domain.ImportIdentityConflict, error)
 	ImportTransactions(context.Context, []domain.Transaction) (domain.ImportCommitResult, error)
@@ -191,7 +184,6 @@ func New(config Config) *Application {
 		adminNotifier:     config.AdminNotifier,
 		environment:       config.Environment,
 		now:               now,
-		previews:          map[string]cachedPreview{},
 	}
 }
 
@@ -213,8 +205,8 @@ func (s *Application) PutProfile(
 	return profile, nil
 }
 
-// PreviewImport は解析した全明細を利用者に紐づけてプロセス内に30分保持する。
-// 応答の Rows は先頭10件に限定し、DBへの登録は CommitImport まで行わない。
+// PreviewImport は解析した全明細を所有者と30分の期限付きでDBへ保持する。
+// 応答の Rows は先頭10件に限定し、取引への反映は CommitImport まで行わない。
 func (s *Application) previewImport(
 	ctx context.Context,
 	data []byte,
@@ -338,44 +330,17 @@ func (s *Application) previewImport(
 		for i := range parsed.Transactions {
 			parsed.Transactions[i].ImportMetadata = &meta
 		}
-		s.previewMu.Lock()
-		s.cleanupPreviewsLocked()
-		s.previews[preview.PreviewID] = cachedPreview{
-			userID:       identity.UserID(ctx),
-			transactions: parsed.Transactions,
-			expiresAt:    s.now().Add(30 * time.Minute),
+		now := s.now()
+		if err := s.repository.SaveImportPreview(ctx, preview.PreviewID, parsed.Transactions, now, now.Add(30*time.Minute)); err != nil {
+			return domain.ImportPreview{}, err
 		}
-		s.previewMu.Unlock()
 	}
 	return preview, nil
 }
 
-// CommitImport は所有者と有効期限を確認して、保持中の明細を登録する。
-// プレビューはDB書き込み前に消費するため、書き込み失敗後も再プレビューが必要。
-func (s *Application) CommitImport(
-	ctx context.Context,
-	previewID string,
-) (domain.ImportCommitResult, error) {
-	if s.imports != nil {
-		result, err := s.imports.ImportCommit(ctx, previewID)
-		if err == nil {
-			return result, nil
-		}
-		if !errors.Is(err, domain.ErrNotFound) {
-			return domain.ImportCommitResult{}, err
-		}
-	}
-	s.previewMu.Lock()
-	cached, ok := s.previews[previewID]
-	ok = ok && cached.userID == identity.UserID(ctx)
-	if ok {
-		delete(s.previews, previewID)
-	}
-	s.previewMu.Unlock()
-	if !ok || s.now().After(cached.expiresAt) {
-		return domain.ImportCommitResult{}, fmt.Errorf("プレビューの有効期限が切れています")
-	}
-	return s.repository.ImportTransactions(ctx, cached.transactions)
+// CommitImport は保存済みの結果を再利用し、未確定なら所有者と期限を確認して原子的に登録する。
+func (s *Application) CommitImport(ctx context.Context, previewID string) (domain.ImportCommitResult, error) {
+	return s.repository.CommitImportPreview(ctx, previewID, s.now())
 }
 
 func (s *Application) ListTransactions(
@@ -947,15 +912,6 @@ func validateScore(score *int) error {
 		return fmt.Errorf("評価は1から5で指定してください")
 	}
 	return nil
-}
-
-func (s *Application) cleanupPreviewsLocked() {
-	now := s.now()
-	for id, preview := range s.previews {
-		if now.After(preview.expiresAt) {
-			delete(s.previews, id)
-		}
-	}
 }
 
 func randomID() string {

@@ -2,7 +2,6 @@ package postgres
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"github.com/jackc/pgx/v5/pgconn"
 	"sync"
@@ -11,19 +10,7 @@ import (
 
 func verifyReconciliationMigrationRollbackAndConcurrentRestart(t *testing.T) {
 	ctx := context.Background()
-	// Build the actual version-12 schema, not a version-14 schema with a hole in its ledger.
-	r := openReconciliationSchema(t, func(ctx context.Context, db *sql.DB) error {
-		for _, migration := range migrations[:12] {
-			contents, err := migrationFiles.ReadFile(migration.file)
-			if err != nil {
-				return err
-			}
-			if _, err := db.ExecContext(ctx, string(contents)); err != nil {
-				return err
-			}
-		}
-		return nil
-	})
+	r := openMigrationFixture(t, 12)
 	if _, err := r.db.Exec("CREATE TABLE purchase_csv_receipts(blocker TEXT)"); err != nil {
 		t.Fatal(err)
 	}
