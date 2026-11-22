@@ -21,6 +21,7 @@
 | [FB-20261116-01](FB-20261116-01.md) | CDK bootstrap・CF実行権限 | A-I08、C-I04/C-I05 | execution roleのSSM bootstrap version参照不足 | 完了 | 限定GetParameters・回帰・静的検証、AWS更新と本番CreateChangeSet PASS |
 | [FB-20261116-02](FB-20261116-02.md) | Lightsail本番配備 | C-I03/C-I04/C-I05、A-I03 | InstanceとStaticIpの物理名衝突 | 完了 | 名前修正・回帰PASS。保持3資源IMPORTとCDK更新成功、削除保護ON。アプリ起動は別工程 |
 | [FB-20261120-01](FB-20261120-01.md) | mobile/startup | B-M03/A-M04/C-M02/C-M09 | 初期完了状態の取り逃しでログイン後の画面遷移が停止 | 対応中 | 購読修正・3回帰とmobile69テスト/docs PASS。独立レビュー・実機確認待ち |
+| [FB-20261122-02](FB-20261122-02.md) | 外部AI送信の同意 | B-S06、C-S07 | 認証情報と同意の所有者が分離し、説明の版更新後に撤回できなかった | 完了 | 同意境界の回帰を検証。DBと実送信への接続は#132で継続 |
 | [FB-20261122-01](FB-20261122-01.md) | iOS IPA作成 | #131 | 接続先に余分なパスが付いてもテストが通る | 完了 | 両入口と明示指定のURLを引数単位で検証 |
 
 | [FB-20261019-01](FB-20261019-01.md) | CSVプレビュー・期限掃除 | B-S05、C-S02/C-S07 | 0行成功receiptが期限掃除との競合で失われる | 完了 | 行ロック・更新件数確認・並行回帰、正規server/docs/postgresと独立レビューを完了 |
