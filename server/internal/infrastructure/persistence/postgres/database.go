@@ -35,6 +35,7 @@ var migrations = []struct {
 	{version: 12, file: "012_csv_identity.sql"},
 	{version: 13, file: "013_purchase_csv_reconciliation.sql"},
 	{version: 14, file: "014_import_management.sql"},
+	{version: 15, file: "015_import_previews.sql"},
 }
 
 func openDatabase(ctx context.Context, url string, prepare func(context.Context, *sql.DB) error) (*database, error) {

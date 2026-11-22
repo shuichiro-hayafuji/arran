@@ -2,7 +2,8 @@ package postgres
 
 import (
 	"context"
-	"github.com/shuichirohayafuji/spendable-today/server/internal/csvimport"
+	"errors"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/shuichirohayafuji/spendable-today/server/internal/domain"
 	"github.com/shuichirohayafuji/spendable-today/server/internal/identity"
 	"sync"
@@ -11,21 +12,24 @@ import (
 
 func verifyImportManagementMigrationPreservesProvenAndUnknownLegacyAndRollsBack(t *testing.T, r *Repository) {
 	ctx := identity.WithUser(context.Background(), 3440)
-	parsed, _ := csvimport.Parse([]byte("date,description,amount\n2035-01-01,KNOWN LEGACY,2500\n"), csvimport.Options{Source: "bank", SourceAccountName: "account"})
-	if _, err := r.ImportTransactions(ctx, parsed.Transactions); err != nil {
+	// Two v13 rows, only one with file-row evidence.
+	if _, err := r.db.ExecContext(ctx, `
+		INSERT INTO users(id,username,password_hash) VALUES(3440,'legacy-owner','synthetic');
+		INSERT INTO transactions(id,user_id,transaction_date,description,normalized_merchant,amount,transaction_type,category,source,source_account_name,fingerprint,imported_at,raw_data_json)
+		VALUES(41,3440,'2035-01-01','KNOWN LEGACY','KNOWN LEGACY',2500,'expense','未分類','bank','account','known-key','2035-01-01T00:00:00Z','{}');
+		INSERT INTO csv_identity_file_rows(user_id,file_key,source_scope,account_scope,transaction_type,row_number,transaction_id)
+		VALUES(3440,'legacy-file','bank','account','expense',2,41)`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := r.db.ExecContext(ctx, userQuery(ctx, "INSERT INTO transactions(user_id,transaction_date,description,normalized_merchant,amount,transaction_type,category,source,source_account_name,fingerprint,imported_at,raw_data_json) VALUES(:user_id,'2035-01-02','UNKNOWN LEGACY','UNKNOWN LEGACY',3000,'expense','未分類','unknown','unknown','migration-unknown','2035-01-01T00:00:00Z','{}')")); err != nil {
 		t.Fatal(err)
 	}
-	// Emulate the prior schema; failure is injected after ALTERs and early CREATEs.
-	for _, q := range []string{"DROP VIEW effective_transactions", "DROP TABLE csv_financial_items", "DROP TABLE csv_financial_receipts", "DROP TABLE transaction_change_events", "DROP TABLE csv_mutations", "DROP TABLE csv_import_evidence", "DROP TABLE csv_import_batches", "ALTER TABLE transactions DROP COLUMN effective_date", "ALTER TABLE transactions DROP COLUMN effective_amount", "ALTER TABLE transactions DROP COLUMN effective_category", "ALTER TABLE transactions DROP COLUMN revision", "ALTER TABLE transactions DROP COLUMN legacy_retained", "DELETE FROM schema_migrations WHERE version=14", "CREATE TABLE csv_financial_receipts(blocker TEXT)"} {
-		if _, err := r.db.ExecContext(ctx, q); err != nil {
-			t.Fatal(q, err)
-		}
+	if _, err := r.db.ExecContext(ctx, "CREATE TABLE csv_financial_receipts(blocker TEXT)"); err != nil {
+		t.Fatal(err)
 	}
-	if err := Migrate(ctx, r.db.DB); err == nil {
-		t.Fatal("late failure was not injected")
+	var pgErr *pgconn.PgError
+	if err := Migrate(ctx, r.db.DB); !errors.As(err, &pgErr) || pgErr.Code != "42P07" {
+		t.Fatal("expected injected duplicate table", err)
 	}
 	var n int
 	if err := r.db.QueryRow("SELECT count(*) FROM schema_migrations WHERE version=14").Scan(&n); err != nil || n != 0 {
