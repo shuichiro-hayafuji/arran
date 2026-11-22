@@ -96,7 +96,7 @@ Dartファイルを変更して `Command+S` で保存すると標準フォーマ
 
 macOSにXcode、iOS SDK、CocoaPods、FVMと `.fvmrc` で指定されたFlutterを用意します。XcodeでApple DeveloperアカウントとTeamを設定し、開発用証明書と対応するプロビジョニングプロファイルを準備してください。開発用IPAはプロファイルに登録された端末で使用できます。
 
-リポジトリのルートで `./scripts/build-ios-ipa.sh` を実行すると、`mobile/build/ios/ipa/spendable_today.ipa` に作成されます。既定の接続先は `https://getarran.com` です。変更する場合は `API_BASE_URL=https://example.com ./scripts/build-ios-ipa.sh` のようにHTTPS URLを指定します。URLはアプリに埋め込まれるため、秘密情報を含めないでください。
+リポジトリのルートで `./scripts/build-ios-ipa.sh` を実行すると、`mobile/build/ios/ipa/spendable_today.ipa` に作成されます。既定の接続先は `https://api.getarran.com` です。変更する場合は `API_BASE_URL=https://example.com ./scripts/build-ios-ipa.sh` のようにHTTPS URLを指定します。URLはアプリに埋め込まれるため、秘密情報を含めないでください。
 
 `IOS_EXPORT_METHOD` で `development`（既定）、`ad-hoc`、`app-store`、`enterprise` を選べます。方式に応じた証明書とプロファイルが必要です。新しいIPAと指定した方式の書き出し設定を確認できない場合は失敗します。App Store向けの固定設定は次のコマンドも利用できます。
 
@@ -104,7 +104,7 @@ macOSにXcode、iOS SDK、CocoaPods、FVMと `.fvmrc` で指定されたFlutter�
 
 macOSにXcode、iOS SDK、CocoaPods、FVMと `.fvmrc` で指定されたFlutterを用意します。XcodeにはApple Developer ProgramのTeam、Apple Distribution証明書と対応するプロビジョニングプロファイルが必要です。
 
-リポジトリのルートで次を実行します。接続先は `https://getarran.com` です。
+リポジトリのルートで次を実行します。既定の接続先は `https://api.getarran.com` です。
 
 ```bash
 ./scripts/build-ios-release-ipa.sh

@@ -20,8 +20,8 @@
 | [FB-20261115-01](FB-20261115-01.md) | Lightsail配備・backup | C-I03/C-I04/C-I07、A-I07 | 初回途中失敗の再開不能とDB/backup release不一致 | 完了 | checkpoint/適用済み記録、6回帰、infra/docs PASS。AWS実通信は配備時確認 |
 | [FB-20261116-01](FB-20261116-01.md) | CDK bootstrap・CF実行権限 | A-I08、C-I04/C-I05 | execution roleのSSM bootstrap version参照不足 | 完了 | 限定GetParameters・回帰・静的検証、AWS更新と本番CreateChangeSet PASS |
 | [FB-20261116-02](FB-20261116-02.md) | Lightsail本番配備 | C-I03/C-I04/C-I05、A-I03 | InstanceとStaticIpの物理名衝突 | 完了 | 名前修正・回帰PASS。保持3資源IMPORTとCDK更新成功、削除保護ON。アプリ起動は別工程 |
-
 | [FB-20261120-01](FB-20261120-01.md) | mobile/startup | B-M03/A-M04/C-M02/C-M09 | 初期完了状態の取り逃しでログイン後の画面遷移が停止 | 対応中 | 購読修正・3回帰とmobile69テスト/docs PASS。独立レビュー・実機確認待ち |
+| [FB-20261122-01](FB-20261122-01.md) | iOS IPA作成 | #131 | 接続先に余分なパスが付いてもテストが通る | 完了 | 両入口と明示指定のURLを引数単位で検証 |
 
 | [FB-20261019-01](FB-20261019-01.md) | CSVプレビュー・期限掃除 | B-S05、C-S02/C-S07 | 0行成功receiptが期限掃除との競合で失われる | 完了 | 行ロック・更新件数確認・並行回帰、正規server/docs/postgresと独立レビューを完了 |
 | [FB-20261122-03](FB-20261122-03.md) | PostgreSQL移行・CSVプレビュー | C-S03/C-S07、A-I04 | 移行一覧の競合と旧スキーマのテスト準備に欠番が生じる | 完了 | 共通一覧に15を登録し、直前の実スキーマからの移行を専用PostgreSQLで検証 |
