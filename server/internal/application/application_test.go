@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,6 +16,7 @@ import (
 	"github.com/shuichirohayafuji/spendable-today/server/internal/csvimport"
 	"github.com/shuichirohayafuji/spendable-today/server/internal/domain"
 	"github.com/shuichirohayafuji/spendable-today/server/internal/identity"
+	"github.com/shuichirohayafuji/spendable-today/server/internal/infrastructure/openai"
 	"github.com/shuichirohayafuji/spendable-today/server/internal/infrastructure/persistence/sqlite"
 )
 
@@ -141,19 +143,6 @@ func TestDetectSubscriptionCandidates(t *testing.T) {
 	}
 	if got[0].AnnualizedAmount != 17880 {
 		t.Fatalf("annualized = %d", got[0].AnnualizedAmount)
-	}
-}
-
-func TestReviewCandidateSanitizationRemovesMerchant(t *testing.T) {
-	result := sanitizeReviewCandidates([]domain.ReviewCandidate{
-		{Label: "secret merchant"},
-		{Label: "酒・飲み会"},
-	})
-	if result[0].Label != "同一加盟店の支出パターン" {
-		t.Fatalf("merchant label = %q", result[0].Label)
-	}
-	if result[1].Label != "酒・飲み会" {
-		t.Fatalf("category label = %q", result[1].Label)
 	}
 }
 
@@ -470,5 +459,148 @@ func TestPreviewOwnership(t *testing.T) {
 	}
 	if _, err := service.CommitImport(other, preview.PreviewID); err == nil {
 		t.Fatal("cross-user receipt accepted")
+	}
+}
+
+type reviewBoundaryRepository struct {
+	Repository
+	transactions []domain.Transaction
+	quota        bool
+}
+
+func (r reviewBoundaryRepository) ListTransactions(context.Context, string, int) ([]domain.Transaction, error) {
+	return r.transactions, nil
+}
+func (r reviewBoundaryRepository) GetProfile(context.Context) (domain.Profile, error) {
+	return domain.Profile{ReduceCategories: []string{"食費"}}, nil
+}
+func (r reviewBoundaryRepository) MonthlyDashboard(context.Context, string, domain.Profile) (domain.Dashboard, error) {
+	return domain.Dashboard{}, nil
+}
+func (r reviewBoundaryRepository) ListConsultations(context.Context, int) ([]domain.Consultation, error) {
+	return nil, nil
+}
+func (r reviewBoundaryRepository) MonthlyConsultationUsage(context.Context, string) (domain.ConsultationUsage, error) {
+	if r.quota {
+		return domain.ConsultationUsage{Count: 1, Limit: 1}, nil
+	}
+	return domain.ConsultationUsage{Limit: 1}, nil
+}
+func (r reviewBoundaryRepository) SaveReview(_ context.Context, review domain.MonthlyReview) (domain.MonthlyReview, error) {
+	return review, nil
+}
+
+type capturingReviewModel struct {
+	agent.MockClient
+	input agent.ReviewInput
+}
+
+func (m *capturingReviewModel) GenerateReview(_ context.Context, input agent.ReviewInput) ([]agent.ReviewCandidate, error) {
+	m.input = input
+	return input.LocalCandidates, nil
+}
+
+func TestReviewAgentReceivesOnlyNumberedCandidateCopies(t *testing.T) {
+	for _, merchant := range []string{"酒・飲み会", "秘密（高後悔）", "普通の加盟店"} {
+		t.Run(merchant, func(t *testing.T) {
+			s, _ := testService(t)
+			txs := []domain.Transaction{
+				{TransactionDate: "2026-06-01", TransactionType: "expense", NormalizedMerchant: merchant, Amount: 9000, Category: "食費"},
+				{TransactionDate: "2026-07-01", TransactionType: "expense", NormalizedMerchant: merchant, Amount: 9000, Category: "食費"},
+				{TransactionDate: "2026-07-02", TransactionType: "expense", NormalizedMerchant: merchant + "最大額", Amount: 15000, Category: "食費"},
+			}
+			repo := reviewBoundaryRepository{Repository: s.repository, transactions: txs}
+			s.repository = repo
+			model := &capturingReviewModel{}
+			s.reviewAgent = agentadapter.New(model, agent.MockClient{}, "test")
+			if _, err := s.CreateMonthlyReview(context.Background(), "2026-07"); err != nil {
+				t.Fatal(err)
+			}
+			if len(model.input.LocalCandidates) != 3 {
+				t.Fatalf("candidates: %#v", model.input.LocalCandidates)
+			}
+			for i, candidate := range model.input.LocalCandidates {
+				if candidate.Label != fmt.Sprintf("見直し候補%d", i+1) {
+					t.Fatalf("unsafe label: %#v", candidate)
+				}
+			}
+			if txs[0].NormalizedMerchant != merchant {
+				t.Fatal("source mutated")
+			}
+			repo.quota = true
+			s.repository = repo
+			s.fallbackReview = agentadapter.New(agent.MockClient{}, agent.MockClient{}, "fallback")
+			review, err := s.CreateMonthlyReview(context.Background(), "2026-07")
+			if err != nil {
+				t.Fatal(err)
+			}
+			labels := make(map[string]bool)
+			for _, candidate := range review.Candidates {
+				labels[candidate.Label] = true
+			}
+			if !labels[merchant] || !labels[merchant+"最大額"] || !labels["食費"] {
+				t.Fatalf("local fallback lost labels: %#v", review.Candidates)
+			}
+		})
+	}
+}
+
+type reviewOutcomeModel struct {
+	agent.MockClient
+	err error
+}
+
+func (m reviewOutcomeModel) GenerateReview(_ context.Context, _ agent.ReviewInput) ([]agent.ReviewCandidate, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	return []agent.ReviewCandidate{{Label: "外部回答"}}, nil
+}
+
+func TestReviewRestoresLocalOnlyForExplicitFallback(t *testing.T) {
+	cases := []struct {
+		name   string
+		source string
+		model  agent.Model
+		err    error
+		local  bool
+	}{
+		{"mock", "mock", agent.MockClient{}, nil, true},
+		{"missing key", "openai", openai.NewOpenAIClient("", "model", "medium"), nil, true},
+		{"ordinary error", "openai", reviewOutcomeModel{err: errors.New("ordinary")}, nil, true},
+		{"external success", "openai", reviewOutcomeModel{}, nil, false},
+		{"consent required", "openai", reviewOutcomeModel{err: consultation.ErrConsentRequired}, consultation.ErrConsentRequired, false},
+		{"consent unavailable", "openai", reviewOutcomeModel{err: consultation.ErrConsentUnavailable}, consultation.ErrConsentUnavailable, false},
+		{"unknown", "openai", reviewOutcomeModel{err: consultation.ErrAIOutcomeUnknown}, consultation.ErrAIOutcomeUnknown, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s, _ := testService(t)
+			s.repository = reviewBoundaryRepository{Repository: s.repository, transactions: []domain.Transaction{{TransactionDate: "2026-07-02", TransactionType: "expense", NormalizedMerchant: "元の加盟店", Amount: 15000, Category: "食費"}}}
+			check := func(err error) bool {
+				return errors.Is(err, consultation.ErrConsentRequired) || errors.Is(err, consultation.ErrConsentUnavailable) || errors.Is(err, consultation.ErrAIOutcomeUnknown)
+			}
+			s.reviewAgent = agentadapter.NewWithFailureCheck(tc.model, agent.MockClient{}, tc.source, check)
+			review, err := s.CreateMonthlyReview(context.Background(), "2026-07")
+			if tc.err != nil {
+				if !errors.Is(err, tc.err) {
+					t.Fatalf("error = %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			labels := map[string]bool{}
+			for _, item := range review.Candidates {
+				labels[item.Label] = true
+			}
+			if tc.local && !labels["元の加盟店"] {
+				t.Fatalf("local labels missing: %#v", review.Candidates)
+			}
+			if !tc.local && (!labels["外部回答"] || labels["元の加盟店"]) {
+				t.Fatalf("external response changed: %#v", review.Candidates)
+			}
+		})
 	}
 }

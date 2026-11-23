@@ -112,7 +112,7 @@ func (c *client) GenerateReview(
 		"profile": input.Profile, "dashboard": input.Dashboard,
 		"transactions":     sanitizedTransactions(input.Transactions),
 		"consultations":    summarizedConsultations(input.Consultations),
-		"local_candidates": input.LocalCandidates,
+		"local_candidates": sanitizedReviewCandidates(input.LocalCandidates),
 	}
 	err := c.structured(
 		ctx,
@@ -340,6 +340,16 @@ func parseResponse(data []byte) (string, Usage, error) {
 		}
 	}
 	return "", usage, fmt.Errorf("OpenAI response did not contain output_text")
+}
+
+// sanitizedReviewCandidates never infers provenance from label text. The local
+// candidates remain unchanged; only the external copy gets numbered labels.
+func sanitizedReviewCandidates(items []agent.ReviewCandidate) []agent.ReviewCandidate {
+	result := append([]agent.ReviewCandidate(nil), items...)
+	for i := range result {
+		result[i].Label = fmt.Sprintf("見直し候補%d", i+1)
+	}
+	return result
 }
 
 func sanitizedTransactions(items []agent.Transaction) []map[string]any {
