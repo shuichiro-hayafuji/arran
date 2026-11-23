@@ -26,6 +26,30 @@ type AIConsentGate struct {
 	Version string
 }
 
+// AIConsentStatus is the exact policy shown to the authenticated user.
+type AIConsentStatus struct {
+	Version           string `json:"version"`
+	Description       string `json:"description"`
+	Granted           bool   `json:"granted"`
+	WithdrawalPending bool   `json:"withdrawal_pending"`
+}
+
+type AIConsentReader interface {
+	ConsentStatus(context.Context, int64, string) (AIConsentStatus, error)
+}
+
+func (g AIConsentGate) Status(ctx context.Context) (AIConsentStatus, error) {
+	userID, err := g.owner(ctx)
+	if err != nil {
+		return AIConsentStatus{}, err
+	}
+	reader, ok := g.Store.(AIConsentReader)
+	if !ok || g.Version == "" {
+		return AIConsentStatus{}, ErrConsentRequired
+	}
+	return reader.ConsentStatus(ctx, userID, g.Version)
+}
+
 func (g AIConsentGate) Execute(ctx context.Context, fn func(context.Context) error) error {
 	userID, err := g.owner(ctx)
 	if err != nil {

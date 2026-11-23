@@ -14,7 +14,7 @@ T _$identity<T>(T value) => value;
 /// @nodoc
 mixin _$ResultState {
 
- AsyncValue<Consultation?> get consultation; bool get saving; bool get saved; Object? get actionError;
+ AsyncValue<Consultation?> get consultation; bool get saving; bool get saved; String? get warning; Object? get actionError;
 /// Create a copy of ResultState
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -25,16 +25,16 @@ $ResultStateCopyWith<ResultState> get copyWith => _$ResultStateCopyWithImpl<Resu
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is ResultState&&(identical(other.consultation, consultation) || other.consultation == consultation)&&(identical(other.saving, saving) || other.saving == saving)&&(identical(other.saved, saved) || other.saved == saved)&&const DeepCollectionEquality().equals(other.actionError, actionError));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is ResultState&&(identical(other.consultation, consultation) || other.consultation == consultation)&&(identical(other.saving, saving) || other.saving == saving)&&(identical(other.saved, saved) || other.saved == saved)&&(identical(other.warning, warning) || other.warning == warning)&&const DeepCollectionEquality().equals(other.actionError, actionError));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,consultation,saving,saved,const DeepCollectionEquality().hash(actionError));
+int get hashCode => Object.hash(runtimeType,consultation,saving,saved,warning,const DeepCollectionEquality().hash(actionError));
 
 @override
 String toString() {
-  return 'ResultState(consultation: $consultation, saving: $saving, saved: $saved, actionError: $actionError)';
+  return 'ResultState(consultation: $consultation, saving: $saving, saved: $saved, warning: $warning, actionError: $actionError)';
 }
 
 
@@ -45,7 +45,7 @@ abstract mixin class $ResultStateCopyWith<$Res>  {
   factory $ResultStateCopyWith(ResultState value, $Res Function(ResultState) _then) = _$ResultStateCopyWithImpl;
 @useResult
 $Res call({
- AsyncValue<Consultation?> consultation, bool saving, bool saved, Object? actionError
+ AsyncValue<Consultation?> consultation, bool saving, bool saved, String? warning, Object? actionError
 });
 
 
@@ -62,12 +62,13 @@ class _$ResultStateCopyWithImpl<$Res>
 
 /// Create a copy of ResultState
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? consultation = null,Object? saving = null,Object? saved = null,Object? actionError = freezed,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? consultation = null,Object? saving = null,Object? saved = null,Object? warning = freezed,Object? actionError = freezed,}) {
   return _then(_self.copyWith(
 consultation: null == consultation ? _self.consultation : consultation // ignore: cast_nullable_to_non_nullable
 as AsyncValue<Consultation?>,saving: null == saving ? _self.saving : saving // ignore: cast_nullable_to_non_nullable
 as bool,saved: null == saved ? _self.saved : saved // ignore: cast_nullable_to_non_nullable
-as bool,actionError: freezed == actionError ? _self.actionError : actionError ,
+as bool,warning: freezed == warning ? _self.warning : warning // ignore: cast_nullable_to_non_nullable
+as String?,actionError: freezed == actionError ? _self.actionError : actionError ,
   ));
 }
 
@@ -152,10 +153,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( AsyncValue<Consultation?> consultation,  bool saving,  bool saved,  Object? actionError)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( AsyncValue<Consultation?> consultation,  bool saving,  bool saved,  String? warning,  Object? actionError)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _ResultState() when $default != null:
-return $default(_that.consultation,_that.saving,_that.saved,_that.actionError);case _:
+return $default(_that.consultation,_that.saving,_that.saved,_that.warning,_that.actionError);case _:
   return orElse();
 
 }
@@ -173,10 +174,10 @@ return $default(_that.consultation,_that.saving,_that.saved,_that.actionError);c
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( AsyncValue<Consultation?> consultation,  bool saving,  bool saved,  Object? actionError)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( AsyncValue<Consultation?> consultation,  bool saving,  bool saved,  String? warning,  Object? actionError)  $default,) {final _that = this;
 switch (_that) {
 case _ResultState():
-return $default(_that.consultation,_that.saving,_that.saved,_that.actionError);case _:
+return $default(_that.consultation,_that.saving,_that.saved,_that.warning,_that.actionError);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -193,10 +194,10 @@ return $default(_that.consultation,_that.saving,_that.saved,_that.actionError);c
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( AsyncValue<Consultation?> consultation,  bool saving,  bool saved,  Object? actionError)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( AsyncValue<Consultation?> consultation,  bool saving,  bool saved,  String? warning,  Object? actionError)?  $default,) {final _that = this;
 switch (_that) {
 case _ResultState() when $default != null:
-return $default(_that.consultation,_that.saving,_that.saved,_that.actionError);case _:
+return $default(_that.consultation,_that.saving,_that.saved,_that.warning,_that.actionError);case _:
   return null;
 
 }
@@ -208,12 +209,13 @@ return $default(_that.consultation,_that.saving,_that.saved,_that.actionError);c
 
 
 class _ResultState implements ResultState {
-  const _ResultState({required this.consultation, this.saving = false, this.saved = false, this.actionError});
+  const _ResultState({required this.consultation, this.saving = false, this.saved = false, this.warning, this.actionError});
   
 
 @override final  AsyncValue<Consultation?> consultation;
 @override@JsonKey() final  bool saving;
 @override@JsonKey() final  bool saved;
+@override final  String? warning;
 @override final  Object? actionError;
 
 /// Create a copy of ResultState
@@ -226,16 +228,16 @@ _$ResultStateCopyWith<_ResultState> get copyWith => __$ResultStateCopyWithImpl<_
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _ResultState&&(identical(other.consultation, consultation) || other.consultation == consultation)&&(identical(other.saving, saving) || other.saving == saving)&&(identical(other.saved, saved) || other.saved == saved)&&const DeepCollectionEquality().equals(other.actionError, actionError));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _ResultState&&(identical(other.consultation, consultation) || other.consultation == consultation)&&(identical(other.saving, saving) || other.saving == saving)&&(identical(other.saved, saved) || other.saved == saved)&&(identical(other.warning, warning) || other.warning == warning)&&const DeepCollectionEquality().equals(other.actionError, actionError));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,consultation,saving,saved,const DeepCollectionEquality().hash(actionError));
+int get hashCode => Object.hash(runtimeType,consultation,saving,saved,warning,const DeepCollectionEquality().hash(actionError));
 
 @override
 String toString() {
-  return 'ResultState(consultation: $consultation, saving: $saving, saved: $saved, actionError: $actionError)';
+  return 'ResultState(consultation: $consultation, saving: $saving, saved: $saved, warning: $warning, actionError: $actionError)';
 }
 
 
@@ -246,7 +248,7 @@ abstract mixin class _$ResultStateCopyWith<$Res> implements $ResultStateCopyWith
   factory _$ResultStateCopyWith(_ResultState value, $Res Function(_ResultState) _then) = __$ResultStateCopyWithImpl;
 @override @useResult
 $Res call({
- AsyncValue<Consultation?> consultation, bool saving, bool saved, Object? actionError
+ AsyncValue<Consultation?> consultation, bool saving, bool saved, String? warning, Object? actionError
 });
 
 
@@ -263,12 +265,13 @@ class __$ResultStateCopyWithImpl<$Res>
 
 /// Create a copy of ResultState
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? consultation = null,Object? saving = null,Object? saved = null,Object? actionError = freezed,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? consultation = null,Object? saving = null,Object? saved = null,Object? warning = freezed,Object? actionError = freezed,}) {
   return _then(_ResultState(
 consultation: null == consultation ? _self.consultation : consultation // ignore: cast_nullable_to_non_nullable
 as AsyncValue<Consultation?>,saving: null == saving ? _self.saving : saving // ignore: cast_nullable_to_non_nullable
 as bool,saved: null == saved ? _self.saved : saved // ignore: cast_nullable_to_non_nullable
-as bool,actionError: freezed == actionError ? _self.actionError : actionError ,
+as bool,warning: freezed == warning ? _self.warning : warning // ignore: cast_nullable_to_non_nullable
+as String?,actionError: freezed == actionError ? _self.actionError : actionError ,
   ));
 }
 

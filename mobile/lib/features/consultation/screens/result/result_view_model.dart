@@ -77,9 +77,14 @@ class ResultViewModel extends MviViewModel<ResultState, ResultIntent> {
     required int regret,
     required String note,
   }) async {
-    state = state.copyWith(saving: true, saved: false, actionError: null);
+    state = state.copyWith(
+      saving: true,
+      saved: false,
+      actionError: null,
+      warning: null,
+    );
     try {
-      await ref
+      final result = await ref
           .read(consultationRepositoryProvider)
           .updateResult(
             consultationId,
@@ -97,7 +102,14 @@ class ResultViewModel extends MviViewModel<ResultState, ResultIntent> {
         );
       }
       ref.read(memoriesViewModelProvider.notifier).dispatch(RefreshMemories());
-      state = state.copyWith(saving: false, saved: true);
+      final warning = switch (result.memoryExtractionStatus) {
+        'consent_required' => '結果を保存しました。外部AIへの同意がないため、記憶の抽出は行いませんでした。',
+        'consent_unavailable' => '結果を保存しました。送信許可を確認できず、記憶の抽出は行いませんでした。',
+        'ai_outcome_unknown' =>
+          '結果を保存しました。外部AIへの送信の有無や終了状況を確認できず、送信された可能性があります。',
+        _ => null,
+      };
+      state = state.copyWith(saving: false, saved: true, warning: warning);
     } catch (error) {
       if (!mounted) return;
       state = state.copyWith(saving: false, actionError: error);

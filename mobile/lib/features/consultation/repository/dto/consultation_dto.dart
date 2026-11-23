@@ -3,6 +3,7 @@ import '../../domain/consultation.dart';
 
 class ConsultationDto {
   const ConsultationDto({
+    this.memoryExtractionStatus = '',
     this.messages = const [],
     this.purchases = const [],
     required this.id,
@@ -28,6 +29,8 @@ class ConsultationDto {
 
   factory ConsultationDto.fromJson(Map<String, dynamic> json) =>
       ConsultationDto(
+        memoryExtractionStatus:
+            json['memory_extraction_status'] as String? ?? '',
         purchases: parseMaps(json['purchases'])
             .map(
               (p) => ChatPurchase(
@@ -70,6 +73,7 @@ class ConsultationDto {
       );
 
   final List<ChatMessage> messages;
+  final String memoryExtractionStatus;
   final List<ChatPurchase> purchases;
   final int id;
   final String createdAt;
@@ -92,6 +96,7 @@ class ConsultationDto {
   final String followUpQuestion;
 
   Consultation toDomain() => Consultation(
+    memoryExtractionStatus: memoryExtractionStatus,
     messages: List.unmodifiable(messages),
     id: id,
     createdAt: createdAt,

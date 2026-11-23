@@ -5,12 +5,15 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/shuichirohayafuji/spendable-today/server/internal/identity"
 )
 
 // Use an isolated PostgreSQL test cluster: the bootstrap user must be able
@@ -87,6 +90,10 @@ func TestRuntimeRoleChecksMigrationsWithoutDDL(t *testing.T) {
 	exec("GRANT SELECT ON " + schema + ".schema_migrations TO " + runtimeRole)
 	exec("GRANT SELECT ON " + schema + ".service_settings TO " + runtimeRole)
 	exec("GRANT INSERT, SELECT ON " + schema + ".users TO " + runtimeRole)
+	// Match the production grant order: policy administration remains privileged.
+	exec("GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA " + schema + " TO " + runtimeRole)
+	exec("REVOKE INSERT, UPDATE, DELETE ON " + schema + ".schema_migrations, " + schema + ".ai_consent_policy, " + schema + ".ai_consent_policy_versions FROM " + runtimeRole)
+	exec("REVOKE INSERT, DELETE ON " + schema + ".ai_consent_policy_lock FROM " + runtimeRole)
 	r, err := Open(ctx, runtimeRoleURL, false)
 	if err != nil {
 		t.Fatal(err)
@@ -100,6 +107,34 @@ func TestRuntimeRoleChecksMigrationsWithoutDDL(t *testing.T) {
 	}
 	if _, err := r.db.DB.ExecContext(ctx, "DELETE FROM schema_migrations WHERE version=3"); err == nil {
 		t.Fatal("runtime role can modify migration history")
+	}
+	if _, err := r.db.DB.ExecContext(ctx, "UPDATE ai_consent_policy SET version='bad', description='bad' WHERE singleton=TRUE"); err == nil {
+		t.Fatal("runtime role can update AI policy")
+	}
+	if _, err := r.db.DB.ExecContext(ctx, "INSERT INTO ai_consent_policy_versions(version,description) VALUES ('bad','bad')"); err == nil {
+		t.Fatal("runtime role can create AI policy history")
+	}
+	if _, err := r.db.DB.ExecContext(ctx, "DELETE FROM ai_consent_policy_lock"); err == nil {
+		t.Fatal("runtime role can delete policy lock")
+	}
+	owner := identity.WithUser(ctx, 703)
+	gate := identity.AIConsentGate{Store: r, Version: "v1"}
+	if err := gate.Grant(owner, "v1"); !errors.Is(err, identity.ErrConsentRequired) {
+		t.Fatalf("unset policy: %v", err)
+	}
+	exec("BEGIN; SET LOCAL search_path TO " + schema + "; UPDATE ai_consent_policy SET version='v1', description='reviewed test description' WHERE singleton=TRUE; COMMIT")
+	if err := gate.Grant(owner, "v1"); err != nil {
+		t.Fatalf("runtime grant: %v", err)
+	}
+	called := false
+	if err := gate.Execute(owner, func(context.Context) error { called = true; return nil }); err != nil || !called {
+		t.Fatalf("runtime send: %v", err)
+	}
+	if err := gate.Withdraw(owner); err != nil {
+		t.Fatalf("runtime withdraw: %v", err)
+	}
+	if err := gate.Execute(owner, func(context.Context) error { t.Error("withdrawn send started"); return nil }); !errors.Is(err, identity.ErrConsentRequired) {
+		t.Fatalf("withdrawn: %v", err)
 	}
 	history := func() string {
 		var ledger string

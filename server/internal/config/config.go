@@ -19,6 +19,7 @@ type Config struct {
 	OpenAIAPIKey          string
 	OpenAIModel           string
 	OpenAIReasoningEffort string
+	AIConsentVersion      string
 	Environment           string
 	PagerDutyRoutingKey   string
 }
@@ -52,6 +53,7 @@ func Load() (Config, error) {
 		OpenAIAPIKey:          os.Getenv("OPENAI_API_KEY"),
 		OpenAIModel:           envOrDefault("OPENAI_MODEL", "gpt-5.6-terra"),
 		OpenAIReasoningEffort: reasoningEffort,
+		AIConsentVersion:      os.Getenv("AI_CONSENT_VERSION"),
 		Environment:           envOrDefault("APP_ENVIRONMENT", "local"),
 		PagerDutyRoutingKey:   os.Getenv("PAGERDUTY_ROUTING_KEY"),
 	}, nil

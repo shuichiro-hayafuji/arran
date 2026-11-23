@@ -525,7 +525,7 @@ func (s *Application) UpdateConsultationResult(
 	if err := validateScore(update.RegretScore); err != nil {
 		return domain.Consultation{}, err
 	}
-	consultation, err := s.repository.UpdateConsultationResult(ctx, id, update)
+	updated, err := s.repository.UpdateConsultationResult(ctx, id, update)
 	if err != nil {
 		return domain.Consultation{}, err
 	}
@@ -533,7 +533,16 @@ func (s *Application) UpdateConsultationResult(
 	if !s.externalModelAllowed(ctx) {
 		memoryAgent = s.fallbackMemory
 	}
-	candidates, _ := memoryAgent.ExtractMemory(ctx, consultation)
+	candidates, extractErr := memoryAgent.ExtractMemory(ctx, updated)
+	if errors.Is(extractErr, consultation.ErrConsentRequired) {
+		updated.MemoryExtractionStatus = "consent_required"
+	}
+	if errors.Is(extractErr, consultation.ErrConsentUnavailable) {
+		updated.MemoryExtractionStatus = "consent_unavailable"
+	}
+	if errors.Is(extractErr, consultation.ErrAIOutcomeUnknown) {
+		updated.MemoryExtractionStatus = "ai_outcome_unknown"
+	}
 	for _, candidate := range candidates {
 		if candidate.Confidence < 0.7 ||
 			strings.TrimSpace(candidate.Content) == "" ||
@@ -542,7 +551,7 @@ func (s *Application) UpdateConsultationResult(
 		}
 		_, _ = s.repository.SaveMemory(ctx, candidate)
 	}
-	return consultation, nil
+	return updated, nil
 }
 
 func (s *Application) externalModelAllowed(ctx context.Context) bool {
@@ -671,6 +680,9 @@ func (s *Application) CreateMonthlyReview(
 	}
 	candidates, err := reviewAgent.Review(ctx, profile, dashboard, sanitizeForLLM(transactions), consultations, sanitizeReviewCandidates(local))
 	if err != nil {
+		if errors.Is(err, consultation.ErrConsentRequired) || errors.Is(err, consultation.ErrConsentUnavailable) || errors.Is(err, consultation.ErrAIOutcomeUnknown) {
+			return domain.MonthlyReview{}, err
+		}
 		candidates = local
 	}
 	if len(candidates) > 5 {

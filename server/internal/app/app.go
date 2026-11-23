@@ -2,6 +2,8 @@ package app
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"time"
@@ -41,13 +43,17 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 		return nil, err
 	}
 
-	primary, source := modelClient(cfg, usageRecorder(repo))
+	consentGate := identity.AIConsentGate{Store: repo, Version: cfg.AIConsentVersion}
+	primary, source := modelClient(cfg, usageRecorder(repo), consentGate)
 	fallback := agent.MockClient{}
-	agents := agentadapter.New(primary, fallback, source)
+	agents := agentadapter.NewWithFailureCheck(primary, fallback, source, func(err error) bool {
+		return errors.Is(err, consultation.ErrConsentRequired) || errors.Is(err, consultation.ErrConsentUnavailable) || errors.Is(err, consultation.ErrAIOutcomeUnknown)
+	})
 	var chatAgent consultation.Agent
 	if !cfg.UseMockLLM {
 		client := openai.NewOpenAIClient(cfg.OpenAIAPIKey, cfg.OpenAIModel, cfg.OpenAIReasoningEffort)
 		client.SetUsageRecorder(usageRecorder(repo))
+		client.SetConsentGate(consentExecutor{consentGate})
 		chatAgent = client
 	}
 	fallbackAgent := agentadapter.New(fallback, fallback, "quota_fallback")
@@ -70,7 +76,7 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 	return &App{
 		Server: &http.Server{
 			Addr:              cfg.APIAddr,
-			Handler:           auth.New(repo).Wrap(handler.New(apiApplication)),
+			Handler:           auth.New(repo).Wrap(handler.NewWithConsent(apiApplication, consentService{consentGate})),
 			ReadHeaderTimeout: 5 * time.Second,
 			ReadTimeout:       30 * time.Second,
 			WriteTimeout:      30 * time.Second,
@@ -101,11 +107,42 @@ func (a *App) Close() error {
 	return a.repository.Close()
 }
 
-func modelClient(cfg config.Config, usageRecorder openai.UsageRecorder) (agent.Model, string) {
+func modelClient(cfg config.Config, usageRecorder openai.UsageRecorder, gate identity.AIConsentGate) (agent.Model, string) {
 	if cfg.UseMockLLM {
 		return agent.MockClient{}, "mock"
 	}
 	client := openai.NewOpenAIClient(cfg.OpenAIAPIKey, cfg.OpenAIModel, cfg.OpenAIReasoningEffort)
 	client.SetUsageRecorder(usageRecorder)
+	client.SetConsentGate(consentExecutor{gate})
 	return client, "openai"
 }
+
+type consentExecutor struct{ gate identity.AIConsentGate }
+
+func (c consentExecutor) Execute(ctx context.Context, fn func(context.Context) error) error {
+	called := false
+	var callErr error
+	err := c.gate.Execute(ctx, func(inner context.Context) error { called = true; callErr = fn(inner); return callErr })
+	if err != nil && called && callErr == nil {
+		return fmt.Errorf("%w: completion record unavailable", consultation.ErrAIOutcomeUnknown)
+	}
+	if err != nil && !called {
+		if errors.Is(err, identity.ErrConsentRequired) || errors.Is(err, identity.ErrInvalidUser) {
+			return consultation.ErrConsentRequired
+		}
+		return fmt.Errorf("%w: authorization unavailable", consultation.ErrConsentUnavailable)
+	}
+	return err
+}
+
+type consentService struct{ gate identity.AIConsentGate }
+
+func (c consentService) Status(ctx context.Context) (any, error) { return c.gate.Status(ctx) }
+func (c consentService) Grant(ctx context.Context, version string) error {
+	err := c.gate.Grant(ctx, version)
+	if errors.Is(err, identity.ErrConsentRequired) {
+		return consultation.ErrConsentRequired
+	}
+	return err
+}
+func (c consentService) Withdraw(ctx context.Context) error { return c.gate.Withdraw(ctx) }

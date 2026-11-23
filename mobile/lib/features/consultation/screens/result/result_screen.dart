@@ -73,6 +73,11 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
       next,
     ) {
       if (next.saved && previous?.saved != true && context.mounted) {
+        if (next.warning != null) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text(next.warning!)));
+        }
         final navigator = Navigator.of(context);
         if (navigator.canPop()) {
           navigator.pop();

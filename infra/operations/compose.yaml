@@ -19,6 +19,7 @@ x-api: &api
     API_ADDR: 0.0.0.0:8080
     USE_MOCK_LLM: "false"
     OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.6-terra}
+    AI_CONSENT_VERSION: ${AI_CONSENT_VERSION:-}
   depends_on:
     db: { condition: service_healthy }
   volumes:

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/shuichiro-hayafuji/arran_agent"
+	"github.com/shuichirohayafuji/spendable-today/server/internal/consultation"
 )
 
 type client struct {
@@ -21,6 +22,9 @@ type client struct {
 	reasoningEffort string
 	client          *http.Client
 	usageRecorder   UsageRecorder
+	consentGate     interface {
+		Execute(context.Context, func(context.Context) error) error
+	}
 }
 
 type UsageRecorder func(context.Context, UsageRecord) error
@@ -51,12 +55,18 @@ func NewOpenAIClient(apiKey, model, reasoningEffort string) *client {
 		apiKey:          apiKey,
 		model:           model,
 		reasoningEffort: reasoningEffort,
-		client:          &http.Client{Timeout: 20 * time.Second},
+		client:          &http.Client{Timeout: 20 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
 	}
 }
 
 func (c *client) SetUsageRecorder(recorder UsageRecorder) {
 	c.usageRecorder = recorder
+}
+
+func (c *client) SetConsentGate(gate interface {
+	Execute(context.Context, func(context.Context) error) error
+}) {
+	c.consentGate = gate
 }
 
 func (c *client) GenerateAdvice(
@@ -182,17 +192,57 @@ func (c *client) structured(
 	}
 	request.Header.Set("Authorization", "Bearer "+c.apiKey)
 	request.Header.Set("Content-Type", "application/json")
-	response, err := c.client.Do(request)
-	if err != nil {
-		return fmt.Errorf("OpenAI request failed: %w", err)
+	if c.consentGate == nil {
+		return consultation.ErrConsentRequired
 	}
-	defer response.Body.Close()
-	responseBody, err := io.ReadAll(io.LimitReader(response.Body, 2<<20))
-	if err != nil {
-		return err
-	}
-	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return fmt.Errorf("OpenAI returned HTTP %d", response.StatusCode)
+	var responseBody []byte
+	var rejected error
+	var terminalResponse bool
+	gateErr := c.consentGate.Execute(ctx, func(sendCtx context.Context) error {
+		response, sendErr := c.client.Do(request.WithContext(sendCtx))
+		if sendErr != nil {
+			return fmt.Errorf("%w: request failed", consultation.ErrAIOutcomeUnknown)
+		}
+		defer response.Body.Close()
+		const maxResponse = 2 << 20
+		responseBody, sendErr = io.ReadAll(io.LimitReader(response.Body, maxResponse+1))
+		if sendErr != nil {
+			return fmt.Errorf("%w: response read failed", consultation.ErrAIOutcomeUnknown)
+		}
+		if len(responseBody) > maxResponse {
+			return fmt.Errorf("%w: response exceeds limit", consultation.ErrAIOutcomeUnknown)
+		}
+		if response.StatusCode < 200 || response.StatusCode >= 300 {
+			rejected = fmt.Errorf("OpenAI returned HTTP %d", response.StatusCode)
+			if response.StatusCode == 401 || response.StatusCode == 403 || response.StatusCode == 429 {
+				terminalResponse = true
+				return nil
+			}
+			return fmt.Errorf("%w: OpenAI returned HTTP %d", consultation.ErrAIOutcomeUnknown, response.StatusCode)
+		}
+		if response.StatusCode != http.StatusOK {
+			return fmt.Errorf("%w: nonterminal HTTP %d", consultation.ErrAIOutcomeUnknown, response.StatusCode)
+		}
+		var envelope struct {
+			Status string `json:"status"`
+		}
+		if err := json.Unmarshal(responseBody, &envelope); err != nil {
+			return fmt.Errorf("%w: response is not explicitly completed", consultation.ErrAIOutcomeUnknown)
+		}
+		switch envelope.Status {
+		case "completed":
+			terminalResponse = true
+			return nil
+		case "failed", "cancelled", "incomplete":
+			terminalResponse = true
+			rejected = fmt.Errorf("OpenAI response status: %s", envelope.Status)
+			return nil
+		default:
+			return fmt.Errorf("%w: response is not explicitly completed", consultation.ErrAIOutcomeUnknown)
+		}
+	})
+	if gateErr != nil && !terminalResponse {
+		return gateErr
 	}
 	output, usage, err := parseResponse(responseBody)
 	if usage.TotalTokens > 0 || usage.InputTokens > 0 || usage.OutputTokens > 0 {
@@ -202,16 +252,26 @@ func (c *client) structured(
 			usage.OutputTokens, usage.ReasoningTokens, usage.TotalTokens,
 		)
 		if c.usageRecorder != nil {
-			recordErr := c.usageRecorder(ctx, UsageRecord{
+			// Preserve the owner even when the request is cancelled after a
+			// terminal response, while bounding the independent write.
+			recordCtx, cancelRecord := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+			recordErr := c.usageRecorder(recordCtx, UsageRecord{
 				Operation: name, Model: c.model,
 				InputTokens: usage.InputTokens, CachedInputTokens: usage.CachedInputTokens,
 				OutputTokens: usage.OutputTokens, ReasoningTokens: usage.ReasoningTokens,
 				TotalTokens: usage.TotalTokens, OccurredAt: time.Now().UTC(),
 			})
+			cancelRecord()
 			if recordErr != nil {
 				log.Printf("OpenAI usage persistence failed: operation=%s: %v", name, recordErr)
 			}
 		}
+	}
+	if gateErr != nil {
+		return gateErr
+	}
+	if rejected != nil {
+		return rejected
 	}
 	if err != nil {
 		return err

@@ -63,6 +63,11 @@ func openReconciliationRepository(t *testing.T) *Repository {
 	return repo
 }
 func verifyReconciliationIntegration(t *testing.T) {
+	verifyAIConsentPostgres(t)
+	verifyAIConsentDatabaseFailure(t)
+	verifyAIConsentOverlappingWithdrawal(t)
+	verifyAIConsentMigration(t)
+	verifyAIConsentIsolation(t)
 	r := openReconciliationRepository(t)
 	verifyDurablePreviewRetryAndExpiry(t, openReconciliationRepository(t))
 	verifyDurablePreviewCleanupRace(t, openReconciliationRepository(t))

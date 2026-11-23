@@ -11,6 +11,7 @@ abstract class ResultState with _$ResultState {
     required AsyncValue<Consultation?> consultation,
     @Default(false) bool saving,
     @Default(false) bool saved,
+    String? warning,
     Object? actionError,
   }) = _ResultState;
 
@@ -20,5 +21,6 @@ abstract class ResultState with _$ResultState {
   AsyncValue<Consultation?> get consultation;
   bool get saving;
   bool get saved;
+  String? get warning;
   Object? get actionError;
 }

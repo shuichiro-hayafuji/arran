@@ -5,3 +5,6 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO arran_run
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO arran_runtime;
 REVOKE INSERT, UPDATE, DELETE ON public.schema_migrations FROM arran_runtime;
 GRANT SELECT ON public.schema_migrations TO arran_runtime;
+-- Policy text and its history are installed only by a privileged operator.
+REVOKE INSERT, UPDATE, DELETE ON public.ai_consent_policy, public.ai_consent_policy_versions FROM arran_runtime;
+REVOKE INSERT, DELETE ON public.ai_consent_policy_lock FROM arran_runtime;
