@@ -1,3 +1,4 @@
+import 'package:spendable_today/features/transactions/repository/pending_import_storage.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
@@ -84,6 +85,7 @@ ProviderContainer containerFor(ManagementFake repository) {
   final fakes = FakeRepositories();
   return ProviderContainer(
     overrides: [
+      pendingImportOwnerResolverProvider.overrideWithValue(() async => 101),
       importManagementRepositoryProvider.overrideWithValue(repository),
       transactionsRepositoryProvider.overrideWithValue(fakes.transactions),
       dashboardRepositoryProvider.overrideWithValue(fakes.dashboard),
@@ -95,6 +97,7 @@ class ReactivationFake extends FakeTransactionsRepository {
   final confirmations = <bool>[];
   @override
   Future<ImportPreview> previewImport({
+    int? sessionGeneration,
     bool confirmReactivation = false,
     required String filePath,
     required String fileName,
@@ -106,6 +109,7 @@ class ReactivationFake extends FakeTransactionsRepository {
   }) async {
     confirmations.add(confirmReactivation);
     final base = await super.previewImport(
+      sessionGeneration: sessionGeneration,
       filePath: filePath,
       fileName: fileName,
       source: source,
@@ -299,6 +303,9 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            pendingImportOwnerResolverProvider.overrideWithValue(
+              () async => 101,
+            ),
             importManagementRepositoryProvider.overrideWithValue(repository),
             transactionsRepositoryProvider.overrideWithValue(
               fakes.transactions,
@@ -335,6 +342,7 @@ void main() {
       final repository = ReactivationFake();
       final container = ProviderContainer(
         overrides: [
+          pendingImportOwnerResolverProvider.overrideWithValue(() async => 101),
           transactionsRepositoryProvider.overrideWithValue(repository),
         ],
       );
@@ -382,6 +390,9 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            pendingImportOwnerResolverProvider.overrideWithValue(
+              () async => 101,
+            ),
             importManagementRepositoryProvider.overrideWithValue(repository),
             transactionsRepositoryProvider.overrideWithValue(
               fakes.transactions,
@@ -426,6 +437,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          pendingImportOwnerResolverProvider.overrideWithValue(() async => 101),
           importManagementRepositoryProvider.overrideWithValue(repository),
         ],
         child: const MaterialApp(home: ImportHistoryScreen()),

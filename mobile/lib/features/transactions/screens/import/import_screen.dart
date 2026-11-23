@@ -4,12 +4,21 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'package:spendable_today/features/session/provider/session_provider.dart';
 import 'package:spendable_today/features/transactions/domain/csv_mapping.dart';
 import 'package:spendable_today/features/transactions/domain/import_preview.dart';
 import 'package:spendable_today/features/transactions/screens/import/import_intent.dart';
 import 'package:spendable_today/features/transactions/screens/import/import_view_model.dart';
 import 'package:spendable_today/shared/utils/formatters.dart';
 import '../../../../app/constants/space_theme.dart';
+
+final importFilePickerProvider = Provider<Future<FilePickerResult?> Function()>(
+  (ref) =>
+      () => FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: const ['csv'],
+      ),
+);
 
 class ImportScreen extends ConsumerStatefulWidget {
   const ImportScreen({super.key});
@@ -20,6 +29,8 @@ class ImportScreen extends ConsumerStatefulWidget {
 class _ImportScreenState extends ConsumerState<ImportScreen> {
   late final TextEditingController _source;
   late final TextEditingController _account;
+  bool _allowPop = false;
+  bool _confirmingLeave = false;
   @override
   void initState() {
     super.initState();
@@ -50,18 +61,28 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
   }
 
   Future<void> _pick() async {
+    final session = ref.read(sessionControllerProvider);
+    final token = session.token;
+    final generation = session.generation;
+    bool stillCurrent() =>
+        mounted && session.token == token && session.generation == generation;
+    final current = ref.read(importControllerProvider);
+    if (current.commitOutcomeUnknown ||
+        current.restoring ||
+        current.recoveryBlocked ||
+        current.cleanupRejected)
+      return;
     if (dirty) {
       await _applySource();
-      if (!mounted ||
+      if (!stillCurrent() ||
           ref.read(importControllerProvider).source != sourceValue ||
           ref.read(importControllerProvider).accountName !=
               _account.text.trim())
         return;
     }
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: const ['csv'],
-    );
+    if (!stillCurrent()) return;
+    final result = await ref.read(importFilePickerProvider)();
+    if (!stillCurrent()) return;
     if (result == null || result.files.isEmpty) return;
     final file = result.files.first;
     if (file.path == null) return;
@@ -70,176 +91,340 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
         .dispatch(SelectImportFile(filePath: file.path!, fileName: file.name));
   }
 
+  Future<void> _confirmLeave() async {
+    if (_confirmingLeave) return;
+    _confirmingLeave = true;
+    final rejected = ref.read(importControllerProvider).cleanupRejected;
+    final leave = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(rejected ? '確認情報を削除できていません' : '保存結果を確認できていません'),
+        content: Text(
+          rejected
+              ? '保存は拒否されました。端末の確認情報を削除してから次の取込を始めてください。'
+              : '別の画面から戻った場合や、同じ利用者で再ログインした場合は確認を試みます。'
+                    '別の利用者には確認情報を表示しません。'
+                    '結果が分かるまで新しく取り込まず、必要なら運用者に確認してください。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('確認を続ける'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('別の画面へ移動'),
+          ),
+        ],
+      ),
+    );
+    _confirmingLeave = false;
+    if (leave != true || !mounted) return;
+    setState(() => _allowPop = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      final didPop = await Navigator.of(context).maybePop();
+      if (!didPop && mounted) setState(() => _allowPop = false);
+    });
+  }
+
+  Future<void> _confirmOperatorRecovery() async {
+    final id = ref.read(importControllerProvider).pendingPreviewId;
+    if (id == null) return;
+    var confirmation = '';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('運用者による確認が必要です'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SelectableText('確認対象のプレビューID: $id'),
+                const Text(
+                  '運用者に再送の停止、新たな確定の防止、受付済み処理がすべて終了したことを確認してから、未保存か確認してもらってください。処理終了を確認できない場合は再開しないでください。アプリには処理終了を確認する機能がありません。期限切れやエラーだけでは未保存と判断できず、再取込すると重複するおそれがあります。',
+                ),
+                const Text('運用者から未保存と確認できた場合のみ「未保存を確認しました」と入力してください。'),
+                TextField(
+                  onChanged: (value) =>
+                      setDialogState(() => confirmation = value),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('戻る'),
+            ),
+            TextButton(
+              onPressed: confirmation == '未保存を確認しました'
+                  ? () => Navigator.pop(dialogContext, true)
+                  : null,
+              child: const Text('確認情報を削除して再開'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (confirmed == true && mounted) {
+      await ref
+          .read(importControllerProvider.notifier)
+          .resumeAfterOperatorConfirmation();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(importControllerProvider);
     final controller = ref.read(importControllerProvider.notifier);
-    return Scaffold(
-      appBar: AppBar(title: const Text('CSVインポート')),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 36),
-        children: [
-          Text(
-            '利用履歴を追加',
-            style: Theme.of(
-              context,
-            ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
-          ),
-          const SizedBox(height: 8),
-          const Text('UTF-8、Shift_JIS/CP932に対応。確定するまでDBには保存されません。'),
-          AppSpace.syL,
-          TextField(
-            key: const ValueKey('import-source'),
-            controller: _source,
-            enabled: !state.loading,
-            onChanged: (_) => setState(() {}),
-            decoration: const InputDecoration(labelText: '取込元（銀行・カード名など）'),
-          ),
-          AppSpace.syM,
-          TextField(
-            key: const ValueKey('import-account'),
-            controller: _account,
-            enabled: !state.loading,
-            onChanged: (_) => setState(() {}),
-            decoration: const InputDecoration(
-              labelText: '口座名',
-              helperText: '同じ口座は再取込でも同じ名前を使ってください。',
-            ),
-          ),
-          if (dirty)
-            TextButton(
-              onPressed: state.loading ? null : _applySource,
-              child: const Text('取込元・口座を適用して再確認'),
-            ),
-          AppSpace.syL,
-          OutlinedButton.icon(
-            key: const ValueKey('pick-csv'),
-            onPressed: state.loading ? null : () => _pick(),
-            icon: const Icon(Icons.file_open_outlined),
-            label: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 13),
-              child: Text(state.fileName ?? 'CSVファイルを選択'),
-            ),
-          ),
-          if (state.loading) ...[
-            const SizedBox(height: 16),
-            const LinearProgressIndicator(),
-          ],
-          if (state.error != null) ...[
-            const SizedBox(height: 14),
+    final editingBlocked =
+        state.loading ||
+        state.restoring ||
+        state.recoveryBlocked ||
+        state.cleanupRejected ||
+        state.commitOutcomeUnknown ||
+        state.commitResult != null;
+    return PopScope(
+      canPop:
+          _allowPop ||
+          !(state.commitOutcomeUnknown ||
+              state.restoring ||
+              state.recoveryBlocked ||
+              state.cleanupRejected),
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop &&
+            (state.commitOutcomeUnknown ||
+                state.restoring ||
+                state.recoveryBlocked ||
+                state.cleanupRejected))
+          _confirmLeave();
+      },
+      child: Scaffold(
+        appBar: AppBar(title: const Text('CSVインポート')),
+        body: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 36),
+          children: [
             Text(
-              state.error!,
-              style: TextStyle(color: Theme.of(context).colorScheme.error),
+              '利用履歴を追加',
+              style: Theme.of(
+                context,
+              ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
             ),
-          ],
-          if (state.preview != null) ...[
-            const SizedBox(height: 20),
-            if (state.preview!.needsMapping)
-              _MappingForm(
-                key: ValueKey(state.preview),
-                preview: state.preview!,
-                onSubmit: (mapping) =>
-                    controller.dispatch(ApplyImportMapping(mapping)),
-              )
-            else
-              ExpansionTile(
-                title: const Text('列の割当・明細ID（必要な場合）'),
-                children: [
-                  _MappingForm(
-                    key: ValueKey(state.preview),
-                    preview: state.preview!,
-                    onSubmit: (mapping) =>
-                        controller.dispatch(ApplyImportMapping(mapping)),
-                  ),
-                ],
+            const SizedBox(height: 8),
+            const Text('UTF-8、Shift_JIS/CP932に対応。確定するまで取引・集計には反映されません。'),
+            if (state.commitOutcomeUnknown) ...[
+              AppSpace.syM,
+              const Text(
+                '保存結果が不明です。新しく取り込まず、同じ内容で保存結果を確認してください。'
+                '同じ利用者で再ログインした場合も確認情報の復元を試みます。'
+                '別の利用者には確認情報を表示しません。',
               ),
-          ],
-          if (state.preview != null && !state.preview!.needsMapping) ...[
-            const SizedBox(height: 20),
-            _Preview(
-              preview: state.preview!,
-              onCommit: () => controller.dispatch(const CommitImport()),
-              loading:
-                  state.loading ||
-                  state.preview!.previewId.isEmpty ||
-                  dirty ||
-                  state.preview!.identityConflicts.isNotEmpty ||
-                  state.preview!.reconciliationConflicts.isNotEmpty,
-            ),
-          ],
-          if (state.preview?.identityConflicts.isNotEmpty == true) ...[
+              TextButton(
+                onPressed: state.loading || state.recoveryBlocked
+                    ? null
+                    : _confirmOperatorRecovery,
+                child: const Text('運用者に確認した場合の再開'),
+              ),
+            ],
+            if (state.recoveryBlocked) ...[
+              AppSpace.syM,
+              TextButton(
+                onPressed: state.restoring ? null : controller.retryRestore,
+                child: const Text('確認情報を読み直す'),
+              ),
+            ],
+            if (state.cleanupRejected) ...[
+              AppSpace.syM,
+              TextButton(
+                onPressed: state.loading
+                    ? null
+                    : controller.retryRejectedCleanup,
+                child: const Text('確認情報の削除を再試行'),
+              ),
+            ],
             AppSpace.syL,
-            _IdentityForm(
-              key: ValueKey(state.preview),
-              preview: state.preview!,
-              loading: state.loading || dirty,
-              onSubmit: (values) =>
-                  controller.dispatch(ResolveImportIdentities(values)),
+            TextField(
+              key: const ValueKey('import-source'),
+              controller: _source,
+              enabled: !editingBlocked,
+              onChanged: (_) => setState(() {}),
+              decoration: const InputDecoration(labelText: '取込元（銀行・カード名など）'),
             ),
-          ],
-          if (state.preview?.reconciliationConflicts.isNotEmpty == true) ...[
+            AppSpace.syM,
+            TextField(
+              key: const ValueKey('import-account'),
+              controller: _account,
+              enabled: !editingBlocked,
+              onChanged: (_) => setState(() {}),
+              decoration: const InputDecoration(
+                labelText: '口座名',
+                helperText: '同じ口座は再取込でも同じ名前を使ってください。',
+              ),
+            ),
+            if (dirty)
+              TextButton(
+                onPressed: editingBlocked ? null : _applySource,
+                child: const Text('取込元・口座を適用して再確認'),
+              ),
             AppSpace.syL,
-            PurchaseCsvForm(
-              key: ValueKey(state.preview),
-              conflicts: state.preview!.reconciliationConflicts,
-              loading: state.loading || dirty,
-              onSubmit: (values) =>
-                  controller.dispatch(ResolveImportPurchases(values)),
+            OutlinedButton.icon(
+              key: const ValueKey('pick-csv'),
+              onPressed: editingBlocked ? null : () => _pick(),
+              icon: const Icon(Icons.file_open_outlined),
+              label: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 13),
+                child: Text(state.fileName ?? 'CSVファイルを選択'),
+              ),
             ),
-          ],
-          if (state.preview?.reactivationIds.isNotEmpty == true &&
-              !state.confirmReactivation) ...[
-            const Text('取消済みの明細が含まれています。同じ明細と最新訂正を保持して再び有効にします。残高は自動変更しません。'),
-            TextButton(
-              onPressed: state.loading || dirty
-                  ? null
-                  : () =>
-                        controller.dispatch(const ConfirmImportReactivation()),
-              child: const Text('取消済み明細の再有効化を確認'),
-            ),
-          ],
-          if (state.commitResult != null) ...[
-            const SizedBox(height: 20),
-            Card(
-              color: Theme.of(context).colorScheme.primaryContainer,
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
+            if (state.loading || state.restoring) ...[
+              const SizedBox(height: 16),
+              const LinearProgressIndicator(),
+            ],
+            if (state.error != null) ...[
+              const SizedBox(height: 14),
+              Text(
+                state.error!,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            ],
+            if (state.preview != null && !editingBlocked) ...[
+              const SizedBox(height: 20),
+              if (state.preview!.needsMapping)
+                _MappingForm(
+                  key: ValueKey(state.preview),
+                  preview: state.preview!,
+                  onSubmit: (mapping) =>
+                      controller.dispatch(ApplyImportMapping(mapping)),
+                )
+              else
+                ExpansionTile(
+                  title: const Text('列の割当・明細ID（必要な場合）'),
                   children: [
-                    const Icon(Icons.check_circle_outline, size: 42),
-                    const SizedBox(height: 8),
-                    Text(
-                      '${state.commitResult!.importedCount}件を保存しました',
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    Text('重複 ${state.commitResult!.duplicateCount}件'),
-                    if (state.commitResult!.reactivatedCount > 0)
-                      Text('再有効化 ${state.commitResult!.reactivatedCount}件'),
-                    TextButton(
-                      onPressed: () => context.push(
-                        '/imports/${state.commitResult!.importId}',
-                      ),
-                      child: const Text('この取込の履歴を見る'),
-                    ),
-                    const Text(
-                      '購入との照合は保存済みです。残高・自由予算の反映に確認が必要な場合は、次のチャットで質問します。',
-                    ),
-                    const SizedBox(height: 12),
-                    FilledButton(
-                      onPressed: () {
-                        controller.dispatch(const ResetImport());
-                        context.go('/transactions');
-                      },
-                      child: const Text('取引一覧を見る'),
+                    _MappingForm(
+                      key: ValueKey(state.preview),
+                      preview: state.preview!,
+                      onSubmit: (mapping) =>
+                          controller.dispatch(ApplyImportMapping(mapping)),
                     ),
                   ],
                 ),
+            ],
+            if (state.preview != null && !state.preview!.needsMapping) ...[
+              const SizedBox(height: 20),
+              _Preview(
+                preview: state.preview!,
+                onCommit: () => controller.dispatch(const CommitImport()),
+                checkingResult: state.commitOutcomeUnknown,
+                loading:
+                    state.loading ||
+                    state.restoring ||
+                    state.recoveryBlocked ||
+                    state.cleanupRejected ||
+                    state.commitResult != null ||
+                    state.preview!.previewId.isEmpty ||
+                    dirty ||
+                    state.preview!.identityConflicts.isNotEmpty ||
+                    state.preview!.reconciliationConflicts.isNotEmpty,
               ),
-            ),
+            ],
+            if (state.preview == null &&
+                state.commitOutcomeUnknown &&
+                state.pendingPreviewId != null) ...[
+              AppSpace.syL,
+              FilledButton(
+                key: const ValueKey('commit-import'),
+                onPressed: state.loading
+                    ? null
+                    : () => controller.dispatch(const CommitImport()),
+                child: const Text('保存結果を確認'),
+              ),
+            ],
+            if (state.preview?.identityConflicts.isNotEmpty == true) ...[
+              AppSpace.syL,
+              _IdentityForm(
+                key: ValueKey(state.preview),
+                preview: state.preview!,
+                loading: editingBlocked || dirty,
+                onSubmit: (values) =>
+                    controller.dispatch(ResolveImportIdentities(values)),
+              ),
+            ],
+            if (state.preview?.reconciliationConflicts.isNotEmpty == true) ...[
+              AppSpace.syL,
+              PurchaseCsvForm(
+                key: ValueKey(state.preview),
+                conflicts: state.preview!.reconciliationConflicts,
+                loading: editingBlocked || dirty,
+                onSubmit: (values) =>
+                    controller.dispatch(ResolveImportPurchases(values)),
+              ),
+            ],
+            if (state.preview?.reactivationIds.isNotEmpty == true &&
+                !state.confirmReactivation) ...[
+              const Text('取消済みの明細が含まれています。同じ明細と最新訂正を保持して再び有効にします。残高は自動変更しません。'),
+              TextButton(
+                onPressed: editingBlocked || dirty
+                    ? null
+                    : () => controller.dispatch(
+                        const ConfirmImportReactivation(),
+                      ),
+                child: const Text('取消済み明細の再有効化を確認'),
+              ),
+            ],
+            if (state.commitResult != null) ...[
+              const SizedBox(height: 20),
+              Card(
+                color: Theme.of(context).colorScheme.primaryContainer,
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    children: [
+                      const Icon(Icons.check_circle_outline, size: 42),
+                      const SizedBox(height: 8),
+                      Text(
+                        '${state.commitResult!.importedCount}件を保存しました',
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      Text('重複 ${state.commitResult!.duplicateCount}件'),
+                      if (state.commitResult!.reactivatedCount > 0)
+                        Text('再有効化 ${state.commitResult!.reactivatedCount}件'),
+                      if (state.commitResult!.importId.isNotEmpty)
+                        TextButton(
+                          onPressed: () => context.push(
+                            '/imports/${state.commitResult!.importId}',
+                          ),
+                          child: const Text('この取込の履歴を見る'),
+                        ),
+                      const Text(
+                        '購入との照合は保存済みです。残高・自由予算の反映に確認が必要な場合は、次のチャットで質問します。',
+                      ),
+                      const SizedBox(height: 12),
+                      FilledButton(
+                        onPressed: state.loading
+                            ? null
+                            : () async {
+                                await controller.dispatch(const ResetImport());
+                                if (context.mounted &&
+                                    ref
+                                            .read(importControllerProvider)
+                                            .commitResult ==
+                                        null) {
+                                  context.go('/transactions');
+                                }
+                              },
+                        child: const Text('取引一覧を見る'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
@@ -445,11 +630,13 @@ class _Preview extends StatelessWidget {
     required this.preview,
     required this.onCommit,
     required this.loading,
+    required this.checkingResult,
   });
 
   final ImportPreview preview;
   final VoidCallback onCommit;
   final bool loading;
+  final bool checkingResult;
 
   @override
   Widget build(BuildContext context) {
@@ -510,9 +697,9 @@ class _Preview extends StatelessWidget {
           key: const ValueKey('commit-import'),
           onPressed: loading ? null : onCommit,
           icon: const Icon(Icons.save_outlined),
-          label: const Padding(
-            padding: EdgeInsets.symmetric(vertical: 13),
-            child: Text('この内容を保存'),
+          label: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 13),
+            child: Text(checkingResult ? '保存結果を確認' : 'この内容を保存'),
           ),
         ),
       ],

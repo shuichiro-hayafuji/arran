@@ -725,6 +725,7 @@ components:
         warnings: { type: array, items: { type: string } }
     ImportCommitResult:
       type: object
+      required: [import_id, imported_count, duplicate_count, reactivated_count, financial_pending]
       properties:
         import_id: { type: string }
         reactivated_count: { type: integer }
