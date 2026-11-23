@@ -1,3 +1,4 @@
+import 'package:spendable_today/features/transactions/repository/pending_import_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -37,6 +38,7 @@ class MappingRepository extends FakeTransactionsRepository {
 
   @override
   Future<ImportPreview> previewImport({
+    int? sessionGeneration,
     bool confirmReactivation = false,
     required String filePath,
     required String fileName,
@@ -73,7 +75,10 @@ Future<ProviderContainer> openMapping(
 }) async {
   await tester.pumpWidget(
     ProviderScope(
-      overrides: [transactionsRepositoryProvider.overrideWithValue(repository)],
+      overrides: [
+        pendingImportOwnerResolverProvider.overrideWithValue(() async => 101),
+        transactionsRepositoryProvider.overrideWithValue(repository),
+      ],
       child: MaterialApp(
         home: MediaQuery(
           data: MediaQueryData(textScaler: TextScaler.linear(textScale)),
@@ -267,6 +272,7 @@ void main() {
       final repository = MappingRepository(both);
       final container = ProviderContainer(
         overrides: [
+          pendingImportOwnerResolverProvider.overrideWithValue(() async => 101),
           transactionsRepositoryProvider.overrideWithValue(repository),
         ],
       );

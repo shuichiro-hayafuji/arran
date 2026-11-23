@@ -7,6 +7,7 @@ import '../../config/env.dart';
 import 'api_error_handler.dart';
 
 export 'api_exception.dart';
+export 'interceptor/request_interceptor.dart' show expectedSessionGenerationKey;
 
 final publicApiClientProvider = Provider<ApiClient>(
   (ref) => ApiClient.init(ref, needAuthorize: false),

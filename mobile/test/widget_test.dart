@@ -1,3 +1,4 @@
+import 'package:spendable_today/features/transactions/repository/pending_import_storage.dart';
 import 'package:spendable_today/core/network/api_exception.dart';
 import 'package:spendable_today/features/consultation/domain/chat_request.dart';
 import 'package:flutter/material.dart';
@@ -125,6 +126,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          pendingImportOwnerResolverProvider.overrideWithValue(() async => 101),
           consultationRepositoryProvider.overrideWithValue(
             FailingConsultationRepository(),
           ),
@@ -176,6 +178,7 @@ Future<void> pumpFeature(
   return tester.pumpWidget(
     ProviderScope(
       overrides: [
+        pendingImportOwnerResolverProvider.overrideWithValue(() async => 101),
         consultationRepositoryProvider.overrideWithValue(fakes.consultations),
         dashboardRepositoryProvider.overrideWithValue(fakes.dashboard),
         memoryRepositoryProvider.overrideWithValue(fakes.memories),
@@ -296,6 +299,7 @@ class FakeTransactionsRepository implements TransactionsRepository {
 
   @override
   Future<ImportPreview> previewImport({
+    int? sessionGeneration,
     bool confirmReactivation = false,
     required String filePath,
     required String fileName,
@@ -323,8 +327,10 @@ class FakeTransactionsRepository implements TransactionsRepository {
   );
 
   @override
-  Future<ImportCommitResult> commitImport(String previewId) async =>
-      const ImportCommitResult(importedCount: 2, duplicateCount: 0);
+  Future<ImportCommitResult> commitImport(
+    String previewId, {
+    required int sessionGeneration,
+  }) async => const ImportCommitResult(importedCount: 2, duplicateCount: 0);
 }
 
 const testProfile = Profile(

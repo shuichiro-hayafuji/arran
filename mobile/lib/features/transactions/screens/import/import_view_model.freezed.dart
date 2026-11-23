@@ -14,7 +14,7 @@ T _$identity<T>(T value) => value;
 /// @nodoc
 mixin _$ImportState {
 
- bool get confirmReactivation; String get source; String get accountName; List<ImportIdentityDecision> get identityDecisions; List<PurchaseCsvDecision> get reconciliationDecisions; String? get filePath; String? get fileName; ImportPreview? get preview; ImportCommitResult? get commitResult; bool get loading; String? get error;
+ bool get confirmReactivation; String get source; String get accountName; List<ImportIdentityDecision> get identityDecisions; List<PurchaseCsvDecision> get reconciliationDecisions; String? get filePath; String? get fileName; ImportPreview? get preview; ImportCommitResult? get commitResult; bool get commitOutcomeUnknown; String? get pendingPreviewId; bool get restoring; bool get recoveryBlocked; bool get cleanupRejected; bool get loading; String? get error;
 /// Create a copy of ImportState
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -25,16 +25,16 @@ $ImportStateCopyWith<ImportState> get copyWith => _$ImportStateCopyWithImpl<Impo
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is ImportState&&(identical(other.confirmReactivation, confirmReactivation) || other.confirmReactivation == confirmReactivation)&&(identical(other.source, source) || other.source == source)&&(identical(other.accountName, accountName) || other.accountName == accountName)&&const DeepCollectionEquality().equals(other.identityDecisions, identityDecisions)&&const DeepCollectionEquality().equals(other.reconciliationDecisions, reconciliationDecisions)&&(identical(other.filePath, filePath) || other.filePath == filePath)&&(identical(other.fileName, fileName) || other.fileName == fileName)&&(identical(other.preview, preview) || other.preview == preview)&&(identical(other.commitResult, commitResult) || other.commitResult == commitResult)&&(identical(other.loading, loading) || other.loading == loading)&&(identical(other.error, error) || other.error == error));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is ImportState&&(identical(other.confirmReactivation, confirmReactivation) || other.confirmReactivation == confirmReactivation)&&(identical(other.source, source) || other.source == source)&&(identical(other.accountName, accountName) || other.accountName == accountName)&&const DeepCollectionEquality().equals(other.identityDecisions, identityDecisions)&&const DeepCollectionEquality().equals(other.reconciliationDecisions, reconciliationDecisions)&&(identical(other.filePath, filePath) || other.filePath == filePath)&&(identical(other.fileName, fileName) || other.fileName == fileName)&&(identical(other.preview, preview) || other.preview == preview)&&(identical(other.commitResult, commitResult) || other.commitResult == commitResult)&&(identical(other.commitOutcomeUnknown, commitOutcomeUnknown) || other.commitOutcomeUnknown == commitOutcomeUnknown)&&(identical(other.pendingPreviewId, pendingPreviewId) || other.pendingPreviewId == pendingPreviewId)&&(identical(other.restoring, restoring) || other.restoring == restoring)&&(identical(other.recoveryBlocked, recoveryBlocked) || other.recoveryBlocked == recoveryBlocked)&&(identical(other.cleanupRejected, cleanupRejected) || other.cleanupRejected == cleanupRejected)&&(identical(other.loading, loading) || other.loading == loading)&&(identical(other.error, error) || other.error == error));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,confirmReactivation,source,accountName,const DeepCollectionEquality().hash(identityDecisions),const DeepCollectionEquality().hash(reconciliationDecisions),filePath,fileName,preview,commitResult,loading,error);
+int get hashCode => Object.hash(runtimeType,confirmReactivation,source,accountName,const DeepCollectionEquality().hash(identityDecisions),const DeepCollectionEquality().hash(reconciliationDecisions),filePath,fileName,preview,commitResult,commitOutcomeUnknown,pendingPreviewId,restoring,recoveryBlocked,cleanupRejected,loading,error);
 
 @override
 String toString() {
-  return 'ImportState(confirmReactivation: $confirmReactivation, source: $source, accountName: $accountName, identityDecisions: $identityDecisions, reconciliationDecisions: $reconciliationDecisions, filePath: $filePath, fileName: $fileName, preview: $preview, commitResult: $commitResult, loading: $loading, error: $error)';
+  return 'ImportState(confirmReactivation: $confirmReactivation, source: $source, accountName: $accountName, identityDecisions: $identityDecisions, reconciliationDecisions: $reconciliationDecisions, filePath: $filePath, fileName: $fileName, preview: $preview, commitResult: $commitResult, commitOutcomeUnknown: $commitOutcomeUnknown, pendingPreviewId: $pendingPreviewId, restoring: $restoring, recoveryBlocked: $recoveryBlocked, cleanupRejected: $cleanupRejected, loading: $loading, error: $error)';
 }
 
 
@@ -45,7 +45,7 @@ abstract mixin class $ImportStateCopyWith<$Res>  {
   factory $ImportStateCopyWith(ImportState value, $Res Function(ImportState) _then) = _$ImportStateCopyWithImpl;
 @useResult
 $Res call({
- bool confirmReactivation, String source, String accountName, List<ImportIdentityDecision> identityDecisions, List<PurchaseCsvDecision> reconciliationDecisions, String? filePath, String? fileName, ImportPreview? preview, ImportCommitResult? commitResult, bool loading, String? error
+ bool confirmReactivation, String source, String accountName, List<ImportIdentityDecision> identityDecisions, List<PurchaseCsvDecision> reconciliationDecisions, String? filePath, String? fileName, ImportPreview? preview, ImportCommitResult? commitResult, bool commitOutcomeUnknown, String? pendingPreviewId, bool restoring, bool recoveryBlocked, bool cleanupRejected, bool loading, String? error
 });
 
 
@@ -62,7 +62,7 @@ class _$ImportStateCopyWithImpl<$Res>
 
 /// Create a copy of ImportState
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? confirmReactivation = null,Object? source = null,Object? accountName = null,Object? identityDecisions = null,Object? reconciliationDecisions = null,Object? filePath = freezed,Object? fileName = freezed,Object? preview = freezed,Object? commitResult = freezed,Object? loading = null,Object? error = freezed,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? confirmReactivation = null,Object? source = null,Object? accountName = null,Object? identityDecisions = null,Object? reconciliationDecisions = null,Object? filePath = freezed,Object? fileName = freezed,Object? preview = freezed,Object? commitResult = freezed,Object? commitOutcomeUnknown = null,Object? pendingPreviewId = freezed,Object? restoring = null,Object? recoveryBlocked = null,Object? cleanupRejected = null,Object? loading = null,Object? error = freezed,}) {
   return _then(_self.copyWith(
 confirmReactivation: null == confirmReactivation ? _self.confirmReactivation : confirmReactivation // ignore: cast_nullable_to_non_nullable
 as bool,source: null == source ? _self.source : source // ignore: cast_nullable_to_non_nullable
@@ -73,7 +73,12 @@ as List<PurchaseCsvDecision>,filePath: freezed == filePath ? _self.filePath : fi
 as String?,fileName: freezed == fileName ? _self.fileName : fileName // ignore: cast_nullable_to_non_nullable
 as String?,preview: freezed == preview ? _self.preview : preview // ignore: cast_nullable_to_non_nullable
 as ImportPreview?,commitResult: freezed == commitResult ? _self.commitResult : commitResult // ignore: cast_nullable_to_non_nullable
-as ImportCommitResult?,loading: null == loading ? _self.loading : loading // ignore: cast_nullable_to_non_nullable
+as ImportCommitResult?,commitOutcomeUnknown: null == commitOutcomeUnknown ? _self.commitOutcomeUnknown : commitOutcomeUnknown // ignore: cast_nullable_to_non_nullable
+as bool,pendingPreviewId: freezed == pendingPreviewId ? _self.pendingPreviewId : pendingPreviewId // ignore: cast_nullable_to_non_nullable
+as String?,restoring: null == restoring ? _self.restoring : restoring // ignore: cast_nullable_to_non_nullable
+as bool,recoveryBlocked: null == recoveryBlocked ? _self.recoveryBlocked : recoveryBlocked // ignore: cast_nullable_to_non_nullable
+as bool,cleanupRejected: null == cleanupRejected ? _self.cleanupRejected : cleanupRejected // ignore: cast_nullable_to_non_nullable
+as bool,loading: null == loading ? _self.loading : loading // ignore: cast_nullable_to_non_nullable
 as bool,error: freezed == error ? _self.error : error // ignore: cast_nullable_to_non_nullable
 as String?,
   ));
@@ -160,10 +165,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( bool confirmReactivation,  String source,  String accountName,  List<ImportIdentityDecision> identityDecisions,  List<PurchaseCsvDecision> reconciliationDecisions,  String? filePath,  String? fileName,  ImportPreview? preview,  ImportCommitResult? commitResult,  bool loading,  String? error)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( bool confirmReactivation,  String source,  String accountName,  List<ImportIdentityDecision> identityDecisions,  List<PurchaseCsvDecision> reconciliationDecisions,  String? filePath,  String? fileName,  ImportPreview? preview,  ImportCommitResult? commitResult,  bool commitOutcomeUnknown,  String? pendingPreviewId,  bool restoring,  bool recoveryBlocked,  bool cleanupRejected,  bool loading,  String? error)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _ImportState() when $default != null:
-return $default(_that.confirmReactivation,_that.source,_that.accountName,_that.identityDecisions,_that.reconciliationDecisions,_that.filePath,_that.fileName,_that.preview,_that.commitResult,_that.loading,_that.error);case _:
+return $default(_that.confirmReactivation,_that.source,_that.accountName,_that.identityDecisions,_that.reconciliationDecisions,_that.filePath,_that.fileName,_that.preview,_that.commitResult,_that.commitOutcomeUnknown,_that.pendingPreviewId,_that.restoring,_that.recoveryBlocked,_that.cleanupRejected,_that.loading,_that.error);case _:
   return orElse();
 
 }
@@ -181,10 +186,10 @@ return $default(_that.confirmReactivation,_that.source,_that.accountName,_that.i
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( bool confirmReactivation,  String source,  String accountName,  List<ImportIdentityDecision> identityDecisions,  List<PurchaseCsvDecision> reconciliationDecisions,  String? filePath,  String? fileName,  ImportPreview? preview,  ImportCommitResult? commitResult,  bool loading,  String? error)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( bool confirmReactivation,  String source,  String accountName,  List<ImportIdentityDecision> identityDecisions,  List<PurchaseCsvDecision> reconciliationDecisions,  String? filePath,  String? fileName,  ImportPreview? preview,  ImportCommitResult? commitResult,  bool commitOutcomeUnknown,  String? pendingPreviewId,  bool restoring,  bool recoveryBlocked,  bool cleanupRejected,  bool loading,  String? error)  $default,) {final _that = this;
 switch (_that) {
 case _ImportState():
-return $default(_that.confirmReactivation,_that.source,_that.accountName,_that.identityDecisions,_that.reconciliationDecisions,_that.filePath,_that.fileName,_that.preview,_that.commitResult,_that.loading,_that.error);case _:
+return $default(_that.confirmReactivation,_that.source,_that.accountName,_that.identityDecisions,_that.reconciliationDecisions,_that.filePath,_that.fileName,_that.preview,_that.commitResult,_that.commitOutcomeUnknown,_that.pendingPreviewId,_that.restoring,_that.recoveryBlocked,_that.cleanupRejected,_that.loading,_that.error);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -201,10 +206,10 @@ return $default(_that.confirmReactivation,_that.source,_that.accountName,_that.i
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( bool confirmReactivation,  String source,  String accountName,  List<ImportIdentityDecision> identityDecisions,  List<PurchaseCsvDecision> reconciliationDecisions,  String? filePath,  String? fileName,  ImportPreview? preview,  ImportCommitResult? commitResult,  bool loading,  String? error)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( bool confirmReactivation,  String source,  String accountName,  List<ImportIdentityDecision> identityDecisions,  List<PurchaseCsvDecision> reconciliationDecisions,  String? filePath,  String? fileName,  ImportPreview? preview,  ImportCommitResult? commitResult,  bool commitOutcomeUnknown,  String? pendingPreviewId,  bool restoring,  bool recoveryBlocked,  bool cleanupRejected,  bool loading,  String? error)?  $default,) {final _that = this;
 switch (_that) {
 case _ImportState() when $default != null:
-return $default(_that.confirmReactivation,_that.source,_that.accountName,_that.identityDecisions,_that.reconciliationDecisions,_that.filePath,_that.fileName,_that.preview,_that.commitResult,_that.loading,_that.error);case _:
+return $default(_that.confirmReactivation,_that.source,_that.accountName,_that.identityDecisions,_that.reconciliationDecisions,_that.filePath,_that.fileName,_that.preview,_that.commitResult,_that.commitOutcomeUnknown,_that.pendingPreviewId,_that.restoring,_that.recoveryBlocked,_that.cleanupRejected,_that.loading,_that.error);case _:
   return null;
 
 }
@@ -216,7 +221,7 @@ return $default(_that.confirmReactivation,_that.source,_that.accountName,_that.i
 
 
 class _ImportState implements ImportState {
-  const _ImportState({this.confirmReactivation = false, this.source = "manual_csv", this.accountName = "個人", final  List<ImportIdentityDecision> identityDecisions = const <ImportIdentityDecision>[], final  List<PurchaseCsvDecision> reconciliationDecisions = const <PurchaseCsvDecision>[], this.filePath, this.fileName, this.preview, this.commitResult, this.loading = false, this.error}): _identityDecisions = identityDecisions,_reconciliationDecisions = reconciliationDecisions;
+  const _ImportState({this.confirmReactivation = false, this.source = "manual_csv", this.accountName = "個人", final  List<ImportIdentityDecision> identityDecisions = const <ImportIdentityDecision>[], final  List<PurchaseCsvDecision> reconciliationDecisions = const <PurchaseCsvDecision>[], this.filePath, this.fileName, this.preview, this.commitResult, this.commitOutcomeUnknown = false, this.pendingPreviewId, this.restoring = true, this.recoveryBlocked = false, this.cleanupRejected = false, this.loading = false, this.error}): _identityDecisions = identityDecisions,_reconciliationDecisions = reconciliationDecisions;
   
 
 @override@JsonKey() final  bool confirmReactivation;
@@ -240,6 +245,11 @@ class _ImportState implements ImportState {
 @override final  String? fileName;
 @override final  ImportPreview? preview;
 @override final  ImportCommitResult? commitResult;
+@override@JsonKey() final  bool commitOutcomeUnknown;
+@override final  String? pendingPreviewId;
+@override@JsonKey() final  bool restoring;
+@override@JsonKey() final  bool recoveryBlocked;
+@override@JsonKey() final  bool cleanupRejected;
 @override@JsonKey() final  bool loading;
 @override final  String? error;
 
@@ -253,16 +263,16 @@ _$ImportStateCopyWith<_ImportState> get copyWith => __$ImportStateCopyWithImpl<_
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _ImportState&&(identical(other.confirmReactivation, confirmReactivation) || other.confirmReactivation == confirmReactivation)&&(identical(other.source, source) || other.source == source)&&(identical(other.accountName, accountName) || other.accountName == accountName)&&const DeepCollectionEquality().equals(other._identityDecisions, _identityDecisions)&&const DeepCollectionEquality().equals(other._reconciliationDecisions, _reconciliationDecisions)&&(identical(other.filePath, filePath) || other.filePath == filePath)&&(identical(other.fileName, fileName) || other.fileName == fileName)&&(identical(other.preview, preview) || other.preview == preview)&&(identical(other.commitResult, commitResult) || other.commitResult == commitResult)&&(identical(other.loading, loading) || other.loading == loading)&&(identical(other.error, error) || other.error == error));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _ImportState&&(identical(other.confirmReactivation, confirmReactivation) || other.confirmReactivation == confirmReactivation)&&(identical(other.source, source) || other.source == source)&&(identical(other.accountName, accountName) || other.accountName == accountName)&&const DeepCollectionEquality().equals(other._identityDecisions, _identityDecisions)&&const DeepCollectionEquality().equals(other._reconciliationDecisions, _reconciliationDecisions)&&(identical(other.filePath, filePath) || other.filePath == filePath)&&(identical(other.fileName, fileName) || other.fileName == fileName)&&(identical(other.preview, preview) || other.preview == preview)&&(identical(other.commitResult, commitResult) || other.commitResult == commitResult)&&(identical(other.commitOutcomeUnknown, commitOutcomeUnknown) || other.commitOutcomeUnknown == commitOutcomeUnknown)&&(identical(other.pendingPreviewId, pendingPreviewId) || other.pendingPreviewId == pendingPreviewId)&&(identical(other.restoring, restoring) || other.restoring == restoring)&&(identical(other.recoveryBlocked, recoveryBlocked) || other.recoveryBlocked == recoveryBlocked)&&(identical(other.cleanupRejected, cleanupRejected) || other.cleanupRejected == cleanupRejected)&&(identical(other.loading, loading) || other.loading == loading)&&(identical(other.error, error) || other.error == error));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,confirmReactivation,source,accountName,const DeepCollectionEquality().hash(_identityDecisions),const DeepCollectionEquality().hash(_reconciliationDecisions),filePath,fileName,preview,commitResult,loading,error);
+int get hashCode => Object.hash(runtimeType,confirmReactivation,source,accountName,const DeepCollectionEquality().hash(_identityDecisions),const DeepCollectionEquality().hash(_reconciliationDecisions),filePath,fileName,preview,commitResult,commitOutcomeUnknown,pendingPreviewId,restoring,recoveryBlocked,cleanupRejected,loading,error);
 
 @override
 String toString() {
-  return 'ImportState(confirmReactivation: $confirmReactivation, source: $source, accountName: $accountName, identityDecisions: $identityDecisions, reconciliationDecisions: $reconciliationDecisions, filePath: $filePath, fileName: $fileName, preview: $preview, commitResult: $commitResult, loading: $loading, error: $error)';
+  return 'ImportState(confirmReactivation: $confirmReactivation, source: $source, accountName: $accountName, identityDecisions: $identityDecisions, reconciliationDecisions: $reconciliationDecisions, filePath: $filePath, fileName: $fileName, preview: $preview, commitResult: $commitResult, commitOutcomeUnknown: $commitOutcomeUnknown, pendingPreviewId: $pendingPreviewId, restoring: $restoring, recoveryBlocked: $recoveryBlocked, cleanupRejected: $cleanupRejected, loading: $loading, error: $error)';
 }
 
 
@@ -273,7 +283,7 @@ abstract mixin class _$ImportStateCopyWith<$Res> implements $ImportStateCopyWith
   factory _$ImportStateCopyWith(_ImportState value, $Res Function(_ImportState) _then) = __$ImportStateCopyWithImpl;
 @override @useResult
 $Res call({
- bool confirmReactivation, String source, String accountName, List<ImportIdentityDecision> identityDecisions, List<PurchaseCsvDecision> reconciliationDecisions, String? filePath, String? fileName, ImportPreview? preview, ImportCommitResult? commitResult, bool loading, String? error
+ bool confirmReactivation, String source, String accountName, List<ImportIdentityDecision> identityDecisions, List<PurchaseCsvDecision> reconciliationDecisions, String? filePath, String? fileName, ImportPreview? preview, ImportCommitResult? commitResult, bool commitOutcomeUnknown, String? pendingPreviewId, bool restoring, bool recoveryBlocked, bool cleanupRejected, bool loading, String? error
 });
 
 
@@ -290,7 +300,7 @@ class __$ImportStateCopyWithImpl<$Res>
 
 /// Create a copy of ImportState
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? confirmReactivation = null,Object? source = null,Object? accountName = null,Object? identityDecisions = null,Object? reconciliationDecisions = null,Object? filePath = freezed,Object? fileName = freezed,Object? preview = freezed,Object? commitResult = freezed,Object? loading = null,Object? error = freezed,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? confirmReactivation = null,Object? source = null,Object? accountName = null,Object? identityDecisions = null,Object? reconciliationDecisions = null,Object? filePath = freezed,Object? fileName = freezed,Object? preview = freezed,Object? commitResult = freezed,Object? commitOutcomeUnknown = null,Object? pendingPreviewId = freezed,Object? restoring = null,Object? recoveryBlocked = null,Object? cleanupRejected = null,Object? loading = null,Object? error = freezed,}) {
   return _then(_ImportState(
 confirmReactivation: null == confirmReactivation ? _self.confirmReactivation : confirmReactivation // ignore: cast_nullable_to_non_nullable
 as bool,source: null == source ? _self.source : source // ignore: cast_nullable_to_non_nullable
@@ -301,7 +311,12 @@ as List<PurchaseCsvDecision>,filePath: freezed == filePath ? _self.filePath : fi
 as String?,fileName: freezed == fileName ? _self.fileName : fileName // ignore: cast_nullable_to_non_nullable
 as String?,preview: freezed == preview ? _self.preview : preview // ignore: cast_nullable_to_non_nullable
 as ImportPreview?,commitResult: freezed == commitResult ? _self.commitResult : commitResult // ignore: cast_nullable_to_non_nullable
-as ImportCommitResult?,loading: null == loading ? _self.loading : loading // ignore: cast_nullable_to_non_nullable
+as ImportCommitResult?,commitOutcomeUnknown: null == commitOutcomeUnknown ? _self.commitOutcomeUnknown : commitOutcomeUnknown // ignore: cast_nullable_to_non_nullable
+as bool,pendingPreviewId: freezed == pendingPreviewId ? _self.pendingPreviewId : pendingPreviewId // ignore: cast_nullable_to_non_nullable
+as String?,restoring: null == restoring ? _self.restoring : restoring // ignore: cast_nullable_to_non_nullable
+as bool,recoveryBlocked: null == recoveryBlocked ? _self.recoveryBlocked : recoveryBlocked // ignore: cast_nullable_to_non_nullable
+as bool,cleanupRejected: null == cleanupRejected ? _self.cleanupRejected : cleanupRejected // ignore: cast_nullable_to_non_nullable
+as bool,loading: null == loading ? _self.loading : loading // ignore: cast_nullable_to_non_nullable
 as bool,error: freezed == error ? _self.error : error // ignore: cast_nullable_to_non_nullable
 as String?,
   ));

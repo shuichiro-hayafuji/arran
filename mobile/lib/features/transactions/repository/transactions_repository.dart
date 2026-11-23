@@ -27,6 +27,7 @@ abstract interface class TransactionsRepository {
     required bool rememberMerchant,
   });
   Future<ImportPreview> previewImport({
+    int? sessionGeneration,
     bool confirmReactivation = false,
     required String filePath,
     required String fileName,
@@ -36,7 +37,10 @@ abstract interface class TransactionsRepository {
     List<ImportIdentityDecision> identityDecisions = const [],
     List<PurchaseCsvDecision> reconciliationDecisions = const [],
   });
-  Future<ImportCommitResult> commitImport(String previewId);
+  Future<ImportCommitResult> commitImport(
+    String previewId, {
+    required int sessionGeneration,
+  });
 }
 
 class TransactionsRepositoryImpl implements TransactionsRepository {
@@ -70,6 +74,7 @@ class TransactionsRepositoryImpl implements TransactionsRepository {
 
   @override
   Future<ImportPreview> previewImport({
+    int? sessionGeneration,
     bool confirmReactivation = false,
     required String filePath,
     required String fileName,
@@ -92,17 +97,48 @@ class TransactionsRepositoryImpl implements TransactionsRepository {
     final response = await _client.post(
       '/transactions/import/preview',
       data: request.toFormData(),
-      options: Options(contentType: 'multipart/form-data'),
+      options: Options(
+        contentType: 'multipart/form-data',
+        extra: {
+          if (sessionGeneration != null)
+            expectedSessionGenerationKey: sessionGeneration,
+        },
+      ),
     );
     return ImportPreviewDto.fromJson(parseMap(response.data)).toDomain();
   }
 
   @override
-  Future<ImportCommitResult> commitImport(String previewId) async {
+  Future<ImportCommitResult> commitImport(
+    String previewId, {
+    required int sessionGeneration,
+  }) async {
     final response = await _client.post(
       '/transactions/import/commit',
       data: {'preview_id': previewId},
+      options: Options(
+        extra: {expectedSessionGenerationKey: sessionGeneration},
+      ),
     );
-    return ImportCommitResultDto.fromJson(parseMap(response.data)).toDomain();
+    final data = response.data;
+    if (response.statusCode != 200 ||
+        data is! Map ||
+        data['import_id'] is! String ||
+        data['imported_count'] is! int ||
+        data['duplicate_count'] is! int ||
+        data['reactivated_count'] is! int ||
+        data['financial_pending'] is! int ||
+        (data['imported_count'] as int) < 0 ||
+        (data['duplicate_count'] as int) < 0 ||
+        (data['reactivated_count'] as int) < 0 ||
+        (data['financial_pending'] as int) < 0 ||
+        ((data['import_id'] as String).trim().isEmpty &&
+            ((data['imported_count'] as int) > 0 ||
+                (data['duplicate_count'] as int) > 0 ||
+                (data['reactivated_count'] as int) > 0 ||
+                (data['financial_pending'] as int) > 0))) {
+      throw const ApiException('保存結果を確認できませんでした。');
+    }
+    return ImportCommitResultDto.fromJson(parseMap(data)).toDomain();
   }
 }
