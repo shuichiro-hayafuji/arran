@@ -15,6 +15,27 @@ tags:
   - name: reviews
   - name: memories
 paths:
+  /withdrawal-request:
+    get:
+      summary: 認証済み本人の退会申し込みの記録を確認する
+      responses:
+        '200':
+          description: requested が true の場合は申し込みが記録済み。削除完了ではない
+          content:
+            application/json:
+              schema: { type: object, required: [requested], properties: { requested: { type: boolean } } }
+        '401': { description: 認証が必要 }
+        '503': { description: 状態を確認できない }
+    put:
+      summary: 認証済み本人の退会申し込みを記録する。同じ申し込みの再送は安全
+      responses:
+        '200':
+          description: 申し込みを記録済み。削除完了ではない
+          content:
+            application/json:
+              schema: { type: object, required: [requested], properties: { requested: { type: boolean, enum: [true] } } }
+        '401': { description: 認証が必要 }
+        '503': { description: 結果を確認できない }
   /ai-consent:
     get:
       summary: 認証済み利用者に現在の説明と同意状態を返す

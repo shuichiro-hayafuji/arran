@@ -63,6 +63,7 @@ func openReconciliationRepository(t *testing.T) *Repository {
 	return repo
 }
 func verifyReconciliationIntegration(t *testing.T) {
+	verifyWithdrawalRequestDurabilityAndOwnerIsolation(t)
 	verifyAIConsentPostgres(t)
 	verifyAIConsentDatabaseFailure(t)
 	verifyAIConsentOverlappingWithdrawal(t)

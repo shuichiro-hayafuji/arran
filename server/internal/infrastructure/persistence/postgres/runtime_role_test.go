@@ -87,13 +87,21 @@ func TestRuntimeRoleChecksMigrationsWithoutDDL(t *testing.T) {
 	if err := MigrateURL(ctx, migrationRoleURL); err != nil {
 		t.Fatal(err)
 	}
-	exec("GRANT SELECT ON " + schema + ".schema_migrations TO " + runtimeRole)
-	exec("GRANT SELECT ON " + schema + ".service_settings TO " + runtimeRole)
-	exec("GRANT INSERT, SELECT ON " + schema + ".users TO " + runtimeRole)
-	// Match the production grant order: policy administration remains privileged.
-	exec("GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA " + schema + " TO " + runtimeRole)
-	exec("REVOKE INSERT, UPDATE, DELETE ON " + schema + ".schema_migrations, " + schema + ".ai_consent_policy, " + schema + ".ai_consent_policy_versions FROM " + runtimeRole)
-	exec("REVOKE INSERT, DELETE ON " + schema + ".ai_consent_policy_lock FROM " + runtimeRole)
+	// Apply the actual grant script to a version-16 restore, then after migration.
+	grantSQL, err := os.ReadFile("../../../../../infra/operations/grant-runtime.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	grant := strings.ReplaceAll(string(grantSQL), "SCHEMA public", "SCHEMA "+schema)
+	grant = strings.ReplaceAll(grant, "public.", schema+".")
+	grant = strings.ReplaceAll(grant, "arran_runtime", runtimeRole)
+	exec("DROP TABLE " + schema + ".withdrawal_requests")
+	exec("DELETE FROM " + schema + ".schema_migrations WHERE version=17")
+	exec(grant)
+	if err := MigrateURL(ctx, migrationRoleURL); err != nil {
+		t.Fatal(err)
+	}
+	exec(grant)
 	r, err := Open(ctx, runtimeRoleURL, false)
 	if err != nil {
 		t.Fatal(err)
@@ -104,6 +112,12 @@ func TestRuntimeRoleChecksMigrationsWithoutDDL(t *testing.T) {
 	}
 	if _, err := r.db.DB.ExecContext(ctx, "CREATE TABLE denied(id int)"); err == nil {
 		t.Fatal("runtime role can create tables")
+	}
+	if _, err := r.db.DB.ExecContext(ctx, "DELETE FROM withdrawal_requests"); err == nil {
+		t.Fatal("runtime may delete withdrawal requests")
+	}
+	if _, err := r.db.DB.ExecContext(ctx, "UPDATE withdrawal_requests SET requested_at=now()"); err == nil {
+		t.Fatal("runtime may update withdrawal requests")
 	}
 	if _, err := r.db.DB.ExecContext(ctx, "DELETE FROM schema_migrations WHERE version=3"); err == nil {
 		t.Fatal("runtime role can modify migration history")

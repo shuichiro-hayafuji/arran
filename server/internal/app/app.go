@@ -76,7 +76,7 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 	return &App{
 		Server: &http.Server{
 			Addr:              cfg.APIAddr,
-			Handler:           auth.New(repo).Wrap(handler.NewWithConsent(apiApplication, consentService{consentGate})),
+			Handler:           auth.New(repo).Wrap(handler.NewWithServices(apiApplication, consentService{consentGate}, withdrawalRequestService{repo})),
 			ReadHeaderTimeout: 5 * time.Second,
 			ReadTimeout:       30 * time.Second,
 			WriteTimeout:      30 * time.Second,
@@ -146,3 +146,26 @@ func (c consentService) Grant(ctx context.Context, version string) error {
 	return err
 }
 func (c consentService) Withdraw(ctx context.Context) error { return c.gate.Withdraw(ctx) }
+
+// withdrawalRequestService binds all operations to the authenticated session.
+type withdrawalRequestService struct {
+	repository interface {
+		WithdrawalRequested(context.Context, int64) (bool, error)
+		RequestWithdrawal(context.Context, int64) error
+	}
+}
+
+func (s withdrawalRequestService) WithdrawalRequested(ctx context.Context) (bool, error) {
+	userID := identity.UserID(ctx)
+	if userID <= 0 {
+		return false, errors.New("authenticated user required")
+	}
+	return s.repository.WithdrawalRequested(ctx, userID)
+}
+func (s withdrawalRequestService) RequestWithdrawal(ctx context.Context) error {
+	userID := identity.UserID(ctx)
+	if userID <= 0 {
+		return errors.New("authenticated user required")
+	}
+	return s.repository.RequestWithdrawal(ctx, userID)
+}
