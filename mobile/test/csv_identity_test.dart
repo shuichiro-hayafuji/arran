@@ -1,3 +1,4 @@
+import 'package:spendable_today/features/transactions/repository/pending_import_storage.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -18,6 +19,7 @@ class IdentityRepository extends FakeTransactionsRepository {
   List<ImportIdentityDecision> decisions = [];
   @override
   Future<ImportPreview> previewImport({
+    int? sessionGeneration,
     bool confirmReactivation = false,
     required String filePath,
     required String fileName,
@@ -31,6 +33,7 @@ class IdentityRepository extends FakeTransactionsRepository {
     account = accountName;
     decisions = identityDecisions;
     final p = await super.previewImport(
+      sessionGeneration: sessionGeneration,
       filePath: filePath,
       fileName: fileName,
       source: source,
@@ -118,7 +121,10 @@ void main() {
     final r = IdentityRepository();
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [transactionsRepositoryProvider.overrideWithValue(r)],
+        overrides: [
+          pendingImportOwnerResolverProvider.overrideWithValue(() async => 101),
+          transactionsRepositoryProvider.overrideWithValue(r),
+        ],
         child: const MaterialApp(home: ImportScreen()),
       ),
     );
