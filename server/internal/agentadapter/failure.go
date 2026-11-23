@@ -6,7 +6,10 @@ import (
 )
 
 type failureKey struct{}
-type failureCapture struct{ err error }
+type failureCapture struct {
+	err                 error
+	reviewPrimaryFailed bool
+}
 
 func captureFailure(ctx context.Context) (context.Context, *failureCapture) {
 	f := &failureCapture{}
@@ -49,6 +52,11 @@ func (m trackedModel) InferCategory(ctx context.Context, text string, categories
 }
 func (m trackedModel) GenerateReview(ctx context.Context, in agent.ReviewInput) ([]agent.ReviewCandidate, error) {
 	out, err := m.model.GenerateReview(ctx, in)
+	if err != nil {
+		if f, ok := ctx.Value(failureKey{}).(*failureCapture); ok {
+			f.reviewPrimaryFailed = true
+		}
+	}
 	m.save(ctx, err)
 	return out, err
 }

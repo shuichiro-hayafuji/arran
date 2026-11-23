@@ -10,10 +10,13 @@ import (
 	"github.com/shuichirohayafuji/spendable-today/server/internal/domain"
 )
 
-type adapter struct{ agent agent.Agent }
+type adapter struct {
+	agent       agent.Agent
+	localReview bool
+}
 
 func New(primary, fallback agent.Model, source string) *adapter {
-	return &adapter{agent: agent.New(primary, fallback, source)}
+	return NewWithFailureCheck(primary, fallback, source, nil)
 }
 
 // NewWithFailureCheck preserves errors the independent Agent must not turn
@@ -23,7 +26,7 @@ func NewWithFailureCheck(primary, fallback agent.Model, source string, check fun
 	if revision, ok := primary.(revisionModel); ok {
 		wrapped = trackedRevision{trackedModel{primary, check}, revision}
 	}
-	return &adapter{agent: agent.New(wrapped, fallback, source)}
+	return &adapter{agent: agent.New(wrapped, fallback, source), localReview: source == "mock" || source == "quota_fallback"}
 }
 
 // Run はカテゴリを確定してドメインで支出を判定し、その事実を Agent に説明させる。
@@ -68,6 +71,9 @@ func (a *adapter) Review(
 	})
 	if failure.err != nil {
 		return nil, failure.err
+	}
+	if err == nil && (a.localReview || failure.reviewPrimaryFailed) {
+		return nil, domain.ErrReviewLocalFallback
 	}
 	return domainReviewCandidates(items), err
 }

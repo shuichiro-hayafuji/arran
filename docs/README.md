@@ -47,7 +47,7 @@ infra/ Docker / ECS Fargate / RDS PostgreSQL
 - [初版の提供範囲](product/initial-release-scope.md)
 - [チャット主体の初回相談と購入実績確認](product/first-consultation-onboarding.md)
 - [チャット主体の支出相談要件](product/chat-advice-requirements.md)
-- [データの保存と外部AI送信の整理案](product/data-handling-inventory.md)（公開前の確認事項を含む）
+- [データの保存と外部AI送信の整理案](product/data-handling-inventory.md)（送信内容・端末とバックアップの保持・公開前の確認事項を含む）
 
 ## 補助資料
 

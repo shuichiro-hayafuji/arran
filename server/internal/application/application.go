@@ -675,7 +675,8 @@ func (s *Application) CreateMonthlyReview(
 		consultations,
 	)
 	reviewAgent := s.reviewAgent
-	if !s.externalModelAllowed(ctx) {
+	useLocal := !s.externalModelAllowed(ctx)
+	if useLocal {
 		reviewAgent = s.fallbackReview
 	}
 	candidates, err := reviewAgent.Review(ctx, profile, dashboard, sanitizeForLLM(transactions), consultations, sanitizeReviewCandidates(local))
@@ -683,6 +684,8 @@ func (s *Application) CreateMonthlyReview(
 		if errors.Is(err, consultation.ErrConsentRequired) || errors.Is(err, consultation.ErrConsentUnavailable) || errors.Is(err, consultation.ErrAIOutcomeUnknown) {
 			return domain.MonthlyReview{}, err
 		}
+		candidates = local
+	} else if useLocal {
 		candidates = local
 	}
 	if len(candidates) > 5 {
@@ -953,18 +956,11 @@ func sanitizeForLLM(items []domain.Transaction) []domain.Transaction {
 	return result
 }
 
-func sanitizeReviewCandidates(
-	items []domain.ReviewCandidate,
-) []domain.ReviewCandidate {
-	result := make([]domain.ReviewCandidate, len(items))
-	copy(result, items)
-	for index := range result {
-		if slices.Contains(domain.Categories, result[index].Label) ||
-			strings.Contains(result[index].Label, "高後悔") ||
-			result[index].Label == "月前半の支出ペース" {
-			continue
-		}
-		result[index].Label = "同一加盟店の支出パターン"
+// sanitizeReviewCandidates isolates every label before crossing into Agent.
+func sanitizeReviewCandidates(items []domain.ReviewCandidate) []domain.ReviewCandidate {
+	result := append([]domain.ReviewCandidate(nil), items...)
+	for i := range result {
+		result[i].Label = fmt.Sprintf("見直し候補%d", i+1)
 	}
 	return result
 }

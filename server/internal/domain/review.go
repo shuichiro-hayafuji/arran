@@ -1,5 +1,10 @@
 package domain
 
+import "errors"
+
+// ErrReviewLocalFallback requests the application-owned, unsanitized local result.
+var ErrReviewLocalFallback = errors.New("use local review candidates")
+
 type ReviewCandidate struct {
 	Label            string `json:"label"`
 	Judgement        string `json:"judgement"`

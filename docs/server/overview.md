@@ -102,3 +102,5 @@ Applicationがプロフィール、月次集計、直近相談、記憶、関連
 - [サーバー実装時の作法](conventions.md)
 - [ADR-0001: Go serverをModular MonolithとHexagonal Architectureで構成する](../adr/0001-server-modular-monolith-hexagonal.md)
 - [認証設計・運用](../../server/docs/authentication.md)
+
+月次レビューはAgentに番号付きの候補コピーを渡す。mockまたはAgent内部の通常エラーによるfallbackはadapterがApplicationへ通知し、Applicationが元のローカル候補を使う。同意拒否・結果不明はエラーとして維持し、外部応答には元ラベルを推測で付け直さない。

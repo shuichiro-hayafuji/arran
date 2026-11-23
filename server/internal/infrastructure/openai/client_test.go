@@ -11,9 +11,12 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/shuichiro-hayafuji/arran_agent"
+	"github.com/shuichirohayafuji/spendable-today/server/internal/application"
 	"github.com/shuichirohayafuji/spendable-today/server/internal/consultation"
+	"github.com/shuichirohayafuji/spendable-today/server/internal/domain"
 	"github.com/shuichirohayafuji/spendable-today/server/internal/identity"
 )
 
@@ -473,5 +476,65 @@ func TestChatAdviceUsesFreeResponseSchemaAndNoProfileVerdict(t *testing.T) {
 	result, err := client.Advise(context.Background(), consultation.Input{Message: "買い物の相談", Strictness: 5})
 	if err != nil || result.Status != "provisional" || result.PlannedAmount != nil {
 		t.Fatalf("chat response: %#v %v", result, err)
+	}
+}
+
+func TestReviewPayloadNeverUsesLocalLabels(t *testing.T) {
+	names := []string{"酒・飲み会", "秘密（高後悔）", "通常の加盟店"}
+	for _, name := range names {
+		t.Run(name, func(t *testing.T) {
+			transactions := []domain.Transaction{
+				{TransactionDate: "2026-06-01", TransactionType: "expense", NormalizedMerchant: name, Amount: 9000, Category: "食費"},
+				{TransactionDate: "2026-07-01", TransactionType: "expense", NormalizedMerchant: name, Amount: 9000, Category: "食費"},
+				{TransactionDate: "2026-07-02", TransactionType: "expense", NormalizedMerchant: name + "最大額", Amount: 15000, Category: "食費"},
+			}
+			local := application.BuildReviewCandidates("2026-07", time.Date(2026, 7, 31, 0, 0, 0, 0, time.UTC), domain.Profile{ReduceCategories: []string{"食費"}}, domain.Dashboard{}, transactions, nil)
+			hasCategory, hasMerchant, hasLargest := false, false, false
+			input := agent.ReviewInput{}
+			for _, item := range local {
+				if item.Label == "食費" {
+					hasCategory = true
+				}
+				if item.Label == name {
+					hasMerchant = true
+				}
+				if item.Label == name+"最大額" {
+					hasLargest = true
+				}
+				input.LocalCandidates = append(input.LocalCandidates, agent.ReviewCandidate{Label: item.Label, Judgement: item.Judgement, TotalAmount: item.TotalAmount, Count: item.Count, Reason: item.Reason, AnnualizedAmount: item.AnnualizedAmount, Question: item.Question})
+			}
+			if !hasCategory || !hasMerchant || !hasLargest {
+				t.Fatalf("missing category or merchant candidates: %#v", local)
+			}
+			var payload map[string]any
+			c := NewOpenAIClient("test", "model", "medium")
+			c.SetConsentGate(allowConsent{})
+			c.client = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+				var body map[string]any
+				if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+					t.Fatal(err)
+				}
+				if err := json.Unmarshal([]byte(body["input"].(string)), &payload); err != nil {
+					t.Fatal(err)
+				}
+				return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"status":"completed","output":[{"content":[{"type":"output_text","text":"{\"candidates\":[]}"}]}]}`))}, nil
+			})}
+			if _, err := c.GenerateReview(context.Background(), input); err != nil {
+				t.Fatal(err)
+			}
+			candidates := payload["local_candidates"].([]any)
+			if len(candidates) != len(local) {
+				t.Fatalf("candidates: %#v", candidates)
+			}
+			for i, candidate := range candidates {
+				got := candidate.(map[string]any)["label"]
+				if got != fmt.Sprintf("見直し候補%d", i+1) {
+					t.Fatalf("unsafe label: %v", got)
+				}
+			}
+			if input.LocalCandidates[0].Label != local[0].Label {
+				t.Fatal("mutated local input")
+			}
+		})
 	}
 }
