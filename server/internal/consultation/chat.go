@@ -9,6 +9,9 @@ import (
 	"time"
 )
 
+var ErrConsentRequired = errors.New("external AI consent required")
+var ErrConsentUnavailable = errors.New("external AI consent unavailable")
+var ErrAIOutcomeUnknown = errors.New("external AI send outcome unknown")
 var ErrConflict = errors.New("conversation changed; retry the request")
 var ErrNotFound = errors.New("conversation not found")
 
@@ -255,6 +258,9 @@ func (s Service) Send(ctx context.Context, id int64, message string) (Thread, er
 				break
 			}
 			reply, agentErr = s.Agent.Advise(modelCtx, input)
+			if errors.Is(agentErr, ErrConsentRequired) || errors.Is(agentErr, ErrConsentUnavailable) || errors.Is(agentErr, ErrAIOutcomeUnknown) {
+				break
+			}
 			if modelCtx.Err() != nil {
 				agentErr = modelCtx.Err()
 			}
@@ -287,6 +293,15 @@ func (s Service) Send(ctx context.Context, id int64, message string) (Thread, er
 	if agentErr != nil {
 		reply = Reply{Status: "unavailable", Answer: "今は助言を作成できません。相談内容は保存しました。同じ相談で再試行できます。"}
 		thread.Source = "unavailable"
+		if errors.Is(agentErr, ErrConsentRequired) {
+			reply.Answer = "外部AIへの送信には設定画面で説明の確認と同意が必要です。相談内容は保存しました。"
+		}
+		if errors.Is(agentErr, ErrConsentUnavailable) {
+			reply.Answer = "外部AIへの送信許可を確認できません。相談内容は保存しました。"
+		}
+		if errors.Is(agentErr, ErrAIOutcomeUnknown) {
+			reply.Answer = "外部AIへの送信の有無や終了状況を確認できません。相談内容は保存しました。送信された可能性があります。"
+		}
 		if s.UnavailableReason != "" {
 			reply.Answer = s.UnavailableReason
 			thread.Source = "quota_fallback"

@@ -11,6 +11,7 @@ import (
 
 	"github.com/shuichiro-hayafuji/arran_agent"
 	"github.com/shuichirohayafuji/spendable-today/server/internal/agentadapter"
+	"github.com/shuichirohayafuji/spendable-today/server/internal/consultation"
 	"github.com/shuichirohayafuji/spendable-today/server/internal/csvimport"
 	"github.com/shuichirohayafuji/spendable-today/server/internal/domain"
 	"github.com/shuichirohayafuji/spendable-today/server/internal/identity"
@@ -83,6 +84,33 @@ func TestConsultationResultCreatesReusableMemory(t *testing.T) {
 	if len(memories) != 1 ||
 		!strings.Contains(memories[0].Content, "酒・飲み会") {
 		t.Fatalf("memories = %#v", memories)
+	}
+}
+
+type consentBlockedMemory struct{ err error }
+
+func (m consentBlockedMemory) ExtractMemory(context.Context, domain.Consultation) ([]domain.MemoryItem, error) {
+	return nil, m.err
+}
+
+func TestResultSaveReportsBlockedMemoryWithoutLosingResult(t *testing.T) {
+	ctx := context.Background()
+	service, repo := testService(t)
+	if _, err := service.PutProfile(ctx, testProfile()); err != nil {
+		t.Fatal(err)
+	}
+	created, err := service.StartConsultation(ctx, "相談", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service.memoryAgent = consentBlockedMemory{err: consultation.ErrConsentRequired}
+	updated, err := service.UpdateConsultationResult(ctx, created.ID, domain.ConsultationResultUpdate{Status: "skipped"})
+	if err != nil || updated.MemoryExtractionStatus != "consent_required" || updated.Status != "skipped" {
+		t.Fatalf("result %+v %v", updated, err)
+	}
+	stored, err := repo.GetConsultation(ctx, created.ID)
+	if err != nil || stored.Status != "skipped" {
+		t.Fatalf("saved %+v %v", stored, err)
 	}
 }
 

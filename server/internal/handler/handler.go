@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -18,14 +19,33 @@ import (
 const maxBodySize = 20 << 20
 
 type handler struct {
-	application *application.Application
+	application       *application.Application
+	consent           ConsentService
+	withdrawalTimeout time.Duration
+}
+
+type ConsentService interface {
+	Status(context.Context) (any, error)
+	Grant(context.Context, string) error
+	Withdraw(context.Context) error
 }
 
 func New(apiApplication *application.Application) http.Handler {
-	handler := &handler{application: apiApplication}
+	return newHandler(apiApplication, nil)
+}
+
+func NewWithConsent(apiApplication *application.Application, gate ConsentService) http.Handler {
+	return newHandler(apiApplication, gate)
+}
+
+func newHandler(apiApplication *application.Application, gate ConsentService) http.Handler {
+	handler := &handler{application: apiApplication, consent: gate, withdrawalTimeout: 20 * time.Second}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", handler.health)
 	mux.HandleFunc("GET /healthz", handler.health)
+	mux.HandleFunc("GET /ai-consent", handler.getAIConsent)
+	mux.HandleFunc("PUT /ai-consent", handler.grantAIConsent)
+	mux.HandleFunc("DELETE /ai-consent", handler.withdrawAIConsent)
 	mux.HandleFunc("GET /profile", handler.getProfile)
 	mux.HandleFunc("PUT /profile", handler.putProfile)
 	mux.HandleFunc("POST /transactions/import/preview", handler.previewImport)
@@ -427,6 +447,12 @@ func ensureEOF(decoder *json.Decoder) error {
 
 func writeServiceError(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, consultation.ErrConsentRequired):
+		writeError(w, http.StatusForbidden, "consent_required", "外部AIへの送信には説明の確認と同意が必要です。")
+	case errors.Is(err, consultation.ErrConsentUnavailable):
+		writeError(w, http.StatusServiceUnavailable, "consent_unavailable", "外部AIへの送信許可を確認できません。")
+	case errors.Is(err, consultation.ErrAIOutcomeUnknown):
+		writeError(w, http.StatusServiceUnavailable, "ai_outcome_unknown", "外部AIへの送信の有無や終了状況を確認できません。送信された可能性があります。")
 	case errors.Is(err, application.ErrRequestsStopping):
 		writeError(w, http.StatusServiceUnavailable, "service_stopping", "処理を終了しています。保存結果は再起動後に同じ送信IDで確認してください。")
 	case errors.Is(err, consultation.ErrRequestPayload):

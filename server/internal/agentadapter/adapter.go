@@ -16,6 +16,16 @@ func New(primary, fallback agent.Model, source string) *adapter {
 	return &adapter{agent: agent.New(primary, fallback, source)}
 }
 
+// NewWithFailureCheck preserves errors the independent Agent must not turn
+// into a fallback answer, while retaining its normal fallback for other errors.
+func NewWithFailureCheck(primary, fallback agent.Model, source string, check func(error) bool) *adapter {
+	var wrapped agent.Model = trackedModel{primary, check}
+	if revision, ok := primary.(revisionModel); ok {
+		wrapped = trackedRevision{trackedModel{primary, check}, revision}
+	}
+	return &adapter{agent: agent.New(wrapped, fallback, source)}
+}
+
 // Run はカテゴリを確定してドメインで支出を判定し、その事実を Agent に説明させる。
 func (a *adapter) Run(
 	ctx context.Context,
@@ -23,6 +33,7 @@ func (a *adapter) Run(
 	message string,
 	plannedAmount *int64,
 ) (domain.AdviceDraft, string, error) {
+	ctx, failure := captureFailure(ctx)
 	category, err := a.agent.InferCategory(ctx, message, domain.Categories)
 	if err != nil || !slices.Contains(domain.Categories, category) {
 		category = "その他"
@@ -32,6 +43,9 @@ func (a *adapter) Run(
 		Message: message, PlannedAmount: plannedAmount, Category: category,
 	})
 	result, err := a.agent.Consult(ctx, consultationInput(input, message, plannedAmount))
+	if failure.err != nil {
+		return domain.AdviceDraft{}, "", failure.err
+	}
 	if err != nil {
 		return domain.AdviceDraft{}, "", err
 	}
@@ -46,19 +60,27 @@ func (a *adapter) Review(
 	consultations []domain.Consultation,
 	local []domain.ReviewCandidate,
 ) ([]domain.ReviewCandidate, error) {
+	ctx, failure := captureFailure(ctx)
 	items, err := a.agent.Review(ctx, agent.ReviewInput{
 		Profile: profileValue(profile), Dashboard: dashboardValue(dashboard),
 		Transactions: transactionValues(transactions), Consultations: consultationSummaries(consultations),
 		LocalCandidates: reviewCandidates(local),
 	})
+	if failure.err != nil {
+		return nil, failure.err
+	}
 	return domainReviewCandidates(items), err
 }
 
 func (a *adapter) ExtractMemory(ctx context.Context, item domain.Consultation) ([]domain.MemoryItem, error) {
+	ctx, failure := captureFailure(ctx)
 	items, err := a.agent.ExtractMemory(ctx, agent.MemoryInput{
 		Category: item.InferredCategory, UserDecisionReason: item.UserDecisionReason,
 		SatisfactionScore: item.SatisfactionScore, RegretScore: item.RegretScore,
 	})
+	if failure.err != nil {
+		return nil, failure.err
+	}
 	return domainMemories(items), err
 }
 

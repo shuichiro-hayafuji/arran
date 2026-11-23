@@ -15,6 +15,47 @@ tags:
   - name: reviews
   - name: memories
 paths:
+  /ai-consent:
+    get:
+      summary: 認証済み利用者に現在の説明と同意状態を返す
+      responses:
+        '200':
+          description: 同意対象の説明、版、状態
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [version, description, granted, withdrawal_pending]
+                properties:
+                  version: { type: string }
+                  description: { type: string }
+                  granted: { type: boolean }
+                  withdrawal_pending: { type: boolean }
+        '401': { description: 認証が必要 }
+        '503': { description: 説明が未設定または確認不能 }
+    put:
+      summary: 表示した版に同意する
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [version]
+              properties:
+                version: { type: string }
+      responses:
+        '200': { description: 同意を保存 }
+        '401': { description: 認証が必要 }
+        '409': { description: 版が古い、または説明が未設定 }
+        '503': { description: 保存結果を確認できない }
+    delete:
+      summary: 外部AI送信の同意を撤回する
+      description: 処理中の送信が終了するまで完了を返さない。結果不明の場合は撤回を保留する。
+      responses:
+        '200': { description: 撤回完了 }
+        '401': { description: 認証が必要 }
+        '503': { description: 撤回保留または状態確認不能 }
   /consultation-requests/{request_id}:
     parameters:
       - in: path
@@ -706,6 +747,7 @@ components:
     Consultation:
       type: object
       properties:
+        memory_extraction_status: { type: string, enum: [consent_required, consent_unavailable, ai_outcome_unknown], description: 結果保存後の記憶抽出が同意または送信後の状態不明で完了しなかった場合のみ返す。結果の保存は成功済み。 }
         id: { type: integer, format: int64 }
         created_at: { type: string, format: date-time }
         user_message: { type: string }

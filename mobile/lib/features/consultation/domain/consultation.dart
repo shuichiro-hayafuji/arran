@@ -15,6 +15,7 @@ class ChatMessage {
 
 class Consultation {
   const Consultation({
+    this.memoryExtractionStatus = '',
     this.messages = const [],
     this.purchases = const [],
     required this.id,
@@ -39,6 +40,7 @@ class Consultation {
   });
 
   final List<ChatMessage> messages;
+  final String memoryExtractionStatus;
   final List<ChatPurchase> purchases;
   final int id;
   final String createdAt;

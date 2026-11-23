@@ -1,6 +1,6 @@
 # ER図
 
-PostgreSQLの`001_init.sql`から`015_import_previews.sql`までを適用した後の物理スキーマです。認証・運用設定・家計データ・相談データに分けて示します。実DBを読み取った図ではなく、リポジトリ内のDDLに基づきます。
+PostgreSQLの`001_init.sql`から`016_ai_consent.sql`までを適用した後の物理スキーマです。認証・運用設定・家計データ・相談データに分けて示します。実DBを読み取った図ではなく、リポジトリ内のDDLに基づきます。
 
 正本: [PostgreSQL migration](../server/internal/infrastructure/persistence/postgres/)
 
@@ -13,6 +13,8 @@ PostgreSQLの`001_init.sql`から`015_import_previews.sql`までを適用した�
 ```mermaid
 erDiagram
     users ||..o{ auth_sessions : "セッションを持つ"
+    users ||--o| ai_user_consents : "同意を持つ"
+    users ||--o{ ai_consent_inflight : "未完了送信を持つ"
     users ||--o| user_consultation_limits : "個別上限を持つ"
     users ||--o{ monthly_consultation_usage : "月次相談数を持つ"
     users ||--o{ admin_notifications : "管理者通知を発生させる"
@@ -24,6 +26,30 @@ erDiagram
         text password_hash "PBKDF2ハッシュ"
         boolean is_active "既定値 true"
         timestamptz created_at "既定値 CURRENT_TIMESTAMP"
+    }
+    ai_consent_policy {
+        boolean singleton PK "trueのみ"
+        text version "NULL可・現行説明版"
+        text description "NULL可・表示する説明"
+    }
+    ai_consent_policy_versions {
+        text version PK "本文と一対一の識別子"
+        text description "登録済み本文・変更不可"
+    }
+    ai_consent_policy_lock {
+        boolean singleton PK "版変更と送信許可の排他制御"
+    }
+    ai_user_consents {
+        bigint user_id PK, FK "users.id"
+        text granted_version "NULL可"
+        boolean withdrawal_pending "撤回完了待ち"
+        timestamptz updated_at
+    }
+    ai_consent_inflight {
+        text id PK "ランダムID"
+        bigint user_id FK "users.id"
+        text version "送信許可時の説明版"
+        timestamptz started_at
     }
     auth_sessions {
         text token_hash PK "BearerトークンのSHA-256"
