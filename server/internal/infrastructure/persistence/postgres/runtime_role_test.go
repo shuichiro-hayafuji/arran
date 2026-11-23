@@ -102,6 +102,48 @@ func TestRuntimeRoleChecksMigrationsWithoutDDL(t *testing.T) {
 		t.Fatal(err)
 	}
 	exec(grant)
+	// A failed grant must roll back the earlier all-table GRANT; otherwise a
+	// failed deployment could silently leave broad withdrawal INSERT access.
+	conn, err := admin.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	end := strings.Index(grant, "GRANT USAGE, SELECT ON ALL SEQUENCES")
+	if end < 0 {
+		conn.Close()
+		t.Fatal("grant script no longer has expected failure point")
+	}
+	// Execute one statement at a time like psql. A single multi-statement
+	// Exec can create an implicit transaction and mask a missing BEGIN.
+	for _, statement := range strings.Split(grant[:end], ";") {
+		if strings.TrimSpace(statement) == "" {
+			continue
+		}
+		if _, err := conn.ExecContext(ctx, statement); err != nil {
+			conn.Close()
+			t.Fatalf("grant prefix failed: %v", err)
+		}
+	}
+	var grantedInside bool
+	if err := conn.QueryRowContext(ctx, "SELECT has_table_privilege($1,$2,'INSERT')", runtimeRole, schema+".withdrawal_requests").Scan(&grantedInside); err != nil || !grantedInside {
+		conn.Close()
+		t.Fatalf("broad grant was not exercised: %v %v", grantedInside, err)
+	}
+	if _, err := conn.ExecContext(ctx, "SELECT 1/0"); err == nil {
+		conn.Close()
+		t.Fatal("injected grant failure succeeded")
+	}
+	if _, err := conn.ExecContext(ctx, "ROLLBACK"); err != nil {
+		conn.Close()
+		t.Fatal(err)
+	}
+	if err := conn.Close(); err != nil {
+		t.Fatal(err)
+	}
+	var broadInsert bool
+	if err := admin.QueryRowContext(ctx, "SELECT has_table_privilege($1,$2,'INSERT')", runtimeRole, schema+".withdrawal_requests").Scan(&broadInsert); err != nil || broadInsert {
+		t.Fatalf("failed grant left table INSERT: %v %v", broadInsert, err)
+	}
 	r, err := Open(ctx, runtimeRoleURL, false)
 	if err != nil {
 		t.Fatal(err)
@@ -109,6 +151,18 @@ func TestRuntimeRoleChecksMigrationsWithoutDDL(t *testing.T) {
 	defer r.Close()
 	if _, err := r.db.DB.ExecContext(ctx, "INSERT INTO users(id,username,password_hash) VALUES(703,'role-check','synthetic')"); err != nil {
 		t.Fatal(err)
+	}
+	if err := r.RequestWithdrawal(ctx, 703); err != nil {
+		t.Fatalf("runtime cannot record normal request: %v", err)
+	}
+	if err := r.RequestWithdrawal(ctx, 703); err != nil {
+		t.Fatalf("runtime cannot retry request: %v", err)
+	}
+	if _, err := r.db.DB.ExecContext(ctx, "INSERT INTO withdrawal_requests(user_id,requested_at) VALUES(703,now()) ON CONFLICT DO NOTHING"); err == nil {
+		t.Fatal("runtime may supply requested_at")
+	}
+	if _, err := r.db.DB.ExecContext(ctx, "INSERT INTO withdrawal_requests(user_id,reviewed_at) VALUES(703,now()) ON CONFLICT DO NOTHING"); err == nil {
+		t.Fatal("runtime may mark request reviewed during insertion")
 	}
 	if _, err := r.db.DB.ExecContext(ctx, "CREATE TABLE denied(id int)"); err == nil {
 		t.Fatal("runtime role can create tables")

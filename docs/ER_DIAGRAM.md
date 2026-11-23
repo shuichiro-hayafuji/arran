@@ -497,3 +497,17 @@ erDiagram
 ```
 
 所有者とexpires_atに索引を持つ。取引・集計への参照は確定まで持たず、成功した通常取込は同じtxでpreviewを削除し、csv_import_batchesのcommit_key/resultから再送結果を返す。0行成功はpayloadを空にしてresultだけを保持する。期限切れの未確定payloadは同所有者の次回preview保存時に削除する。SQLite009は既存方式に合わせusers FKを持たない。
+
+## 退会申し込み（017）
+
+```mermaid
+erDiagram
+    users ||--o| withdrawal_requests : "本人の申し込み"
+    withdrawal_requests {
+        BIGINT user_id PK,FK
+        TIMESTAMPTZ requested_at
+        TIMESTAMPTZ reviewed_at "NULLは運営確認前"
+    }
+```
+
+`reviewed_at` は運営の確認時刻であり、削除や本人への通知の完了を意味しない。バックアップ復元では申し込みと確認時刻が巻き戻り得る。

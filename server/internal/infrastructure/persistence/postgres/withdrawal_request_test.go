@@ -46,4 +46,22 @@ func verifyWithdrawalRequestDurabilityAndOwnerIsolation(t *testing.T) {
 	if err := r.RequestWithdrawal(ctx, 0); err == nil {
 		t.Fatal("missing owner accepted")
 	}
+	// A privileged operator can record the first review without treating it as
+	// deletion. Retrying the review must preserve its original timestamp and
+	// never mark another owner's request as reviewed.
+	if err := r.RequestWithdrawal(ctx, 702); err != nil {
+		t.Fatal(err)
+	}
+	var first, retried string
+	q := `UPDATE withdrawal_requests SET reviewed_at=COALESCE(reviewed_at,CURRENT_TIMESTAMP) WHERE user_id=$1 RETURNING reviewed_at::text`
+	if err := r.db.DB.QueryRowContext(ctx, q, 701).Scan(&first); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.db.DB.QueryRowContext(ctx, q, 701).Scan(&retried); err != nil || first != retried {
+		t.Fatalf("review retry changed timestamp: %q %q %v", first, retried, err)
+	}
+	var otherReviewed bool
+	if err := r.db.DB.QueryRowContext(ctx, `SELECT reviewed_at IS NOT NULL FROM withdrawal_requests WHERE user_id=702`).Scan(&otherReviewed); err != nil || otherReviewed {
+		t.Fatalf("other owner marked reviewed: %v %v", otherReviewed, err)
+	}
 }

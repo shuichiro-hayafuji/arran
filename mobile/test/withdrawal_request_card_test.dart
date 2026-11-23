@@ -42,6 +42,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    expect(find.textContaining('運営者への自動通知はなく'), findsOneWidget);
     await tester.tap(find.text('退会を申し込む'));
     await tester.pumpAndSettle();
     expect(repository.requested, false);
@@ -49,7 +50,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(repository.requested, true);
     expect(repository.sentGeneration, isNotNull);
-    expect(find.text('申し込みを記録しました。運営者による確認・削除は未完了です。'), findsOneWidget);
+    expect(find.text('申し込みを記録しました。退会・データ削除の完了は確認できません。'), findsOneWidget);
     expect(find.text('申し込み結果を確認できません。状態を再確認してください。'), findsNothing);
   });
   testWidgets('confirmed response and failed status do not contradict', (
@@ -77,6 +78,6 @@ void main() {
       find.text('申し込みの応答を受信しましたが、現在の状態を確認できません。再読み込みしてください。'),
       findsOneWidget,
     );
-    expect(find.text('申し込みを記録しました。運営者による確認・削除は未完了です。'), findsNothing);
+    expect(find.text('申し込みを記録しました。退会・データ削除の完了は確認できません。'), findsNothing);
   });
 }

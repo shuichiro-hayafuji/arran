@@ -69,7 +69,7 @@ class _WithdrawalRequestCardState extends ConsumerState<WithdrawalRequestCard> {
             Text('退会', style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 8),
             const Text(
-              '退会を申し込むと、運営者が対応します。申し込み時点では退会・データ削除は完了せず、削除時期も未定です。お問い合わせ: spendablepartner@gmail.com',
+              '退会の申し込みを記録します。運営者への自動通知はなく、退会・データ削除の手続きと削除時期は未定です。お問い合わせ: spendablepartner@gmail.com',
             ),
             if (error != null && state.value != true) Text(error!),
             state.when(
@@ -91,7 +91,7 @@ class _WithdrawalRequestCardState extends ConsumerState<WithdrawalRequestCard> {
               data: (requested) => !requested && accepted
                   ? const Text('申し込みの応答を受信しましたが、現在の状態と一致しません。お問い合わせください。')
                   : requested
-                  ? const Text('申し込みを記録しました。運営者による確認・削除は未完了です。')
+                  ? const Text('申し込みを記録しました。退会・データ削除の完了は確認できません。')
                   : FilledButton(
                       onPressed: busy ? null : submit,
                       child: const Text('退会を申し込む'),
