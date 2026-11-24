@@ -6,8 +6,14 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"os"
+	"strings"
 	"testing"
+	"time"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 func TestWithdrawalDeleteRows(t *testing.T) {
@@ -55,6 +61,41 @@ func verifyWithdrawalDeleteRows(t *testing.T) {
 		}
 		return nil
 	}
+	// The legitimate v17 trigger on users is an exact, enabled BEFORE
+	// INSERT/UPDATE OF is_active trigger. A disabled trigger or a replacement
+	// function with different privileges must not pass the schema contract.
+	if _, err := r.db.Exec(`ALTER TABLE users DISABLE TRIGGER users_enforce_free_user_limit`); err != nil {
+		t.Fatal(err)
+	}
+	if err := run(identity, false); !errors.Is(err, errWithdrawalUnsafe) {
+		t.Fatalf("disabled users trigger accepted: %v", err)
+	}
+	if _, err := r.db.Exec(`ALTER TABLE users ENABLE TRIGGER users_enforce_free_user_limit; ALTER FUNCTION enforce_free_user_limit() SECURITY DEFINER`); err != nil {
+		t.Fatal(err)
+	}
+	if err := run(identity, false); !errors.Is(err, errWithdrawalUnsafe) {
+		t.Fatalf("altered users trigger function accepted: %v", err)
+	}
+	if _, err := r.db.Exec(`ALTER FUNCTION enforce_free_user_limit() SECURITY INVOKER`); err != nil {
+		t.Fatal(err)
+	}
+	// RLS can hide a user from a restore snapshot even where table names and
+	// constraints match. Reject the flags regardless of the test role's bypass.
+	if _, err := r.db.Exec(`ALTER TABLE users ENABLE ROW LEVEL SECURITY`); err != nil {
+		t.Fatal(err)
+	}
+	if err := run(identity, false); !errors.Is(err, errWithdrawalUnsafe) {
+		t.Fatalf("row security accepted: %v", err)
+	}
+	if _, err := r.db.Exec(`ALTER TABLE users DISABLE ROW LEVEL SECURITY; ALTER TABLE users FORCE ROW LEVEL SECURITY`); err != nil {
+		t.Fatal(err)
+	}
+	if err := run(identity, false); !errors.Is(err, errWithdrawalUnsafe) {
+		t.Fatalf("forced row security flag accepted: %v", err)
+	}
+	if _, err := r.db.Exec(`ALTER TABLE users NO FORCE ROW LEVEL SECURITY`); err != nil {
+		t.Fatal(err)
+	}
 	// A table added outside the known schema must not silently escape deletion.
 	if _, err := r.db.Exec(`CREATE TABLE unexpected_owner_data(user_id BIGINT)`); err != nil {
 		t.Fatal(err)
@@ -63,6 +104,42 @@ func verifyWithdrawalDeleteRows(t *testing.T) {
 		t.Fatalf("unknown owner table: %v", err)
 	}
 	if _, err := r.db.Exec(`DROP TABLE unexpected_owner_data`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.db.Exec(`CREATE TABLE unexpected_named_owner(owner_id BIGINT)`); err != nil {
+		t.Fatal(err)
+	}
+	if err := run(identity, false); !errors.Is(err, errWithdrawalUnsafe) {
+		t.Fatalf("unknown non-user_id owner table: %v", err)
+	}
+	if _, err := r.db.Exec(`DROP TABLE unexpected_named_owner`); err != nil {
+		t.Fatal(err)
+	}
+	// DELETE against a regular parent includes inherited children, even when
+	// a child lives in a different schema and has no FK to a known table.
+	inheritSchema := fmt.Sprintf("withdrawal_inherit_%d", time.Now().UnixNano())
+	quotedInheritSchema := pgx.Identifier{inheritSchema}.Sanitize()
+	if _, err := r.db.Exec(`CREATE SCHEMA ` + quotedInheritSchema + `; CREATE TABLE ` + quotedInheritSchema + `.child () INHERITS (memories)`); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if _, err := r.db.Exec(`DROP SCHEMA IF EXISTS ` + quotedInheritSchema + ` CASCADE`); err != nil {
+			t.Errorf("cleanup inherited schema: %v", err)
+		}
+	}()
+	if err := run(identity, false); !errors.Is(err, errWithdrawalUnsafe) {
+		t.Fatalf("cross-schema inherited child accepted: %v", err)
+	}
+	if _, err := r.db.Exec(`DROP SCHEMA ` + quotedInheritSchema + ` CASCADE`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.db.Exec(`CREATE RULE withdrawal_test_rule AS ON DELETE TO memories DO INSTEAD NOTHING`); err != nil {
+		t.Fatal(err)
+	}
+	if err := run(identity, false); !errors.Is(err, errWithdrawalUnsafe) {
+		t.Fatalf("user-defined delete rule accepted: %v", err)
+	}
+	if _, err := r.db.Exec(`DROP RULE withdrawal_test_rule ON memories`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := r.db.Exec(`CREATE TABLE unexpected_user_fk(owner_ref BIGINT REFERENCES users(id) ON DELETE CASCADE)`); err != nil {
@@ -182,8 +259,8 @@ func verifyWithdrawalDeleteRows(t *testing.T) {
 	if _, err := r.db.Exec(`DELETE FROM consultation_messages WHERE consultation_id=$1 AND user_id IS NULL`, consultationID); err != nil {
 		t.Fatal(err)
 	}
-	// Delete earlier child rows, then inject an error at a later table. The
-	// caller's rollback must restore every child and the identity.
+	// A user-defined trigger can alter other rows during deletion. Refuse the
+	// entire transaction before any delete, retaining evidence and identities.
 	var transactionID int64
 	if err := r.db.QueryRow(`INSERT INTO transactions(user_id,transaction_date,description,normalized_merchant,amount,transaction_type,category,source,source_account_name,fingerprint,imported_at,raw_data_json) VALUES(701,'2026-11-01','','',1,'expense','','','','fixture','','{}') RETURNING id`).Scan(&transactionID); err != nil {
 		t.Fatal(err)
@@ -200,14 +277,175 @@ func verifyWithdrawalDeleteRows(t *testing.T) {
 	if _, err := r.db.Exec(`CREATE FUNCTION withdrawal_test_fail() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected failure'; END $$; CREATE TRIGGER withdrawal_test_fail BEFORE DELETE ON transactions FOR EACH STATEMENT EXECUTE FUNCTION withdrawal_test_fail()`); err != nil {
 		t.Fatal(err)
 	}
-	if err := run(identity, false); err == nil {
-		t.Fatal("injected failure accepted")
+	if err := run(identity, false); !errors.Is(err, errWithdrawalUnsafe) {
+		t.Fatalf("user-defined delete trigger accepted: %v", err)
 	}
 	var evidenceCount int
 	if err := r.db.QueryRow(`SELECT count(*) FROM csv_import_evidence WHERE user_id=701`).Scan(&evidenceCount); err != nil || evidenceCount != 1 {
 		t.Fatalf("rollback lost CSV evidence: %d %v", evidenceCount, err)
 	}
 	if _, err := r.db.Exec(`DROP TRIGGER withdrawal_test_fail ON transactions; DROP FUNCTION withdrawal_test_fail()`); err != nil {
+		t.Fatal(err)
+	}
+	// PostgreSQL permissions can force failure at a later DELETE after the
+	// schema guard passes. Unlike an injected trigger this is a genuine
+	// mid-deletion SQL failure and exercises transaction rollback.
+	t.Run("permission failure rolls back prior child deletes", func(t *testing.T) {
+		role := fmt.Sprintf("arran_withdrawal_%d", time.Now().UnixNano())
+		quotedRole := pgx.Identifier{role}.Sanitize()
+		if _, err := r.db.Exec(`CREATE ROLE ` + quotedRole + ` NOLOGIN`); err != nil {
+			var pgErr *pgconn.PgError
+			if errors.As(err, &pgErr) && pgErr.Code == "42501" {
+				t.Skip("isolated test DB user requires CREATEROLE for permission-failure rollback")
+			}
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			if _, err := r.db.Exec(`DROP OWNED BY ` + quotedRole + `; DROP ROLE ` + quotedRole); err != nil {
+				t.Errorf("cleanup test role: %v", err)
+			}
+		})
+		var schema string
+		if err := r.db.QueryRow(`SELECT current_schema()`).Scan(&schema); err != nil {
+			t.Fatal(err)
+		}
+		quotedSchema := pgx.Identifier{schema}.Sanitize()
+		if _, err := r.db.Exec(`GRANT USAGE ON SCHEMA ` + quotedSchema + ` TO ` + quotedRole + `; GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA ` + quotedSchema + ` TO ` + quotedRole + `; REVOKE DELETE ON transactions FROM ` + quotedRole); err != nil {
+			t.Fatal(err)
+		}
+		tx, err := r.db.DB.BeginTx(ctx, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tx.ExecContext(ctx, `SET LOCAL ROLE `+quotedRole); err != nil {
+			_ = tx.Rollback()
+			t.Fatal(err)
+		}
+		err = deleteWithdrawalRows(ctx, tx, identity)
+		_ = tx.Rollback()
+		var pgErr *pgconn.PgError
+		if !errors.As(err, &pgErr) || pgErr.Code != "42501" || !strings.Contains(err.Error(), "delete transactions") {
+			t.Fatalf("expected late transactions permission failure, got: %v", err)
+		}
+		for _, query := range []string{
+			`SELECT count(*) FROM csv_import_evidence WHERE user_id=701`,
+			`SELECT count(*) FROM withdrawal_requests WHERE user_id=701`,
+			`SELECT count(*) FROM auth_sessions WHERE user_id=702 AND token_hash='other-session'`,
+		} {
+			var count int
+			if err := r.db.QueryRow(query).Scan(&count); err != nil || count != 1 {
+				t.Fatalf("rollback lost data for %q: %d %v", query, count, err)
+			}
+		}
+	})
+	// A backup may predate the original application. A completed entry from
+	// the independently authenticated ledger identifies the exact user and
+	// permits reconstructing the request within the deletion transaction.
+	if _, err := r.db.Exec(`DELETE FROM withdrawal_requests WHERE user_id=701`); err != nil {
+		t.Fatal(err)
+	}
+	prepared := withdrawalLedgerEntry{sequence: 1, state: "prepared", identity: identity}
+	completed := withdrawalLedgerEntry{sequence: 2, previous: ledgerEntryDigest(prepared), state: "completed", identity: identity}
+	head := withdrawalLedgerCheckpoint{sequence: 2, digest: ledgerEntryDigest(completed)}
+	plan, err := planWithdrawalReplay([]withdrawalLedgerEntry{prepared, completed}, &head, []withdrawalRestoreUser{{userID: identity.userID, username: identity.username, createdAt: identity.createdAt}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	replayTx, err := r.db.DB.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	adapter := &withdrawalSQLRestoreTx{tx: replayTx}
+	candidate, err := adapter.candidateFingerprint(ctx)
+	if err != nil {
+		_ = replayTx.Rollback()
+		t.Fatal(err)
+	}
+	// Retain the same DB name while changing one fingerprint element at a
+	// time. A different real schema OID exercises same-database ambiguity.
+	parts := strings.SplitN(candidate, "/", 4)
+	if len(parts) != 4 {
+		_ = replayTx.Rollback()
+		t.Fatalf("malformed candidate fingerprint")
+	}
+	otherSchema := fmt.Sprintf("withdrawal_fingerprint_%d", time.Now().UnixNano())
+	quotedOtherSchema := pgx.Identifier{otherSchema}.Sanitize()
+	if _, err := replayTx.ExecContext(ctx, `CREATE SCHEMA `+quotedOtherSchema); err != nil {
+		_ = replayTx.Rollback()
+		t.Fatal(err)
+	}
+	var otherSchemaOID string
+	if err := replayTx.QueryRowContext(ctx, `SELECT oid::text FROM pg_namespace WHERE nspname=$1`, otherSchema).Scan(&otherSchemaOID); err != nil {
+		_ = replayTx.Rollback()
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name  string
+		index int
+		value string
+	}{
+		{"different cluster", 0, parts[0] + "0"},
+		{"different database oid", 1, parts[1] + "0"},
+		{"different real schema", 2, otherSchemaOID},
+		{"different database name", 3, parts[3] + "_wrong"},
+	} {
+		altered := append([]string(nil), parts...)
+		altered[tc.index] = tc.value
+		if err := adapter.validate(ctx, strings.Join(altered, "/")); !errors.Is(err, errWithdrawalUnsafe) {
+			_ = replayTx.Rollback()
+			t.Fatalf("%s candidate accepted: %v", tc.name, err)
+		}
+	}
+	if err := adapter.validate(ctx, candidate); err != nil {
+		_ = replayTx.Rollback()
+		t.Fatalf("candidate validation: %v", err)
+	}
+	if users, err := adapter.users(ctx); err != nil || len(users) < 2 {
+		_ = replayTx.Rollback()
+		t.Fatalf("candidate users: %d %v", len(users), err)
+	}
+	if err := replayWithdrawalRows(ctx, replayTx, plan, identity); err != nil {
+		_ = replayTx.Rollback()
+		t.Fatalf("replay pre-request backup: %v", err)
+	}
+	if err := replayTx.Rollback(); err != nil {
+		t.Fatal(err)
+	}
+	var requestCount int
+	if err := r.db.QueryRow(`SELECT count(*) FROM withdrawal_requests WHERE user_id=701`).Scan(&requestCount); err != nil || requestCount != 0 {
+		t.Fatalf("reconstruction escaped rollback: %d %v", requestCount, err)
+	}
+	if err := run(identity, false); !errors.Is(err, errWithdrawalUnsafe) {
+		t.Fatalf("ordinary delete without request: %v", err)
+	}
+	for _, tc := range []struct {
+		name      string
+		requested any
+		reviewed  any
+		wantError bool
+	}{
+		{"matching unreviewed request", identity.requestedAt, nil, false},
+		{"different request time", identity.requestedAt.Add(time.Second), nil, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := r.db.Exec(`INSERT INTO withdrawal_requests(user_id,requested_at,reviewed_at) VALUES($1,$2,$3)`, identity.userID, tc.requested, tc.reviewed); err != nil {
+				t.Fatal(err)
+			}
+			tx, err := r.db.DB.BeginTx(ctx, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = replayWithdrawalRows(ctx, tx, plan, identity)
+			_ = tx.Rollback()
+			if tc.wantError != errors.Is(err, errWithdrawalUnsafe) || (!tc.wantError && err != nil) {
+				t.Fatalf("unexpected replay result: %v", err)
+			}
+			if _, err := r.db.Exec(`DELETE FROM withdrawal_requests WHERE user_id=701`); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+	if _, err := r.db.Exec(`INSERT INTO withdrawal_requests(user_id,requested_at,reviewed_at) VALUES($1,$2,CURRENT_TIMESTAMP)`, identity.userID, identity.requestedAt); err != nil {
 		t.Fatal(err)
 	}
 	if err := run(identity, false); err != nil {

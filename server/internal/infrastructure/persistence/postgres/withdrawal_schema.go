@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 )
 
 // This is the complete v17 FK contract touching the locked tables. Validate
@@ -27,9 +28,69 @@ func verifyWithdrawalSchema(ctx context.Context, tx *sql.Tx) error {
 		}
 		ids[oid] = name
 	}
-	// Unknown user_id tables in this schema can contain undeleted user data.
+	// Unknown relations can contain owned data under any column name. The
+	// remaining six v17 tables are global configuration/price/policy tables;
+	// they are explicitly named rather than inferred from column names.
 	var unknown bool
-	err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace JOIN pg_attribute a ON a.attrelid=c.oid WHERE n.nspname=current_schema() AND c.relkind IN ('r','p') AND a.attname='user_id' AND NOT a.attisdropped AND NOT (c.oid=ANY($1::oid[])))`, oidsAsStrings(ids)).Scan(&unknown)
+	err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=current_schema() AND c.relkind IN ('r','p','m','f') AND NOT (c.oid=ANY($1::oid[])) AND NOT (c.relname=ANY(ARRAY['service_settings','llm_model_prices','monthly_operating_costs','ai_consent_policy_versions','ai_consent_policy_lock','ai_consent_policy'])))`, oidsAsStrings(ids)).Scan(&unknown)
+	if err != nil {
+		return err
+	}
+	if unknown {
+		return errWithdrawalUnsafe
+	}
+	// Even an owner or privileged operator must not rely on PostgreSQL's
+	// role-dependent RLS bypass: a partially visible users snapshot can look
+	// empty and cause a restored user's data to be exposed after cutover.
+	err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM pg_class WHERE oid=ANY($1::oid[]) AND (relrowsecurity OR relforcerowsecurity))`, oidsAsStrings(ids)).Scan(&unknown)
+	if err != nil {
+		return err
+	}
+	if unknown {
+		return errWithdrawalUnsafe
+	}
+	// PostgreSQL DELETE on a parent normally includes its inheritance children,
+	// including children in other schemas. Reject both directions: table names,
+	// relation kind and FK checks do not establish safe inherited ownership.
+	err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM pg_inherits WHERE inhparent=ANY($1::oid[]) OR inhrelid=ANY($1::oid[]))`, oidsAsStrings(ids)).Scan(&unknown)
+	if err != nil {
+		return err
+	}
+	if unknown {
+		return errWithdrawalUnsafe
+	}
+	// User-defined triggers and rewrite rules may write or delete other owners'
+	// rows even when all foreign keys are known. The sole v17 trigger on these
+	// tables is the free-user-limit BEFORE INSERT/UPDATE trigger on users. Its
+	// relation, enabled state, event bits, update column, function identity and
+	// full source must match the embedded migration. Internal FK triggers remain.
+	migration, err := migrationFiles.ReadFile("006_free_user_limit.sql")
+	if err != nil {
+		return err
+	}
+	parts := strings.SplitN(string(migration), "$$", 3)
+	if len(parts) != 3 {
+		return errWithdrawalUnsafe
+	}
+	var totalTriggers, trustedTriggers int
+	err = tx.QueryRowContext(ctx, `SELECT count(*), count(*) FILTER (WHERE
+ t.tgrelid=to_regclass('users') AND t.tgname='users_enforce_free_user_limit'
+ AND t.tgtype=23 AND t.tgenabled='O' AND t.tgconstraint=0
+ AND t.tgnargs=0 AND t.tgqual IS NULL AND t.tgoldtable IS NULL AND t.tgnewtable IS NULL
+ AND t.tgattr::text=(SELECT attnum::text FROM pg_attribute WHERE attrelid=to_regclass('users') AND attname='is_active' AND NOT attisdropped)
+ AND p.proname='enforce_free_user_limit' AND p.pronamespace=(SELECT relnamespace FROM pg_class WHERE oid=to_regclass('users'))
+ AND p.pronargs=0 AND p.prorettype='trigger'::regtype AND NOT p.proretset AND NOT p.prosecdef
+ AND p.provolatile='v' AND p.proparallel='u' AND p.proconfig IS NULL
+ AND l.lanname='plpgsql' AND p.prosrc=$2)
+ FROM pg_trigger t JOIN pg_proc p ON p.oid=t.tgfoid JOIN pg_language l ON l.oid=p.prolang
+ WHERE t.tgrelid=ANY($1::oid[]) AND NOT t.tgisinternal`, oidsAsStrings(ids), parts[1]).Scan(&totalTriggers, &trustedTriggers)
+	if err != nil {
+		return err
+	}
+	if totalTriggers != 1 || trustedTriggers != 1 {
+		return errWithdrawalUnsafe
+	}
+	err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM pg_rewrite WHERE ev_class=ANY($1::oid[]))`, oidsAsStrings(ids)).Scan(&unknown)
 	if err != nil {
 		return err
 	}

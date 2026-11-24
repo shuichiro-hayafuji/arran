@@ -138,6 +138,6 @@ FROM ai_user_consents WHERE withdrawal_pending = TRUE;
 
 ### 退会申し込みの確認（暫定）
 
-申し込みは本人の認証済みAPIでDBに記録されます。記録は運営者への自動通知や削除完了を意味しません。運営者は権限を限定した管理接続で `SELECT user_id, requested_at FROM withdrawal_requests WHERE reviewed_at IS NULL ORDER BY requested_at;` を定期的に確認し、取得内容を個人情報として保護してください。実際に確認した本人の正の整数IDを管理接続のpsqlで `\set user_id 123` のように設定し、`UPDATE withdrawal_requests SET reviewed_at=COALESCE(reviewed_at,CURRENT_TIMESTAMP) WHERE user_id=:'user_id'::bigint RETURNING user_id, reviewed_at;` を実行すると、初回確認時刻だけ記録します。対象行が0件なら確認されたものと扱いません。APIロールには変更権限がありません。確認済み時刻は削除完了・本人通知の証拠ではなく、このDBを過去のバックアップから復元すると巻き戻ります。
+申し込みは本人の認証済みAPIでDBに記録されます。記録は運営者への自動通知や削除完了を意味しません。運営者は権限を限定した管理接続で `SELECT user_id, requested_at, reviewed_at FROM withdrawal_requests ORDER BY requested_at;` で未削除の申し込みを確認し、確認済みも削除が完了するまで追跡してください。未確認だけを知りたい場合は別途 `WHERE reviewed_at IS NULL` を使えますが、それだけでは確認後の未完了案件を見落とします。取得内容を個人情報として保護してください。実際に確認した本人の正の整数IDを管理接続のpsqlで `\set user_id 123` のように設定し、`UPDATE withdrawal_requests SET reviewed_at=COALESCE(reviewed_at,CURRENT_TIMESTAMP) WHERE user_id=:'user_id'::bigint RETURNING user_id, reviewed_at;` を実行すると、初回確認時刻だけ記録します。対象行が0件なら確認されたものと扱いません。APIロールには変更権限がありません。確認済み時刻は削除完了・本人通知の証拠ではなく、このDBを過去のバックアップから復元すると巻き戻ります。
 
 具体的な運用頻度、本人への連絡手段、削除手順とバックアップからの復元後の再適用は未整備であり、一般公開前に整備してください。申し込みだけでユーザーの無効化やデータ削除を実行しません。誤削除や再出現を避けるため、記録を手動削除して完了と扱わないでください。安全な削除を実装するには、全API停止後に処理中の相談を含めて終了を確認し、本人の外部AI送信の結果不明記録がある場合は中止します。所有者がNULLの旧データは本人のものと推測しません。DB外の独立した削除台帳とバックアップ・snapshotとの照合を用意し、復元後に照合が完了するまではAPIを公開しない必要があります。現状では台帳や削除経路は実装されておらず、削除完了を保証できません。

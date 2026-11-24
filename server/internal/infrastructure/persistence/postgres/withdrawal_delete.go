@@ -29,6 +29,27 @@ var errWithdrawalUnsafe = errors.New("withdrawal deletion cannot be confirmed sa
 // The privileged caller owns tx, MUST rollback on any error, and can commit only
 // after its external safety protocol has completed its pre-commit steps.
 func deleteWithdrawalRows(ctx context.Context, tx *sql.Tx, identity withdrawalIdentity) error {
+	return deleteWithdrawalRowsMode(ctx, tx, identity, false)
+}
+
+// replayWithdrawalRows is only for an isolated, quiescent restored DB. The
+// plan must be derived from a complete independently authenticated and fresh
+// ledger; planWithdrawalReplay does not itself authenticate that ledger. It is
+// deliberately not exposed to an API or operational command.
+func replayWithdrawalRows(ctx context.Context, tx *sql.Tx, plan withdrawalReplayPlan, identity withdrawalIdentity) error {
+	matches := 0
+	for _, candidate := range plan.deleteIdentities {
+		if sameWithdrawalIdentity(candidate, identity) {
+			matches++
+		}
+	}
+	if matches != 1 {
+		return errWithdrawalUnsafe
+	}
+	return deleteWithdrawalRowsMode(ctx, tx, identity, true)
+}
+
+func deleteWithdrawalRowsMode(ctx context.Context, tx *sql.Tx, identity withdrawalIdentity, replay bool) error {
 	if identity.userID <= 0 || identity.username == "" || identity.createdAt.IsZero() || identity.requestedAt.IsZero() {
 		return errWithdrawalUnsafe
 	}
@@ -58,6 +79,24 @@ func deleteWithdrawalRows(ctx context.Context, tx *sql.Tx, identity withdrawalId
 	}
 	if err := verifyWithdrawalSchema(ctx, tx); err != nil {
 		return err
+	}
+	if replay {
+		// An older backup can predate the withdrawal request. Only the exact
+		// independently recorded identity may reconstruct that request, in the
+		// same transaction as deletion. An existing matching request may not
+		// yet have been reviewed at the backup point; the completed ledger
+		// proves that this later review occurred. A conflicting request is never
+		// overwritten; the match check below refuses it.
+		var userMatches bool
+		if err := tx.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM users WHERE id=$1 AND username=$2 AND created_at=$3)`, identity.userID, identity.username, identity.createdAt).Scan(&userMatches); err != nil {
+			return err
+		}
+		if !userMatches {
+			return errWithdrawalUnsafe
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO withdrawal_requests(user_id,requested_at,reviewed_at) VALUES($1,$2,CURRENT_TIMESTAMP) ON CONFLICT(user_id) DO UPDATE SET reviewed_at=COALESCE(withdrawal_requests.reviewed_at,CURRENT_TIMESTAMP) WHERE withdrawal_requests.requested_at=EXCLUDED.requested_at`, identity.userID, identity.requestedAt); err != nil {
+			return fmt.Errorf("reconstruct withdrawal request: %w", err)
+		}
 	}
 	var matches bool
 	err = tx.QueryRowContext(ctx, `SELECT EXISTS (

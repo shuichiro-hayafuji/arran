@@ -316,7 +316,6 @@ func TestPostgresOwnershipAndSessions(t *testing.T) {
 			emptyMeasuredCost,
 		)
 	}
-	t.Cleanup(func() { verifyPostgresChat(t, r, ca, cb); verifyReconciliationIntegration(t) })
 	if _, err = r.GetProfile(ca); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("legacy data exposed: %v", err)
 	}
@@ -440,6 +439,10 @@ func TestPostgresOwnershipAndSessions(t *testing.T) {
 			t.Fatalf("rate limit %d: %v %v", i, allowed, err)
 		}
 	}
+	// Run integration guarantees in the test body, while t.Run remains legal.
+	// t.Cleanup is reserved for releasing resources, not running assertions.
+	verifyPostgresChat(t, r, ca, cb)
+	verifyReconciliationIntegration(t)
 }
 
 // Called by the existing PostgreSQL harness so new chat guarantees cannot be silently skipped.
