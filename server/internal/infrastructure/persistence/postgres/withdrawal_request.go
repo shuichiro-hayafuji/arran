@@ -57,7 +57,7 @@ func (r *Repository) RequestWithdrawal(ctx context.Context, userID int64) error 
 		return err
 	}
 	var busy bool
-	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM ai_consent_inflight WHERE user_id=$1) OR EXISTS(SELECT 1 FROM chat_requests WHERE user_id=$1 AND status='processing') OR EXISTS(SELECT 1 FROM admin_notifications WHERE user_id=$1 AND (status = 'sending' OR withdrawal_uncertain)) OR EXISTS(SELECT 1 FROM sync_consultation_reservations WHERE user_id=$1 AND state='active') OR EXISTS(SELECT 1 FROM ai_usage_operations WHERE user_id=$1 AND usage_id IS NULL AND no_usage_reason IS NULL)`, userID).Scan(&busy); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM ai_consent_inflight WHERE user_id=$1) OR EXISTS(SELECT 1 FROM chat_requests WHERE user_id=$1 AND (status='processing' OR (status='failed' AND quota_reserved))) OR EXISTS(SELECT 1 FROM admin_notifications WHERE user_id=$1 AND (status = 'sending' OR withdrawal_uncertain)) OR EXISTS(SELECT 1 FROM sync_consultation_reservations WHERE user_id=$1 AND state='active') OR EXISTS(SELECT 1 FROM ai_usage_operations WHERE user_id=$1 AND usage_id IS NULL AND no_usage_reason IS NULL) OR EXISTS(SELECT 1 FROM evidence_intents started WHERE started.user_id=$1 AND started.kind='send_started' AND NOT EXISTS (SELECT 1 FROM evidence_intents finished WHERE finished.user_id=started.user_id AND finished.ledger_id=started.ledger_id AND finished.owner_id=started.owner_id AND finished.policy_version=started.policy_version AND finished.related_operation_id=started.operation_id AND finished.kind='send_completed' AND finished.state='witnessed'))`, userID).Scan(&busy); err != nil {
 		return err
 	}
 	if busy {
@@ -84,6 +84,7 @@ func withdrawalBatchReady(ctx context.Context, tx *sql.Tx) error {
 		AND has_table_privilege(current_user,'admin_notifications','SELECT')
 		AND has_table_privilege(current_user,'sync_consultation_reservations','SELECT')
 		AND has_table_privilege(current_user,'ai_usage_operations','SELECT')
+		AND has_table_privilege(current_user,'evidence_intents','SELECT')
 		AND has_table_privilege(current_user,'ai_consent_inflight','SELECT')`).Scan(&ready)
 	if err != nil {
 		return err
@@ -209,7 +210,7 @@ func (r *Repository) completeWithdrawal(ctx context.Context, userID int64, cutof
 		return tx.Commit()
 	}
 	var busy bool
-	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM ai_consent_inflight WHERE user_id=$1) OR EXISTS(SELECT 1 FROM chat_requests WHERE user_id=$1 AND status='processing') OR EXISTS(SELECT 1 FROM admin_notifications WHERE user_id=$1 AND (status = 'sending' OR withdrawal_uncertain)) OR EXISTS(SELECT 1 FROM sync_consultation_reservations WHERE user_id=$1 AND state='active') OR EXISTS(SELECT 1 FROM ai_usage_operations WHERE user_id=$1 AND usage_id IS NULL AND no_usage_reason IS NULL)`, userID).Scan(&busy); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM ai_consent_inflight WHERE user_id=$1) OR EXISTS(SELECT 1 FROM chat_requests WHERE user_id=$1 AND (status='processing' OR (status='failed' AND quota_reserved))) OR EXISTS(SELECT 1 FROM admin_notifications WHERE user_id=$1 AND (status = 'sending' OR withdrawal_uncertain)) OR EXISTS(SELECT 1 FROM sync_consultation_reservations WHERE user_id=$1 AND state='active') OR EXISTS(SELECT 1 FROM ai_usage_operations WHERE user_id=$1 AND usage_id IS NULL AND no_usage_reason IS NULL) OR EXISTS(SELECT 1 FROM evidence_intents started WHERE started.user_id=$1 AND started.kind='send_started' AND NOT EXISTS (SELECT 1 FROM evidence_intents finished WHERE finished.user_id=started.user_id AND finished.ledger_id=started.ledger_id AND finished.owner_id=started.owner_id AND finished.policy_version=started.policy_version AND finished.related_operation_id=started.operation_id AND finished.kind='send_completed' AND finished.state='witnessed'))`, userID).Scan(&busy); err != nil {
 		return err
 	}
 	if busy {

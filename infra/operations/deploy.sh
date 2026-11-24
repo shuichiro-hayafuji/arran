@@ -10,6 +10,12 @@ set -euo pipefail
 [ -s secrets/openai_key ] || echo "OpenAI key is empty: consultation responses use the server fallback/unavailable behavior" >&2
 . "$(dirname "$0")/release-state.sh"
 release_lock
+check_restore_block() {
+  [ ! -e state/restore-cutover-blocked ] && [ ! -L state/restore-cutover-blocked ] || {
+    echo "Restore cutover is blocked; do not publish the API without independent reconciliation" >&2; exit 1;
+  }
+}
+check_restore_block
 image_id=$(docker image inspect --format '{{.Id}}' "$API_IMAGE")
 [ -n "$image_id" ] || { echo "Missing API image identity" >&2; exit 1; }
 candidate=$(mktemp state/candidate.XXXXXXXX)
@@ -46,6 +52,7 @@ dc run --rm --no-deps migrate
 atomic_copy state/pending-release state/applied-release
 dc exec -T db psql -X -v ON_ERROR_STOP=1 -U postgres -d arran < grant-runtime.sql
 ./backup.sh --deployment-lock-held
+check_restore_block
 dc up -d --wait api caddy
 curl --fail --silent --show-error --retry 6 --retry-delay 5 "https://$DOMAIN/health"
 rm -f state/pending-release

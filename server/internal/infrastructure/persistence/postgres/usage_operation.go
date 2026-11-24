@@ -215,6 +215,19 @@ func (r *Repository) completeUsageOperation(ctx context.Context, id string, usag
 	return tx.Commit()
 }
 
+// RecordGuardedLLMUsage stores the exact payload and its idempotent receipt.
+// A missing or failed stage remains visible as an incomplete operation.
+func (r *Repository) RecordGuardedLLMUsage(ctx context.Context, usage domain.LLMUsage) error {
+	id := identity.UsageOperation(ctx)
+	if id == "" {
+		return errors.New("usage operation is unavailable")
+	}
+	if err := r.stageUsageOperation(ctx, id, usage); err != nil {
+		return err
+	}
+	return r.completeUsageOperation(ctx, id, usage)
+}
+
 // runUsageSend is an unwired adapter prototype. It separates the provider
 // outcome from accounting so accounting failures never discard an answer.
 // Sending is invoked only after durable admission; unknown failures remain

@@ -48,7 +48,7 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 	}
 
 	consentGate := identity.AIConsentGate{Store: repo, Version: cfg.AIConsentVersion}
-	primary, source := modelClient(cfg, usageRecorder(repo), consentGate)
+	primary, source := modelClient(cfg, guardedUsageRecorder(repo), consentGate)
 	fallback := agent.MockClient{}
 	agents := agentadapter.NewWithFailureCheck(primary, fallback, source, func(err error) bool {
 		return errors.Is(err, consultation.ErrConsentRequired) || errors.Is(err, consultation.ErrConsentUnavailable) || errors.Is(err, consultation.ErrAIOutcomeUnknown)
@@ -56,7 +56,7 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 	var chatAgent consultation.Agent
 	if !cfg.UseMockLLM {
 		client := openai.NewOpenAIClient(cfg.OpenAIAPIKey, cfg.OpenAIModel, cfg.OpenAIReasoningEffort)
-		client.SetUsageRecorder(usageRecorder(repo))
+		client.SetUsageRecorder(guardedUsageRecorder(repo))
 		client.SetConsentGate(consentExecutor{consentGate})
 		chatAgent = client
 	}
@@ -103,6 +103,19 @@ func usageRecorder(repository interface {
 	}
 }
 
+func guardedUsageRecorder(repository interface {
+	RecordGuardedLLMUsage(context.Context, domain.LLMUsage) error
+}) openai.UsageRecorder {
+	return func(ctx context.Context, usage openai.UsageRecord) error {
+		return repository.RecordGuardedLLMUsage(ctx, domain.LLMUsage{
+			UserID: identity.UserID(ctx), Operation: usage.Operation, Model: usage.Model,
+			InputTokens: usage.InputTokens, CachedInputTokens: usage.CachedInputTokens,
+			OutputTokens: usage.OutputTokens, ReasoningTokens: usage.ReasoningTokens,
+			TotalTokens: usage.TotalTokens, OccurredAt: usage.OccurredAt,
+		})
+	}
+}
+
 func (a *App) Close() error {
 	a.stopRequests()
 	a.application.WaitRequests()
@@ -126,7 +139,7 @@ type consentExecutor struct{ gate identity.AIConsentGate }
 func (c consentExecutor) Execute(ctx context.Context, fn func(context.Context) error) error {
 	called := false
 	var callErr error
-	err := c.gate.Execute(ctx, func(inner context.Context) error { called = true; callErr = fn(inner); return callErr })
+	err := c.gate.Execute(identity.RequireUsageTracking(ctx), func(inner context.Context) error { called = true; callErr = fn(inner); return callErr })
 	if err != nil && called && callErr == nil {
 		return fmt.Errorf("%w: completion record unavailable", consultation.ErrAIOutcomeUnknown)
 	}

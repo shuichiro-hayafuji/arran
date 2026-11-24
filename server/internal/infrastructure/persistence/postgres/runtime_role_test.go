@@ -95,13 +95,17 @@ func TestRuntimeRoleChecksMigrationsWithoutDDL(t *testing.T) {
 	grant := strings.ReplaceAll(string(grantSQL), "SCHEMA public", "SCHEMA "+schema)
 	grant = strings.ReplaceAll(grant, "public.", schema+".")
 	grant = strings.ReplaceAll(grant, "arran_runtime", runtimeRole)
+	exec("DROP TABLE " + schema + ".evidence_intents")
+	exec("DROP TRIGGER users_evidence_owner_id_immutable ON " + schema + ".users")
+	exec("ALTER TABLE " + schema + ".users DROP COLUMN evidence_owner_id")
+	exec("DROP FUNCTION " + schema + ".prevent_evidence_owner_id_change()")
 	exec("DROP TABLE " + schema + ".ai_usage_operations")
 	exec("ALTER TABLE " + schema + ".llm_usage DROP CONSTRAINT llm_usage_owner_id_unique")
 	exec("DROP TABLE " + schema + ".sync_consultation_reservations")
 	exec("DROP TABLE " + schema + ".withdrawal_requests")
 	exec("DROP TABLE " + schema + ".withdrawal_batch_health")
 	exec("ALTER TABLE " + schema + ".admin_notifications DROP COLUMN withdrawal_uncertain")
-	exec("DELETE FROM " + schema + ".schema_migrations WHERE version IN (17,18,19,20)")
+	exec("DELETE FROM " + schema + ".schema_migrations WHERE version IN (17,18,19,20,21,22)")
 	exec(grant)
 	if err := MigrateURL(ctx, migrationRoleURL); err != nil {
 		t.Fatal(err)
@@ -154,8 +158,12 @@ func TestRuntimeRoleChecksMigrationsWithoutDDL(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer r.Close()
-	if _, err := r.db.DB.ExecContext(ctx, "INSERT INTO users(id,username,password_hash) VALUES(703,'role-check','synthetic')"); err != nil {
-		t.Fatal(err)
+	exec("BEGIN; SET LOCAL search_path TO " + schema + "; INSERT INTO users(id,username,password_hash) VALUES(703,'role-check','synthetic'); COMMIT")
+	if _, err := r.db.DB.ExecContext(ctx, "INSERT INTO users(username,password_hash,evidence_owner_id) VALUES('forged','x','0123456789abcdef0123456789abcdef')"); err == nil {
+		t.Fatal("runtime inserted an arbitrary evidence identity")
+	}
+	if _, err := r.db.DB.ExecContext(ctx, "DELETE FROM users WHERE id=703"); err == nil {
+		t.Fatal("runtime deleted an account")
 	}
 	if err := r.RefreshWithdrawalBatchHealth(ctx); err != nil {
 		t.Fatal(err)
@@ -166,7 +174,7 @@ func TestRuntimeRoleChecksMigrationsWithoutDDL(t *testing.T) {
 		{"SELECT", "users"}, {"UPDATE", "users"},
 		{"SELECT", "auth_sessions"}, {"DELETE", "auth_sessions"}, {"UPDATE", "auth_sessions"},
 		{"SELECT", "withdrawal_requests"}, {"UPDATE (completed_at)", "withdrawal_requests"},
-		{"SELECT", "chat_requests"}, {"SELECT", "ai_consent_inflight"}, {"SELECT", "admin_notifications"}, {"SELECT", "sync_consultation_reservations"}, {"SELECT", "ai_usage_operations"},
+		{"SELECT", "chat_requests"}, {"SELECT", "ai_consent_inflight"}, {"SELECT", "admin_notifications"}, {"SELECT", "sync_consultation_reservations"}, {"SELECT", "ai_usage_operations"}, {"SELECT", "evidence_intents"},
 	} {
 		exec("REVOKE " + p.privilege + " ON " + schema + "." + p.table + " FROM " + runtimeRole)
 		tx, err := r.db.DB.BeginTx(ctx, nil)
@@ -222,9 +230,7 @@ func TestRuntimeRoleChecksMigrationsWithoutDDL(t *testing.T) {
 	if _, err := r.db.DB.ExecContext(ctx, "DELETE FROM ai_consent_policy_lock"); err == nil {
 		t.Fatal("runtime role can delete policy lock")
 	}
-	if _, err := r.db.DB.ExecContext(ctx, "INSERT INTO users(id,username,password_hash) VALUES(704,'role-consent','synthetic')"); err != nil {
-		t.Fatal(err)
-	}
+	exec("BEGIN; SET LOCAL search_path TO " + schema + "; INSERT INTO users(id,username,password_hash) VALUES(704,'role-consent','synthetic'); COMMIT")
 	owner := identity.WithUser(ctx, 704)
 	gate := identity.AIConsentGate{Store: r, Version: "v1"}
 	if err := gate.Grant(owner, "v1"); !errors.Is(err, identity.ErrConsentRequired) {

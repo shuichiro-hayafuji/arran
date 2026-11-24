@@ -29,10 +29,11 @@ def commands(scope):
                 for operation in ("vet", "test")]
     if scope == "infra":
         return [("infra", ["npm", "run", operation])
-                for operation in ("build", "lint", "test")]
+                for operation in ("build", "lint", "test")] + [
+                    (".", ["python3", "-m", "unittest", "infra/test/release_workflow_test.py"])]
     if scope == "postgres":
         return [("server", ["go", "test", "-count=1", "-v", "-run",
-                            "^(TestPostgresOwnershipAndSessions|TestWithdrawalCSVGate|TestWithdrawalLegacyAdmission|TestWithdrawalNotificationFence|TestWithdrawalNotificationRace|TestWithdrawalNotificationNotSent|TestWithdrawalNotificationMigration|TestSyncConsultationReservation|TestSyncConsultationReservationConcurrent|TestSyncConsultationContinuationFence|TestSyncConsultationConflictRollback|TestUsageOperationReceipt|TestUsageOperationNoUsage|TestUsageOperationSendAdmissionRace|TestUsageSendAdapter)$",
+                            "^(TestPostgresOwnershipAndSessions|TestWithdrawalCSVGate|TestWithdrawalLegacyAdmission|TestWithdrawalNotificationFence|TestWithdrawalNotificationRace|TestWithdrawalNotificationNotSent|TestWithdrawalNotificationMigration|TestSyncConsultationReservation|TestSyncConsultationReservationConcurrent|TestSyncConsultationContinuationFence|TestSyncConsultationConflictRollback|TestUsageOperationReceipt|TestUsageOperationNoUsage|TestUsageOperationSendAdmissionRace|TestUsageSendAdapter|TestTrackedConsentUsage|TestTrackedConsentAdmissionSuppressedInsert|TestWithdrawalChatCleanup|TestWithdrawalFailedChatReservedBlocks|TestEvidenceOwnerMigration|TestEvidenceIntentPreparation|TestEvidenceWitnessReadback|TestEvidenceJournalResumeAfterLostExternalResponse|TestEvidenceSendAdmissionRace|TestEvidenceUnfinishedSendBlocksBatch|TestEvidenceJournalBridgeEndToEndFake)$",
                             "./internal/infrastructure/persistence/postgres"]),
                 ("server", ["go", "test", "-count=1", "-v", "-run",
                             "^TestWithdrawalIntakeDisabledInAppComposition$",
@@ -40,7 +41,9 @@ def commands(scope):
     if scope == "postgres-roles":
         return [("server", ["go", "test", "-count=1", "-v", "-run",
                             "^TestRuntimeRoleChecksMigrationsWithoutDDL$",
-                            "./internal/infrastructure/persistence/postgres"])]
+                            "./internal/infrastructure/persistence/postgres"]),
+                ("server", ["go", "test", "-count=1", "-v", "-run",
+                            "^TestOpenAIAccountingInRuntimeApp$", "./internal/app"])]
     return []
 
 

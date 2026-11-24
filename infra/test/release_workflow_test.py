@@ -15,7 +15,7 @@ import unittest
 
 OPERATIONS = Path(__file__).resolve().parents[1] / 'operations'
 DOUBLE = r'''#!/usr/bin/env python3
-import fcntl, json, os, pathlib, sys, uuid
+import fcntl, json, os, pathlib, sys, time, uuid
 name = pathlib.Path(sys.argv[0]).name
 args = sys.argv[1:]
 root = pathlib.Path(os.environ['TEST_ROOT'])
@@ -58,7 +58,11 @@ elif name == 'docker':
         if command[0] == 'psql':
             if '-c' in command: print(data['schema'])
             else: sys.stdin.read()
-        elif command[0] == 'pg_dump': print('synthetic consistent dump')
+        elif command[0] == 'pg_dump':
+            if (root / 'pause-dump').exists():
+                (root / 'dump-paused').touch()
+                while not (root / 'resume-dump').exists(): time.sleep(0.01)
+            print('synthetic consistent dump')
         elif command[0] == 'pg_restore': sys.stdin.read()
         else: raise AssertionError(command)
     else: raise AssertionError(args)
@@ -71,7 +75,7 @@ class ReleaseWorkflowTest(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
-        for name in ('common.sh', 'release-state.sh', 'deploy.sh', 'backup.sh', 'grant-runtime.sql'):
+        for name in ('common.sh', 'release-state.sh', 'deploy.sh', 'backup.sh', 'grant-runtime.sql', 'restore-cutover.sh'):
             shutil.copy(OPERATIONS / name, self.root / name)
         (self.root / 'secrets').mkdir()
         (self.root / 'secrets/openai_key').touch()
@@ -103,6 +107,45 @@ class ReleaseWorkflowTest(unittest.TestCase):
                                 capture_output=True, text=True, timeout=20)
         self.assertEqual(result.returncode == 0, success, result.stdout + result.stderr)
         return result
+
+    def test_restore_cutover_rejects_unverified_evidence_and_blocks_deploy(self):
+        self.run_script('deploy.sh', 'initial')
+        for argument in ('', 'missing', 'invalid', 'old-head', 'verified'):
+            args = (argument,) if argument else ()
+            self.run_script('restore-cutover.sh', *args, success=False)
+            self.assertTrue((self.root / 'state/restore-cutover-blocked').exists())
+            self.run_script('deploy.sh', 'update', success=False)
+            self.assertTrue(self.data()['public'])  # existing process is not stopped
+
+    def test_restore_request_during_deploy_is_not_accepted_and_can_retry(self):
+        self.run_script('deploy.sh', 'initial')
+        (self.root / 'pause-dump').touch()
+        proc = subprocess.Popen(['bash', str(self.root / 'deploy.sh'), 'update'], env=self.env,
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        import time
+        deadline = time.monotonic() + 10
+        while not (self.root / 'dump-paused').exists() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        try:
+            self.assertTrue((self.root / 'dump-paused').exists())
+            result = self.run_script('restore-cutover.sh', success=False)
+            self.assertIn('not recorded', result.stderr)
+            self.assertFalse((self.root / 'state/restore-cutover-blocked').exists())
+        finally:
+            (self.root / 'resume-dump').touch()
+            out, err = proc.communicate(timeout=20)
+        self.assertEqual(proc.returncode, 0, out + err)
+        self.assertTrue(self.data()['public'])
+        self.run_script('restore-cutover.sh', success=False)
+        self.assertTrue((self.root / 'state/restore-cutover-blocked').exists())
+        self.run_script('deploy.sh', 'update', success=False)
+
+    def test_restore_request_is_recorded_without_deploy_env(self):
+        (self.root / 'deploy.env').unlink()
+        self.run_script('restore-cutover.sh', success=False)
+        self.assertTrue((self.root / 'state/restore-cutover-blocked').exists())
+        self.configure('release1')
+        self.run_script('deploy.sh', 'initial', success=False)
 
     def test_initial_backup_failure_resumes_without_old_api_or_secret_changes(self):
         self.change(fail_upload_at=1)

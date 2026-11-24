@@ -68,33 +68,26 @@ func (r *Repository) ReserveMonthlyConsultation(ctx context.Context, month strin
 	if userID <= 0 {
 		return domain.ConsultationUsage{}, errors.New("authenticated user is required")
 	}
-	tx, err := r.db.DB.BeginTx(ctx, nil)
-	if err != nil {
-		return domain.ConsultationUsage{}, err
-	}
-	defer tx.Rollback()
 	usage := domain.ConsultationUsage{Month: month}
-	err = tx.QueryRowContext(ctx, `
+	err := r.withWithdrawalWriteTx(ctx, userID, func(ctx context.Context, tx withdrawalWriteSession) error {
+		if err := tx.QueryRowContext(ctx, `
 		INSERT INTO monthly_consultation_usage(user_id, month, consultation_count)
 		VALUES($1, $2, 1)
 		ON CONFLICT (user_id, month) DO UPDATE SET
 		  consultation_count = monthly_consultation_usage.consultation_count + 1,
 		  updated_at = CURRENT_TIMESTAMP
 		RETURNING consultation_count
-	`, userID, month).Scan(&usage.Count)
-	if err != nil {
-		return domain.ConsultationUsage{}, err
-	}
-	err = tx.QueryRowContext(ctx, `
+	`, userID, month).Scan(&usage.Count); err != nil {
+			return err
+		}
+		return tx.QueryRowContext(ctx, `
 		SELECT COALESCE(user_limits.monthly_limit, settings.integer_value)
 		FROM service_settings AS settings
 		LEFT JOIN user_consultation_limits AS user_limits ON user_limits.user_id = $1
 		WHERE settings.key = 'default_monthly_consultation_limit'
 	`, userID).Scan(&usage.Limit)
+	})
 	if err != nil {
-		return domain.ConsultationUsage{}, err
-	}
-	if err = tx.Commit(); err != nil {
 		return domain.ConsultationUsage{}, err
 	}
 	return usage, nil

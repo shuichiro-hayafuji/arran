@@ -137,11 +137,38 @@ func (r *Repository) WithConsent(ctx context.Context, userID int64, version stri
 	if pending || !grant.Valid || grant.String != version {
 		return identity.ErrConsentRequired
 	}
-	if _, err = tx.ExecContext(ctx, `INSERT INTO ai_consent_inflight(id,user_id,version) VALUES($1,$2,$3)`, id, userID, version); err != nil {
+	result, err := tx.ExecContext(ctx, `INSERT INTO ai_consent_inflight(id,user_id,version) VALUES($1,$2,$3)`, id, userID, version)
+	if err != nil {
 		return err
+	}
+	count, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if count != 1 {
+		return errors.New("AI consent admission marker unavailable")
+	}
+	if identity.UsageTrackingRequired(ctx) {
+		// The accounting marker and consent admission commit together, before
+		// the callback can start any external request. A lost commit response
+		// never authorizes the callback.
+		result, err = tx.ExecContext(ctx, `INSERT INTO ai_usage_operations(user_id,operation_id,send_state) VALUES($1,$2,'sending')`, userID, id)
+		if err != nil {
+			return err
+		}
+		count, err = result.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if count != 1 {
+			return errors.New("AI accounting admission marker unavailable")
+		}
 	}
 	if err = tx.Commit(); err != nil {
 		return err
+	}
+	if identity.UsageTrackingRequired(ctx) {
+		ctx = identity.WithUsageOperation(ctx, id)
 	}
 	// On any uncertain outcome the marker remains, including callback errors,
 	// process termination and failures while clearing it.
@@ -150,11 +177,11 @@ func (r *Repository) WithConsent(ctx context.Context, userID int64, version stri
 	}
 	cleanup, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	result, err := r.db.DB.ExecContext(cleanup, `DELETE FROM ai_consent_inflight WHERE id=$1 AND user_id=$2`, id, userID)
+	result, err = r.db.DB.ExecContext(cleanup, `DELETE FROM ai_consent_inflight WHERE id=$1 AND user_id=$2`, id, userID)
 	if err != nil {
 		return err
 	}
-	count, err := result.RowsAffected()
+	count, err = result.RowsAffected()
 	if err != nil {
 		return err
 	}

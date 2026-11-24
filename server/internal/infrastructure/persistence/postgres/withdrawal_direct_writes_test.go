@@ -16,6 +16,9 @@ func verifyWithdrawalDirectWrites(t *testing.T) {
 	ctx := context.Background()
 	a := identity.WithUser(ctx, 701)
 	b := identity.WithUser(ctx, 702)
+	if usage, err := r.ReserveMonthlyConsultation(a, "2026-01"); err != nil || usage.Count != 1 {
+		t.Fatalf("active owner reservation: %#v %v", usage, err)
+	}
 	profile := domain.Profile{MonthlyIncome: 100, AdviceStrictness: "normal", UpdatedAt: "2026-01-01"}
 	if err := r.PutProfile(a, profile); err != nil {
 		t.Fatal(err)
@@ -62,6 +65,16 @@ func verifyWithdrawalDirectWrites(t *testing.T) {
 	}
 	if err := r.RequestWithdrawal(a, 701); err != nil {
 		t.Fatal(err)
+	}
+	if _, err := r.ReserveMonthlyConsultation(a, "2026-01"); err == nil {
+		t.Fatal("pending owner reserved another consultation")
+	}
+	if usage, err := r.ReserveMonthlyConsultation(b, "2026-01"); err != nil || usage.Count != 1 {
+		t.Fatalf("other owner reservation: %#v %v", usage, err)
+	}
+	var reservations int
+	if err := r.db.DB.QueryRowContext(ctx, `SELECT consultation_count FROM monthly_consultation_usage WHERE user_id=$1 AND month=$2`, 701, "2026-01").Scan(&reservations); err != nil || reservations != 1 {
+		t.Fatalf("pending reservation changed: %d %v", reservations, err)
 	}
 	profile.MonthlyIncome = 999
 	if err := r.PutProfile(a, profile); err == nil {
