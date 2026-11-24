@@ -14,6 +14,11 @@ DO $$ BEGIN
   IF to_regclass('public.withdrawal_requests') IS NOT NULL THEN
     REVOKE INSERT, UPDATE, DELETE ON public.withdrawal_requests FROM arran_runtime;
     GRANT INSERT (user_id) ON public.withdrawal_requests TO arran_runtime;
+    GRANT UPDATE (completed_at) ON public.withdrawal_requests TO arran_runtime;
+  END IF;
+  IF to_regclass('public.withdrawal_batch_health') IS NOT NULL THEN
+    REVOKE INSERT, UPDATE, DELETE ON public.withdrawal_batch_health FROM arran_runtime;
+    GRANT UPDATE (checked_at) ON public.withdrawal_batch_health TO arran_runtime;
   END IF;
 END $$;
 COMMIT;

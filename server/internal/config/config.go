@@ -13,15 +13,16 @@ import (
 // Environment-variable parsing belongs here so the application composition
 // layer does not need to know how settings are represented externally.
 type Config struct {
-	APIAddr               string
-	DatabaseURL           string
-	UseMockLLM            bool
-	OpenAIAPIKey          string
-	OpenAIModel           string
-	OpenAIReasoningEffort string
-	AIConsentVersion      string
-	Environment           string
-	PagerDutyRoutingKey   string
+	APIAddr                string
+	DatabaseURL            string
+	UseMockLLM             bool
+	OpenAIAPIKey           string
+	OpenAIModel            string
+	OpenAIReasoningEffort  string
+	AIConsentVersion       string
+	Environment            string
+	PagerDutyRoutingKey    string
+	WithdrawalBatchEnabled bool
 }
 
 // AutoMigrate keeps automatic migrations limited to local and development runs.
@@ -38,6 +39,10 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, fmt.Errorf("USE_MOCK_LLM must be true or false")
 	}
+	withdrawalEnabled, err := strconv.ParseBool(envOrDefault("WITHDRAWAL_BATCH_ENABLED", "false"))
+	if err != nil {
+		return Config{}, fmt.Errorf("WITHDRAWAL_BATCH_ENABLED must be true or false")
+	}
 
 	reasoningEffort := envOrDefault("OPENAI_REASONING_EFFORT", "medium")
 	switch reasoningEffort {
@@ -47,15 +52,16 @@ func Load() (Config, error) {
 	}
 
 	return Config{
-		APIAddr:               envOrDefault("API_ADDR", "127.0.0.1:8080"),
-		DatabaseURL:           loadDatabaseURL(),
-		UseMockLLM:            useMock,
-		OpenAIAPIKey:          os.Getenv("OPENAI_API_KEY"),
-		OpenAIModel:           envOrDefault("OPENAI_MODEL", "gpt-5.6-terra"),
-		OpenAIReasoningEffort: reasoningEffort,
-		AIConsentVersion:      os.Getenv("AI_CONSENT_VERSION"),
-		Environment:           envOrDefault("APP_ENVIRONMENT", "local"),
-		PagerDutyRoutingKey:   os.Getenv("PAGERDUTY_ROUTING_KEY"),
+		APIAddr:                envOrDefault("API_ADDR", "127.0.0.1:8080"),
+		DatabaseURL:            loadDatabaseURL(),
+		UseMockLLM:             useMock,
+		OpenAIAPIKey:           os.Getenv("OPENAI_API_KEY"),
+		OpenAIModel:            envOrDefault("OPENAI_MODEL", "gpt-5.6-terra"),
+		OpenAIReasoningEffort:  reasoningEffort,
+		AIConsentVersion:       os.Getenv("AI_CONSENT_VERSION"),
+		Environment:            envOrDefault("APP_ENVIRONMENT", "local"),
+		PagerDutyRoutingKey:    os.Getenv("PAGERDUTY_ROUTING_KEY"),
+		WithdrawalBatchEnabled: withdrawalEnabled,
 	}, nil
 }
 

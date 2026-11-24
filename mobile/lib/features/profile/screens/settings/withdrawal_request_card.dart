@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/network/api_client.dart' show ApiException;
+
 import '../../repository/withdrawal_request_repository.dart';
 import '../../../session/provider/session_provider.dart';
 
@@ -22,7 +24,9 @@ class _WithdrawalRequestCardState extends ConsumerState<WithdrawalRequestCard> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('退会を申し込む'),
-        content: const Text('申し込みを記録します。退会やデータの削除はこの時点では完了しません。削除時期は未定です。'),
+        content: const Text(
+          '申し込み後は新しい相談と外部AIへの送信ができません。毎日日本時間0時のバッチで退会を処理します。処理できない場合は完了せず再試行します。相談履歴・取引データは保持します。',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -45,6 +49,14 @@ class _WithdrawalRequestCardState extends ConsumerState<WithdrawalRequestCard> {
       await ref.read(withdrawalRequestRepositoryProvider).submit(generation);
       if (mounted && generation == authSession.generation) {
         setState(() => accepted = true);
+      }
+    } on ApiException catch (e) {
+      if (mounted && generation == authSession.generation) {
+        setState(
+          () => error = e.statusCode == 409
+              ? '現在の状態では退会を申し込めません。処理中の相談や再有効化済みの会員についてはお問い合わせください。'
+              : '申し込み結果を確認できません。状態を再確認してください。',
+        );
       }
     } catch (_) {
       if (mounted && generation == authSession.generation)
@@ -69,9 +81,9 @@ class _WithdrawalRequestCardState extends ConsumerState<WithdrawalRequestCard> {
             Text('退会', style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 8),
             const Text(
-              '退会の申し込みを記録します。運営者への自動通知はなく、退会・データ削除の手続きと削除時期は未定です。お問い合わせ: spendablepartner@gmail.com',
+              '申し込み後は新しい相談と外部AIへの送信を停止します。日本時間0時のバッチで会員を無効化します。相談履歴・取引データは保持します。障害時は完了を保留し再試行します。退会完了後の再入会・再申し込みには対応していません。お問い合わせ: spendablepartner@gmail.com',
             ),
-            if (error != null && state.value != true) Text(error!),
+            if (error != null && state.value?.requested != true) Text(error!),
             state.when(
               loading: () => const CircularProgressIndicator(),
               error: (_, __) => Column(
@@ -88,10 +100,12 @@ class _WithdrawalRequestCardState extends ConsumerState<WithdrawalRequestCard> {
                   ),
                 ],
               ),
-              data: (requested) => !requested && accepted
+              data: (status) => !status.requested && accepted
                   ? const Text('申し込みの応答を受信しましたが、現在の状態と一致しません。お問い合わせください。')
-                  : requested
-                  ? const Text('申し込みを記録しました。退会・データ削除の完了は確認できません。')
+                  : status.requested
+                  ? const Text('申し込みを受け付けました。退会の完了はまだ確認できません。')
+                  : !status.accepting
+                  ? const Text('現在、退会の申し込みを受け付けていません。お問い合わせください。')
                   : FilledButton(
                       onPressed: busy ? null : submit,
                       child: const Text('退会を申し込む'),

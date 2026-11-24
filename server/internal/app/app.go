@@ -32,6 +32,10 @@ type App struct {
 	workerDone   chan struct{}
 }
 
+// Enabling intake is deliberately blocked until all authenticated work is
+// drained by the batch and restored account status is reconciled safely.
+const withdrawalRuntimeReady = false
+
 // Migrate runs the release migration with only the one-off process credentials.
 func Migrate(ctx context.Context, cfg config.Config) error {
 	return postgres.MigrateURL(ctx, cfg.DatabaseURL)
@@ -76,7 +80,7 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 	return &App{
 		Server: &http.Server{
 			Addr:              cfg.APIAddr,
-			Handler:           auth.New(repo).Wrap(handler.NewWithServices(apiApplication, consentService{consentGate}, withdrawalRequestService{repo})),
+			Handler:           auth.New(repo).Wrap(handler.NewWithServices(apiApplication, consentService{consentGate}, withdrawalRequestService{repository: repo, enabled: cfg.WithdrawalBatchEnabled && withdrawalRuntimeReady})),
 			ReadHeaderTimeout: 5 * time.Second,
 			ReadTimeout:       30 * time.Second,
 			WriteTimeout:      30 * time.Second,
@@ -153,7 +157,10 @@ type withdrawalRequestService struct {
 		WithdrawalRequested(context.Context, int64) (bool, error)
 		RequestWithdrawal(context.Context, int64) error
 	}
+	enabled bool
 }
+
+func (s withdrawalRequestService) WithdrawalAcceptanceEnabled() bool { return s.enabled }
 
 func (s withdrawalRequestService) WithdrawalRequested(ctx context.Context) (bool, error) {
 	userID := identity.UserID(ctx)
@@ -167,5 +174,41 @@ func (s withdrawalRequestService) RequestWithdrawal(ctx context.Context) error {
 	if userID <= 0 {
 		return errors.New("authenticated user required")
 	}
-	return s.repository.RequestWithdrawal(ctx, userID)
+	if !s.enabled {
+		return errors.New("withdrawal batch unavailable")
+	}
+	err := s.repository.RequestWithdrawal(ctx, userID)
+	if errors.Is(err, identity.ErrWithdrawalBlocked) {
+		return consultation.ErrRequestBusy
+	}
+	return err
+}
+
+// RunWithdrawalBatch executes a one-off scheduled run using the runtime DB role.
+func RunWithdrawalBatch(ctx context.Context, cfg config.Config, now time.Time) error {
+	if !cfg.WithdrawalBatchEnabled {
+		return errors.New("withdrawal batch is disabled")
+	}
+	// docker compose exec exiting does not guarantee that the container-side
+	// process is killed. Bound DB work independently of the systemd timeout.
+	ctx, cancel := context.WithTimeout(ctx, 4*time.Minute)
+	defer cancel()
+	repo, err := postgres.Open(ctx, cfg.DatabaseURL, false)
+	if err != nil {
+		return err
+	}
+	defer repo.Close()
+	return repo.RunWithdrawalBatch(ctx, now)
+}
+
+func RefreshWithdrawalBatchHealth(ctx context.Context, cfg config.Config) error {
+	if !cfg.WithdrawalBatchEnabled {
+		return errors.New("withdrawal batch is disabled")
+	}
+	repo, err := postgres.Open(ctx, cfg.DatabaseURL, false)
+	if err != nil {
+		return err
+	}
+	defer repo.Close()
+	return repo.RefreshWithdrawalBatchHealth(ctx)
 }

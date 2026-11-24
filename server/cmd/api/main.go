@@ -20,11 +20,24 @@ func main() {
 		log.Fatal(err)
 	}
 	if len(os.Args) > 1 {
-		if len(os.Args) != 2 || os.Args[1] != "migrate" {
-			log.Fatal("usage: spendable-today [migrate]")
+		if len(os.Args) != 2 || (os.Args[1] != "migrate" && os.Args[1] != "withdrawal-batch" && os.Args[1] != "withdrawal-batch-health") {
+			log.Fatal("usage: spendable-today [migrate|withdrawal-batch|withdrawal-batch-health]")
 		}
 		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer cancel()
+		if os.Args[1] == "withdrawal-batch-health" {
+			if err := app.RefreshWithdrawalBatchHealth(ctx, cfg); err != nil {
+				log.Fatal("withdrawal health check failed")
+			}
+			return
+		}
+		if os.Args[1] == "withdrawal-batch" {
+			if err := app.RunWithdrawalBatch(ctx, cfg, time.Now()); err != nil {
+				log.Fatal("withdrawal batch incomplete")
+			}
+			log.Print("withdrawal batch completed")
+			return
+		}
 		if err := app.Migrate(ctx, cfg); err != nil {
 			log.Fatal("database migration failed: ", err)
 		}

@@ -507,7 +507,8 @@ erDiagram
         BIGINT user_id PK,FK
         TIMESTAMPTZ requested_at
         TIMESTAMPTZ reviewed_at "NULLは運営確認前"
+        TIMESTAMPTZ completed_at "NULLは退会未完了"
     }
 ```
 
-`reviewed_at` は運営の確認時刻であり、削除や本人への通知の完了を意味しない。バックアップ復元では申し込みと確認時刻が巻き戻り得る。
+`reviewed_at` は運営の確認時刻であり、退会や本人への通知の完了を意味しない。`completed_at` は会員無効化とセッション失効の確定時刻であり、相談・取引データは保持する。バックアップ復元では申し込みと確認時刻が巻き戻り得る。

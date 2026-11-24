@@ -1,7 +1,12 @@
 // Package identity は認証済みの利用者IDを context でアプリケーション各層へ渡す。
 package identity
 
-import "context"
+import (
+	"context"
+	"errors"
+)
+
+var ErrWithdrawalBlocked = errors.New("withdrawal cannot be accepted")
 
 type key struct{}
 

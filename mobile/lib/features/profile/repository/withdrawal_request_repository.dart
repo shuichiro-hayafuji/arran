@@ -8,19 +8,27 @@ final withdrawalRequestRepositoryProvider =
       (ref) =>
           WithdrawalRequestRepository(ref.watch(authorizedApiClientProvider)),
     );
-final withdrawalRequestProvider = FutureProvider.autoDispose<bool>(
+final withdrawalRequestProvider = FutureProvider.autoDispose<WithdrawalStatus>(
   (ref) => ref.watch(withdrawalRequestRepositoryProvider).get(),
 );
+
+class WithdrawalStatus {
+  const WithdrawalStatus({required this.requested, required this.accepting});
+  final bool requested;
+  final bool accepting;
+}
 
 class WithdrawalRequestRepository {
   const WithdrawalRequestRepository(this._client);
   final ApiClient _client;
-  Future<bool> get() async {
+  Future<WithdrawalStatus> get() async {
     final response = await _client.get('/withdrawal-request');
-    final value = parseMap(response.data)['requested'];
-    if (response.statusCode != 200 || value is! bool)
+    final data = parseMap(response.data);
+    final value = data['requested'];
+    final accepting = data['accepting'];
+    if (response.statusCode != 200 || value is! bool || accepting is! bool)
       throw const FormatException();
-    return value;
+    return WithdrawalStatus(requested: value, accepting: accepting);
   }
 
   Future<void> submit(int generation) async {

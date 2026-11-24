@@ -96,6 +96,7 @@ func TestRuntimeRoleChecksMigrationsWithoutDDL(t *testing.T) {
 	grant = strings.ReplaceAll(grant, "public.", schema+".")
 	grant = strings.ReplaceAll(grant, "arran_runtime", runtimeRole)
 	exec("DROP TABLE " + schema + ".withdrawal_requests")
+	exec("DROP TABLE " + schema + ".withdrawal_batch_health")
 	exec("DELETE FROM " + schema + ".schema_migrations WHERE version=17")
 	exec(grant)
 	if err := MigrateURL(ctx, migrationRoleURL); err != nil {
@@ -152,10 +153,33 @@ func TestRuntimeRoleChecksMigrationsWithoutDDL(t *testing.T) {
 	if _, err := r.db.DB.ExecContext(ctx, "INSERT INTO users(id,username,password_hash) VALUES(703,'role-check','synthetic')"); err != nil {
 		t.Fatal(err)
 	}
-	if err := r.RequestWithdrawal(ctx, 703); err != nil {
+	if err := r.RefreshWithdrawalBatchHealth(ctx); err != nil {
+		t.Fatal(err)
+	}
+	// Each required privilege is independently necessary: PostgreSQL treats a
+	// comma-separated privilege list as an OR, not as an AND.
+	for _, p := range []struct{ privilege, table string }{
+		{"SELECT", "users"}, {"UPDATE", "users"},
+		{"SELECT", "auth_sessions"}, {"DELETE", "auth_sessions"},
+		{"SELECT", "withdrawal_requests"}, {"UPDATE (completed_at)", "withdrawal_requests"},
+		{"SELECT", "chat_requests"}, {"SELECT", "ai_consent_inflight"},
+	} {
+		exec("REVOKE " + p.privilege + " ON " + schema + "." + p.table + " FROM " + runtimeRole)
+		tx, err := r.db.DB.BeginTx(ctx, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = withdrawalBatchReady(ctx, tx)
+		_ = tx.Rollback()
+		if err == nil {
+			t.Fatalf("preflight accepted missing %s on %s", p.privilege, p.table)
+		}
+		exec("GRANT " + p.privilege + " ON " + schema + "." + p.table + " TO " + runtimeRole)
+	}
+	if err := r.RequestWithdrawal(identity.WithUser(ctx, 703), 703); err != nil {
 		t.Fatalf("runtime cannot record normal request: %v", err)
 	}
-	if err := r.RequestWithdrawal(ctx, 703); err != nil {
+	if err := r.RequestWithdrawal(identity.WithUser(ctx, 703), 703); err != nil {
 		t.Fatalf("runtime cannot retry request: %v", err)
 	}
 	if _, err := r.db.DB.ExecContext(ctx, "INSERT INTO withdrawal_requests(user_id,requested_at) VALUES(703,now()) ON CONFLICT DO NOTHING"); err == nil {
@@ -185,7 +209,10 @@ func TestRuntimeRoleChecksMigrationsWithoutDDL(t *testing.T) {
 	if _, err := r.db.DB.ExecContext(ctx, "DELETE FROM ai_consent_policy_lock"); err == nil {
 		t.Fatal("runtime role can delete policy lock")
 	}
-	owner := identity.WithUser(ctx, 703)
+	if _, err := r.db.DB.ExecContext(ctx, "INSERT INTO users(id,username,password_hash) VALUES(704,'role-consent','synthetic')"); err != nil {
+		t.Fatal(err)
+	}
+	owner := identity.WithUser(ctx, 704)
 	gate := identity.AIConsentGate{Store: r, Version: "v1"}
 	if err := gate.Grant(owner, "v1"); !errors.Is(err, identity.ErrConsentRequired) {
 		t.Fatalf("unset policy: %v", err)
@@ -203,6 +230,14 @@ func TestRuntimeRoleChecksMigrationsWithoutDDL(t *testing.T) {
 	}
 	if err := gate.Execute(owner, func(context.Context) error { t.Error("withdrawn send started"); return nil }); !errors.Is(err, identity.ErrConsentRequired) {
 		t.Fatalf("withdrawn: %v", err)
+	}
+	exec("UPDATE " + schema + ".withdrawal_requests SET requested_at='2026-11-24 14:59:59+00' WHERE user_id=703")
+	if err := r.RunWithdrawalBatch(ctx, time.Date(2026, 11, 24, 15, 0, 0, 0, time.UTC)); err != nil {
+		t.Fatalf("runtime batch failed: %v", err)
+	}
+	var inactive, completed bool
+	if err := r.db.DB.QueryRowContext(ctx, `SELECT NOT is_active, completed_at IS NOT NULL FROM users JOIN withdrawal_requests ON users.id=withdrawal_requests.user_id WHERE users.id=703`).Scan(&inactive, &completed); err != nil || !inactive || !completed {
+		t.Fatalf("runtime batch state: %v %v %v", inactive, completed, err)
 	}
 	history := func() string {
 		var ledger string

@@ -85,6 +85,13 @@ class HarnessTests(unittest.TestCase):
             self.assertEqual(harness.main(["check", "postgres"]), 2)
             run.assert_not_called()
 
+    def test_postgres_includes_app_composition_and_fails_on_either(self):
+        with patch.dict("os.environ", {"ARRAN_TEST_DATABASE_URL": "test-only"}), \
+                patch("harness.run_command", side_effect=["PASS", "FAIL"]) as run:
+            self.assertEqual(harness.main(["check", "postgres"]), 1)
+            self.assertEqual(run.call_count, 2)
+            self.assertIn("^TestWithdrawalIntakeDisabledInAppComposition$", run.call_args_list[1].args[1])
+
 
 if __name__ == "__main__":
     unittest.main()

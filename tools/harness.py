@@ -33,7 +33,10 @@ def commands(scope):
     if scope == "postgres":
         return [("server", ["go", "test", "-count=1", "-v", "-run",
                             "^TestPostgresOwnershipAndSessions$",
-                            "./internal/infrastructure/persistence/postgres"])]
+                            "./internal/infrastructure/persistence/postgres"]),
+                ("server", ["go", "test", "-count=1", "-v", "-run",
+                            "^TestWithdrawalIntakeDisabledInAppComposition$",
+                            "./internal/app"])]
     if scope == "postgres-roles":
         return [("server", ["go", "test", "-count=1", "-v", "-run",
                             "^TestRuntimeRoleChecksMigrationsWithoutDDL$",

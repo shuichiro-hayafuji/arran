@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/shuichirohayafuji/spendable-today/server/internal/consultation"
+	"github.com/shuichirohayafuji/spendable-today/server/internal/identity"
 	"strings"
 	"time"
 )
@@ -42,11 +43,14 @@ func (r *Repository) ClaimChatRequest(ctx context.Context, in consultation.Reque
 			return consultation.RequestReceipt{}, false, err
 		}
 	}
-	tx, err := r.db.DB.BeginTx(ctx, nil)
+	tx, err := r.db.DB.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
 	if err != nil {
 		return consultation.RequestReceipt{}, false, err
 	}
 	defer tx.Rollback()
+	if err = lockActiveWithdrawalUser(ctx, tx, identity.UserID(ctx)); err != nil {
+		return consultation.RequestReceipt{}, false, err
+	}
 	query := func(q string) string { return chatQuery(ctx, q) }
 	result, err := tx.ExecContext(ctx, query("INSERT INTO chat_requests(user_id,request_id,payload_hash,month,new_consultation,quota_reserved,status,expires_at,cancel_requested,error_code) VALUES(:user_id,?,?,?,?,?,'processing',?,FALSE,'') ON CONFLICT(user_id,request_id) DO NOTHING"), in.ID, in.PayloadHash, in.Month, in.NewConsultation, in.NewConsultation, in.ExpiresAt.UnixMilli())
 	if err != nil {
@@ -123,7 +127,7 @@ func (r *Repository) CancelChatRequest(ctx context.Context, id string) (consulta
 	return r.GetChatRequest(ctx, id)
 }
 func (r *Repository) FailChatRequest(ctx context.Context, id, code string) error {
-	tx, err := r.db.DB.BeginTx(ctx, nil)
+	tx, err := r.db.DB.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
 	if err != nil {
 		return err
 	}

@@ -120,6 +120,9 @@ func (r *Repository) WithConsent(ctx context.Context, userID int64, version stri
 		return err
 	}
 	var grant sql.NullString
+	if err = lockActiveWithdrawalUser(ctx, tx, userID); err != nil {
+		return err
+	}
 	var pending bool
 	err = tx.QueryRowContext(ctx, `SELECT granted_version,withdrawal_pending FROM ai_user_consents WHERE user_id=$1`, userID).Scan(&grant, &pending)
 	if errors.Is(err, sql.ErrNoRows) {

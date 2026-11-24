@@ -54,11 +54,16 @@ func (r *Repository) LoadChatThread(ctx context.Context, id int64) (consultation
 // SaveChatTurn commits the thread, summary and remembered facts together. Optimistic
 // versions prevent overlapping model responses from overwriting newer corrections.
 func (r *Repository) SaveChatTurn(ctx context.Context, state consultation.State, thread consultation.Thread) (consultation.Thread, error) {
-	tx, err := r.db.DB.BeginTx(ctx, nil)
+	tx, err := r.db.DB.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
 	if err != nil {
 		return consultation.Thread{}, err
 	}
 	defer tx.Rollback()
+	// Reminder delivery and other chat writes share the owner lock with
+	// withdrawal admission and deactivation, then re-check the account state.
+	if err = lockActiveWithdrawalUser(ctx, tx, identity.UserID(ctx)); err != nil {
+		return consultation.Thread{}, err
+	}
 	query := func(q string) string { return chatQuery(ctx, q) }
 	requestRef, hasRequest := consultation.RequestReferenceFrom(ctx)
 	requestCancelled := false
@@ -378,7 +383,9 @@ func (r *Repository) DuePurchaseOwners(ctx context.Context, now time.Time) ([]in
  WHERE COALESCE((s.payload::jsonb->>'purchases_migrated')::boolean,false)=false
  AND t.payload::jsonb->'pending_purchase' IS NOT NULL
  AND (t.payload::jsonb->'pending_purchase'->>'recorded_at')::timestamptz <= $1::timestamptz - interval '6 hours'
- ) due ORDER BY user_id LIMIT 100`, now.UTC().Format(time.RFC3339))
+	 ) due JOIN users u ON u.id=due.user_id
+	 WHERE u.is_active AND NOT EXISTS(SELECT 1 FROM withdrawal_requests w WHERE w.user_id=u.id AND w.completed_at IS NULL)
+	 ORDER BY due.user_id LIMIT 100`, now.UTC().Format(time.RFC3339))
 	if err != nil {
 		return nil, err
 	}

@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"github.com/shuichirohayafuji/spendable-today/server/internal/identity"
 	"os"
 	"sync"
 	"testing"
@@ -17,11 +18,14 @@ func TestWithdrawalRequestDurabilityAndOwnerIsolation(t *testing.T) {
 func verifyWithdrawalRequestDurabilityAndOwnerIsolation(t *testing.T) {
 	r := openReconciliationRepository(t)
 	ctx := context.Background()
+	if err := r.RefreshWithdrawalBatchHealth(ctx); err != nil {
+		t.Fatal(err)
+	}
 	var wg sync.WaitGroup
 	errs := make(chan error, 12)
 	for i := 0; i < 12; i++ {
 		wg.Add(1)
-		go func() { defer wg.Done(); errs <- r.RequestWithdrawal(ctx, 701) }()
+		go func() { defer wg.Done(); errs <- r.RequestWithdrawal(identity.WithUser(ctx, 701), 701) }()
 	}
 	wg.Wait()
 	close(errs)
@@ -34,7 +38,7 @@ func verifyWithdrawalRequestDurabilityAndOwnerIsolation(t *testing.T) {
 		id   int64
 		want bool
 	}{{701, true}, {702, false}} {
-		got, err := r.WithdrawalRequested(ctx, tc.id)
+		got, err := r.WithdrawalRequested(identity.WithUser(ctx, tc.id), tc.id)
 		if err != nil || got != tc.want {
 			t.Fatalf("user %d: %v %v", tc.id, got, err)
 		}
@@ -49,7 +53,7 @@ func verifyWithdrawalRequestDurabilityAndOwnerIsolation(t *testing.T) {
 	// A privileged operator can record the first review without treating it as
 	// deletion. Retrying the review must preserve its original timestamp and
 	// never mark another owner's request as reviewed.
-	if err := r.RequestWithdrawal(ctx, 702); err != nil {
+	if err := r.RequestWithdrawal(identity.WithUser(ctx, 702), 702); err != nil {
 		t.Fatal(err)
 	}
 	var first, retried string

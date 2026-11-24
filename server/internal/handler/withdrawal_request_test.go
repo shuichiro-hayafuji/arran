@@ -16,6 +16,8 @@ type withdrawalFake struct {
 	fail    bool
 }
 
+func (s *withdrawalFake) WithdrawalAcceptanceEnabled() bool { return false }
+
 func (s *withdrawalFake) WithdrawalRequested(ctx context.Context) (bool, error) {
 	if s.fail {
 		return false, errors.New("db")
@@ -48,6 +50,9 @@ func TestWithdrawalRequestOwnerRetryAndFailure(t *testing.T) {
 	}
 	if w := call(http.MethodGet, 2); w.Code != 200 || !strings.Contains(w.Body.String(), `"requested":false`) {
 		t.Fatalf("owner isolation %d %s", w.Code, w.Body)
+	}
+	if w := call(http.MethodGet, 2); !strings.Contains(w.Body.String(), `"accepting":false`) {
+		t.Fatalf("unexpected acceptance status: %s", w.Body)
 	}
 	store.fail = true
 	if w := call(http.MethodPut, 2); w.Code != 503 || strings.Contains(w.Body.String(), `"requested":true`) {

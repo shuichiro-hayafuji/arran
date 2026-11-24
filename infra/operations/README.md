@@ -136,8 +136,26 @@ FROM ai_user_consents WHERE withdrawal_pending = TRUE;
 
 配備再開・manifestの回帰は通常 `check infra` からPythonで実shellを実行します。Docker/AWSのコマンドは分離したダブルで、初回backup失敗、変更image拒否、予定imageとDB適用imageの差、更新後backup失敗、移行途中失敗、競合lockを確認します。これはS3実通信やDB実移行の代用ではありません。
 
-### 退会申し込みの確認（暫定）
+### 退会の受付と日次バッチ
 
-申し込みは本人の認証済みAPIでDBに記録されます。記録は運営者への自動通知や削除完了を意味しません。運営者は権限を限定した管理接続で `SELECT user_id, requested_at, reviewed_at FROM withdrawal_requests ORDER BY requested_at;` で未削除の申し込みを確認し、確認済みも削除が完了するまで追跡してください。未確認だけを知りたい場合は別途 `WHERE reviewed_at IS NULL` を使えますが、それだけでは確認後の未完了案件を見落とします。取得内容を個人情報として保護してください。実際に確認した本人の正の整数IDを管理接続のpsqlで `\set user_id 123` のように設定し、`UPDATE withdrawal_requests SET reviewed_at=COALESCE(reviewed_at,CURRENT_TIMESTAMP) WHERE user_id=:'user_id'::bigint RETURNING user_id, reviewed_at;` を実行すると、初回確認時刻だけ記録します。対象行が0件なら確認されたものと扱いません。APIロールには変更権限がありません。確認済み時刻は削除完了・本人通知の証拠ではなく、このDBを過去のバックアップから復元すると巻き戻ります。
+**公開停止:** 進行中の全API処理を安全に排出する機構と、バックアップ復元後の独立証跡による退会状態の照合が未整備です。現行の API は `WITHDRAWAL_BATCH_ENABLED=true` でも新規受付を拒否します。以下はそれらを実装・検証した後の運用案であり、今は有効化しません。
 
-具体的な運用頻度、本人への連絡手段、削除手順とバックアップからの復元後の再適用は未整備であり、一般公開前に整備してください。申し込みだけでユーザーの無効化やデータ削除を実行しません。誤削除や再出現を避けるため、記録を手動削除して完了と扱わないでください。安全な削除を実装するには、全API停止後に処理中の相談を含めて終了を確認し、本人の外部AI送信の結果不明記録がある場合は中止します。所有者がNULLの旧データは本人のものと推測しません。DB外の独立した削除台帳とバックアップ・snapshotとの照合を用意し、復元後に照合が完了するまではAPIを公開しない必要があります。現状では台帳や削除経路は実装されておらず、削除完了を保証できません。
+退会申込は認証済みの本人に限定し、結果不明のAI送信や処理中の相談がある場合は受付を拒否します。受理後は新規相談と外部AI送信を止め、状態確認は可能です。バッチは毎日15:00 UTC（日本時間の翌日0時）に実行し、直近の日本時間0時より前の申込に限り、本人の `users.is_active` を無効化し、全セッションを削除します。相談・取引・履歴は保持します。処理中・結果不明の記録、DB障害、アプリ停止等は未完了を維持し、サービスは5分後に再試行します。受付後に起きる将来の障害を受付時に予測できないため、期限内の処理成功は保証しません。
+
+`WITHDRAWAL_BATCH_ENABLED` の既定は `false` で、無効時はAPIが新規受付を拒否します。運用者は実際の監視・障害対応を整えた後、同じリリースの `withdrawal-batch.sh`、`withdrawal-health.sh` と両方の service・timer を配置し、rootで次を実行します。タイマーを導入しただけでDB権限や実行成功は証明されません。
+
+```bash
+install -m 0644 /opt/arran/arran-withdrawal.service /etc/systemd/system/
+install -m 0644 /opt/arran/arran-withdrawal.timer /etc/systemd/system/
+install -m 0644 /opt/arran/arran-withdrawal-health.service /etc/systemd/system/
+install -m 0644 /opt/arran/arran-withdrawal-health.timer /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now arran-withdrawal.timer arran-withdrawal-health.timer
+systemctl list-timers arran-withdrawal.timer
+```
+
+配置後に `deploy.env` の `WITHDRAWAL_BATCH_ENABLED=true` を設定して同一リリースのAPIを再作成します。APIとバッチは同じ設定・runtime権限を使います。初回の実行確認として `systemctl start arran-withdrawal.service` を行い、成功を確認します。ヘルスチェックはtimerの稼働とserviceの最終実行成功を毎分確認し、実行中・再起動待ち・未実行・失敗中は健康情報を更新しません。受付時は最近3分以内の確認、必要なDB権限と未解決処理の有無を検査しますが、これは過去の観測であり受付後の停止や翌日の実行成功を保証しません。`systemctl status arran-withdrawal.service arran-withdrawal-health.service` と `journalctl -u arran-withdrawal.service`、管理DBの `SELECT count(*) FROM withdrawal_requests WHERE completed_at IS NULL;` を確認し、未完了や失敗を放置しません。結果不明のAI送信が残る場合は安全な完了を判断できないため、自動削除せず管理者へ引き継ぎます。手動の `docker` 実行や停止中の環境、ホスト障害、全APIと古いバージョンの混在はこの説明だけでは制御できません。
+
+**復元注意:** 古いバックアップへの復元で申込・無効化・セッション失効が巻き戻る可能性があります。独立した真正な証跡を用いた照合・再適用は未実装です。照合できるまで復元先を公開しません。退会済みを復元元データから推測したり、古いAPIを混在させたりしないでください。
+
+退会完了後の再入会・再申し込みは未対応です。管理操作で会員を再有効化しても、過去の完了済み申込がある利用者の再申込は拒否し、既存の申込状態は残ります。独立証跡や履歴を消して再申込できる状態にしてはいけません。バッチの DB 処理はコンテナ内で最大4分に制限し、systemd の5分 timeout とは別に取消します。期限内に完了しなかった処理は成功と扱わず、記録を再確認し再試行します。

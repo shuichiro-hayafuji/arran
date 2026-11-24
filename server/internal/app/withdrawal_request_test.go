@@ -19,7 +19,10 @@ func (s *withdrawalStoreFake) RequestWithdrawal(_ context.Context, id int64) err
 }
 func TestWithdrawalRequestServiceBindsAuthenticatedOwner(t *testing.T) {
 	store := &withdrawalStoreFake{}
-	service := withdrawalRequestService{store}
+	service := withdrawalRequestService{repository: store, enabled: true}
+	if err := (withdrawalRequestService{repository: store}).RequestWithdrawal(identity.WithUser(context.Background(), 1)); err == nil {
+		t.Fatal("request accepted when the batch is disabled")
+	}
 	if err := service.RequestWithdrawal(context.Background()); err == nil {
 		t.Fatal("missing user accepted")
 	}
