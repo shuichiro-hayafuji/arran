@@ -44,11 +44,52 @@ func (r *Repository) importTransactions(ctx context.Context, items []domain.Tran
 	if err != nil {
 		return domain.ImportCommitResult{}, err
 	}
-	tx, err := r.db.DB.BeginTx(ctx, nil)
+	tx, err := r.db.DB.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
 	if err != nil {
 		return domain.ImportCommitResult{}, err
 	}
 	defer tx.Rollback()
+	// Match SaveChatTurn's user-row-before-owner-advisory order. The user lock
+	// remains on the same transaction through CSV commit and blocks admission.
+	userID := identity.UserID(ctx)
+	if userID <= 0 {
+		return domain.ImportCommitResult{}, errors.New("authenticated user required")
+	}
+	var active bool
+	if err := tx.QueryRowContext(ctx, `SELECT is_active FROM users WHERE id=$1 FOR NO KEY UPDATE`, userID).Scan(&active); err != nil {
+		return domain.ImportCommitResult{}, err
+	}
+	if !active {
+		return domain.ImportCommitResult{}, errors.New("inactive user")
+	}
+	var pending bool
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM withdrawal_requests WHERE user_id=$1 AND completed_at IS NULL)`, userID).Scan(&pending); err != nil {
+		return domain.ImportCommitResult{}, err
+	}
+	if pending {
+		// Only an already-committed receipt may be retrieved during pending
+		// withdrawal. Never create, confirm, or clean up a preview here.
+		key := previewID
+		if key == "" && len(items) > 0 && items[0].ImportMetadata != nil {
+			key = items[0].ImportMetadata.CommitKey
+		}
+		if key == "" {
+			return domain.ImportCommitResult{}, errors.New("withdrawal pending")
+		}
+		var payload string
+		err := tx.QueryRowContext(ctx, `SELECT result FROM csv_import_batches WHERE user_id=$1 AND commit_key=$2 UNION ALL SELECT result FROM csv_import_previews WHERE user_id=$1 AND id=$2 AND result IS NOT NULL LIMIT 1`, userID, key).Scan(&payload)
+		if errors.Is(err, sql.ErrNoRows) {
+			return domain.ImportCommitResult{}, errors.New("withdrawal pending")
+		}
+		if err != nil {
+			return domain.ImportCommitResult{}, err
+		}
+		var saved domain.ImportCommitResult
+		if err := json.Unmarshal([]byte(payload), &saved); err != nil {
+			return domain.ImportCommitResult{}, err
+		}
+		return saved, nil
+	}
 	if _, err = tx.ExecContext(ctx, userQuery(ctx, "SELECT pg_advisory_xact_lock(?)"), -identity.UserID(ctx)-1); err != nil {
 		return domain.ImportCommitResult{}, err
 	}

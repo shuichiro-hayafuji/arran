@@ -83,6 +83,9 @@ func (r *Repository) GrantConsent(ctx context.Context, userID int64, version str
 	if err = lockConsentUser(ctx, tx, userID); err != nil {
 		return err
 	}
+	if err = lockActiveWithdrawalUser(ctx, tx, userID); err != nil {
+		return err
+	}
 	var pending bool
 	err = tx.QueryRowContext(ctx, `SELECT withdrawal_pending FROM ai_user_consents WHERE user_id=$1`, userID).Scan(&pending)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {

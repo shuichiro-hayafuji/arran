@@ -346,11 +346,14 @@ func (r *Repository) MutateCSV(ctx context.Context, target string, in domain.Mut
 	if err != nil {
 		return domain.MutationResult{}, err
 	}
-	tx, err := r.db.DB.BeginTx(ctx, nil)
+	tx, err := r.db.DB.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
 	if err != nil {
 		return domain.MutationResult{}, err
 	}
 	defer tx.Rollback()
+	if err := lockActiveWithdrawalUser(ctx, tx, identity.UserID(ctx)); err != nil {
+		return domain.MutationResult{}, err
+	}
 	if _, err = tx.ExecContext(ctx, userQuery(ctx, "SELECT pg_advisory_xact_lock(?)"), -identity.UserID(ctx)-1); err != nil {
 		return domain.MutationResult{}, err
 	}

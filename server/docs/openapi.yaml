@@ -69,7 +69,7 @@ paths:
       responses:
         '200': { description: 同意を保存 }
         '401': { description: 認証が必要 }
-        '409': { description: 版が古い、または説明が未設定 }
+        '409': { description: 'consent_not_granted: 版が古いか説明が未設定、withdrawal_pending: 退会申込処理中' }
         '503': { description: 保存結果を確認できない }
     delete:
       summary: 外部AI送信の同意を撤回する

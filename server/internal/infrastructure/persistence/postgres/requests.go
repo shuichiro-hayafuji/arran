@@ -118,10 +118,15 @@ func (r *Repository) GetChatRequest(ctx context.Context, id string) (consultatio
 	return receipt, nil
 }
 func (r *Repository) CancelChatRequest(ctx context.Context, id string) (consultation.RequestReceipt, error) {
-	if _, err := r.db.ExecContext(ctx, chatQuery(ctx, "INSERT INTO chat_requests(user_id,request_id,payload_hash,month,new_consultation,quota_reserved,status,expires_at,cancel_requested,error_code) VALUES(:user_id,?,'','',FALSE,FALSE,'cancelled',?,TRUE,'cancelled_before_accept') ON CONFLICT(user_id,request_id) DO NOTHING"), id, time.Now().UnixMilli()); err != nil {
-		return consultation.RequestReceipt{}, err
-	}
-	if _, err := r.db.ExecContext(ctx, chatQuery(ctx, "UPDATE chat_requests SET cancel_requested=TRUE WHERE user_id=:user_id AND request_id=? AND status='processing'"), id); err != nil {
+	userID := identity.UserID(ctx)
+	err := r.withWithdrawalWriteTx(ctx, userID, func(ctx context.Context, tx withdrawalWriteSession) error {
+		if _, err := tx.ExecContext(ctx, chatQuery(ctx, "INSERT INTO chat_requests(user_id,request_id,payload_hash,month,new_consultation,quota_reserved,status,expires_at,cancel_requested,error_code) VALUES(:user_id,?,'','',FALSE,FALSE,'cancelled',?,TRUE,'cancelled_before_accept') ON CONFLICT(user_id,request_id) DO NOTHING"), id, time.Now().UnixMilli()); err != nil {
+			return err
+		}
+		_, err := tx.ExecContext(ctx, chatQuery(ctx, "UPDATE chat_requests SET cancel_requested=TRUE WHERE user_id=:user_id AND request_id=? AND status='processing'"), id)
+		return err
+	})
+	if err != nil {
 		return consultation.RequestReceipt{}, err
 	}
 	return r.GetChatRequest(ctx, id)

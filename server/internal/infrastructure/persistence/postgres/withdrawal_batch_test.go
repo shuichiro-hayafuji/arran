@@ -239,6 +239,27 @@ func verifyWithdrawalBatch(t *testing.T) {
 	if _, err := r.db.DB.ExecContext(ctx, `INSERT INTO withdrawal_requests(user_id) VALUES(712),(713)`); err != nil {
 		t.Fatal(err)
 	}
+	deadlineBlocker, err := r.db.DB.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer deadlineBlocker.Rollback()
+	if _, err := deadlineBlocker.ExecContext(ctx, `SELECT pg_advisory_xact_lock_shared(1634890337,1)`); err != nil {
+		t.Fatal(err)
+	}
+	deadlineCtx, cancel := context.WithTimeout(ctx, 150*time.Millisecond)
+	deadlineErr := r.RunWithdrawalBatch(deadlineCtx, midnight)
+	cancel()
+	if !errors.Is(deadlineErr, context.DeadlineExceeded) {
+		t.Fatalf("batch did not stop for deadline: %v", deadlineErr)
+	}
+	var stillPending bool
+	if err := r.db.DB.QueryRowContext(ctx, `SELECT completed_at IS NULL FROM withdrawal_requests WHERE user_id=712`).Scan(&stillPending); err != nil || !stillPending {
+		t.Fatalf("deadline was reported as completion: %v %v", stillPending, err)
+	}
+	if err := deadlineBlocker.Rollback(); err != nil {
+		t.Fatal(err)
+	}
 	blockedTx, err := r.db.DB.BeginTx(ctx, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -246,16 +267,6 @@ func verifyWithdrawalBatch(t *testing.T) {
 	defer blockedTx.Rollback()
 	if _, err := blockedTx.ExecContext(ctx, `UPDATE users SET username=username WHERE id=712`); err != nil {
 		t.Fatal(err)
-	}
-	deadlineCtx, cancel := context.WithTimeout(ctx, 150*time.Millisecond)
-	deadlineErr := r.RunWithdrawalBatch(deadlineCtx, midnight)
-	cancel()
-	if deadlineErr == nil {
-		t.Fatal("deadline did not stop the batch")
-	}
-	var stillPending bool
-	if err := r.db.DB.QueryRowContext(ctx, `SELECT completed_at IS NULL FROM withdrawal_requests WHERE user_id=712`).Scan(&stillPending); err != nil || !stillPending {
-		t.Fatalf("deadline was reported as completion: %v %v", stillPending, err)
 	}
 	started := time.Now()
 	if err := r.RunWithdrawalBatch(ctx, midnight); err == nil {
@@ -275,6 +286,76 @@ func verifyWithdrawalBatch(t *testing.T) {
 	}
 	if err := r.db.DB.QueryRowContext(ctx, `SELECT is_active FROM users WHERE id=712`).Scan(&active); err != nil || active {
 		t.Fatalf("locked owner not completed after retry: %v %v", active, err)
+	}
+	// More locked accounts than the old 4m / 5s timeout budget must not
+	// prevent a later account from being processed in the same run.
+	if _, err := r.db.DB.ExecContext(ctx, `INSERT INTO users(id,username,password_hash,is_active) SELECT n,'blocked-'||n,'synthetic',FALSE FROM generate_series(10000,10059) n`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.db.DB.ExecContext(ctx, `INSERT INTO withdrawal_requests(user_id,requested_at) SELECT n,'2020-01-01'::timestamptz FROM generate_series(10000,10059) n`); err != nil {
+		t.Fatal(err)
+	}
+	locks, err := r.db.DB.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer locks.Rollback()
+	if _, err := locks.ExecContext(ctx, `UPDATE users SET username=username WHERE id BETWEEN 10000 AND 10058`); err != nil {
+		t.Fatal(err)
+	}
+	batchCtx, stop := context.WithTimeout(ctx, 4*time.Second)
+	err = r.RunWithdrawalBatch(batchCtx, midnight)
+	stop()
+	if err == nil || errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("locked accounts were not promptly skipped: %v", err)
+	}
+	var lastDone bool
+	if err := r.db.DB.QueryRowContext(ctx, `SELECT completed_at IS NOT NULL FROM withdrawal_requests WHERE user_id=10059`).Scan(&lastDone); err != nil || !lastDone {
+		t.Fatalf("later user starved: %v %v", lastDone, err)
+	}
+	if err := locks.Rollback(); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.RunWithdrawalBatch(ctx, midnight); err != nil {
+		t.Fatalf("retry after releasing locks: %v", err)
+	}
+	for _, lockTarget := range []string{"requests", "sessions"} {
+		if _, err := r.db.DB.ExecContext(ctx, `UPDATE withdrawal_requests SET completed_at=NULL WHERE user_id BETWEEN 10000 AND 10059`); err != nil {
+			t.Fatal(err)
+		}
+		if lockTarget == "sessions" {
+			if _, err := r.db.DB.ExecContext(ctx, `INSERT INTO auth_sessions(token_hash,user_id,password_hash,expires_at) SELECT 'session-'||n,n,'synthetic',CURRENT_TIMESTAMP+INTERVAL '1 day' FROM generate_series(10000,10058) n`); err != nil {
+				t.Fatal(err)
+			}
+		}
+		locked, err := r.db.DB.BeginTx(ctx, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer locked.Rollback()
+		query := `UPDATE withdrawal_requests SET reviewed_at=reviewed_at WHERE user_id BETWEEN 10000 AND 10058`
+		if lockTarget == "sessions" {
+			query = `UPDATE auth_sessions SET expires_at=expires_at WHERE user_id BETWEEN 10000 AND 10058`
+		}
+		if _, err := locked.ExecContext(ctx, query); err != nil {
+			t.Fatal(err)
+		}
+		batchCtx, cancel := context.WithTimeout(ctx, 4*time.Second)
+		err = r.RunWithdrawalBatch(batchCtx, midnight)
+		cancel()
+		if err == nil || errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("%s locks did not skip promptly: %v", lockTarget, err)
+		}
+		var done bool
+		if err := r.db.DB.QueryRowContext(ctx, `SELECT completed_at IS NOT NULL FROM withdrawal_requests WHERE user_id=10059`).Scan(&done); err != nil || !done {
+			t.Fatalf("%s locks starved later user: %v %v", lockTarget, done, err)
+		}
+		if err := locked.Rollback(); err != nil {
+			t.Fatal(err)
+		}
+		if err := r.RunWithdrawalBatch(ctx, midnight); err != nil {
+			t.Fatalf("%s retry: %v", lockTarget, err)
+		}
 	}
 }
 

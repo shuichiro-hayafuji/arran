@@ -95,9 +95,13 @@ func TestRuntimeRoleChecksMigrationsWithoutDDL(t *testing.T) {
 	grant := strings.ReplaceAll(string(grantSQL), "SCHEMA public", "SCHEMA "+schema)
 	grant = strings.ReplaceAll(grant, "public.", schema+".")
 	grant = strings.ReplaceAll(grant, "arran_runtime", runtimeRole)
+	exec("DROP TABLE " + schema + ".ai_usage_operations")
+	exec("ALTER TABLE " + schema + ".llm_usage DROP CONSTRAINT llm_usage_owner_id_unique")
+	exec("DROP TABLE " + schema + ".sync_consultation_reservations")
 	exec("DROP TABLE " + schema + ".withdrawal_requests")
 	exec("DROP TABLE " + schema + ".withdrawal_batch_health")
-	exec("DELETE FROM " + schema + ".schema_migrations WHERE version=17")
+	exec("ALTER TABLE " + schema + ".admin_notifications DROP COLUMN withdrawal_uncertain")
+	exec("DELETE FROM " + schema + ".schema_migrations WHERE version IN (17,18,19,20)")
 	exec(grant)
 	if err := MigrateURL(ctx, migrationRoleURL); err != nil {
 		t.Fatal(err)
@@ -160,9 +164,9 @@ func TestRuntimeRoleChecksMigrationsWithoutDDL(t *testing.T) {
 	// comma-separated privilege list as an OR, not as an AND.
 	for _, p := range []struct{ privilege, table string }{
 		{"SELECT", "users"}, {"UPDATE", "users"},
-		{"SELECT", "auth_sessions"}, {"DELETE", "auth_sessions"},
+		{"SELECT", "auth_sessions"}, {"DELETE", "auth_sessions"}, {"UPDATE", "auth_sessions"},
 		{"SELECT", "withdrawal_requests"}, {"UPDATE (completed_at)", "withdrawal_requests"},
-		{"SELECT", "chat_requests"}, {"SELECT", "ai_consent_inflight"},
+		{"SELECT", "chat_requests"}, {"SELECT", "ai_consent_inflight"}, {"SELECT", "admin_notifications"}, {"SELECT", "sync_consultation_reservations"}, {"SELECT", "ai_usage_operations"},
 	} {
 		exec("REVOKE " + p.privilege + " ON " + schema + "." + p.table + " FROM " + runtimeRole)
 		tx, err := r.db.DB.BeginTx(ctx, nil)
@@ -173,6 +177,15 @@ func TestRuntimeRoleChecksMigrationsWithoutDDL(t *testing.T) {
 		_ = tx.Rollback()
 		if err == nil {
 			t.Fatalf("preflight accepted missing %s on %s", p.privilege, p.table)
+		}
+		if (p.table == "auth_sessions" && p.privilege == "UPDATE") || (p.table == "admin_notifications" && p.privilege == "SELECT") {
+			if err := r.RequestWithdrawal(identity.WithUser(ctx, 703), 703); err == nil {
+				t.Fatal("admitted a request without the row-lock privilege")
+			}
+			var count int
+			if err := r.db.DB.QueryRowContext(ctx, `SELECT count(*) FROM withdrawal_requests WHERE user_id=703`).Scan(&count); err != nil || count != 0 {
+				t.Fatalf("request persisted without row-lock privilege: %d %v", count, err)
+			}
 		}
 		exec("GRANT " + p.privilege + " ON " + schema + "." + p.table + " TO " + runtimeRole)
 	}

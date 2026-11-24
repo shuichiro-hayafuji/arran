@@ -2,13 +2,25 @@ package application
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"github.com/shuichirohayafuji/spendable-today/server/internal/consultation"
 	"github.com/shuichirohayafuji/spendable-today/server/internal/domain"
+	"log"
 	"strings"
 	"time"
 )
+
+// syncConsultationFence is implemented by the production repository. A
+// missing implementation preserves standalone test adapters; production
+// withdrawal admission stays disabled until every write path is fenced.
+type syncConsultationFence interface {
+	ReserveSyncConsultation(context.Context, string, string) (domain.ConsultationUsage, error)
+	BeginSyncContinuation(context.Context, string) error
+	FinishSyncConsultation(context.Context, string, bool) error
+}
 
 func (s *Application) SendChat(ctx context.Context, id int64, message string, amount *int64) (domain.Consultation, error) {
 	if amount != nil {
@@ -35,7 +47,32 @@ func (s *Application) SendChat(ctx context.Context, id int64, message string, am
 	month := s.now().In(jst).Format("2006-01")
 	var usage domain.ConsultationUsage
 	var err error
-	if id == 0 {
+	fence, fenced := s.repository.(syncConsultationFence)
+	operationID := ""
+	if fenced {
+		var idBytes [16]byte
+		if _, err = rand.Read(idBytes[:]); err != nil {
+			return domain.Consultation{}, err
+		}
+		operationID = hex.EncodeToString(idBytes[:])
+		if id == 0 {
+			usage, err = fence.ReserveSyncConsultation(ctx, operationID, month)
+		} else {
+			err = fence.BeginSyncContinuation(ctx, operationID)
+			began := err == nil
+			if began {
+				usage, err = s.repository.MonthlyConsultationUsage(ctx, month)
+			}
+			// A read failure after confirmed admission has no external side effect.
+			if began && err != nil {
+				finishCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+				defer cancel()
+				if finishErr := fence.FinishSyncConsultation(finishCtx, operationID, false); finishErr != nil {
+					log.Print("synchronous consultation fence could not be completed")
+				}
+			}
+		}
+	} else if id == 0 {
 		usage, err = s.repository.ReserveMonthlyConsultation(ctx, month)
 	} else {
 		usage, err = s.repository.MonthlyConsultationUsage(ctx, month)
@@ -45,7 +82,7 @@ func (s *Application) SendChat(ctx context.Context, id int64, message string, am
 	}
 	committed := false
 	defer func() {
-		if id == 0 && !committed {
+		if !fenced && id == 0 && !committed {
 			releaseCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 			defer cancel()
 			_ = s.repository.ReleaseMonthlyConsultation(releaseCtx, month)
@@ -57,6 +94,17 @@ func (s *Application) SendChat(ctx context.Context, id int64, message string, am
 		chat.UnavailableReason = "今月の相談上限に達しました。相談内容は保存しました。外部モデルを使う助言は翌月に再開できます。"
 	}
 	thread, err := chat.Send(ctx, id, message)
+	if fenced {
+		var before *consultation.BeforeChatSideEffects
+		if err == nil || errors.As(err, &before) {
+			finishCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+			finishErr := fence.FinishSyncConsultation(finishCtx, operationID, err != nil && id == 0)
+			cancel()
+			if finishErr != nil {
+				log.Print("synchronous consultation fence could not be completed")
+			}
+		}
+	}
 	if errors.Is(err, consultation.ErrNotFound) {
 		return domain.Consultation{}, domain.ErrNotFound
 	}

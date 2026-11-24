@@ -8,7 +8,7 @@ import (
 	"github.com/shuichirohayafuji/spendable-today/server/internal/identity"
 )
 
-// withWithdrawalWriteTx is an unconnected prototype for a write performed
+// withWithdrawalWriteTx is used only by explicitly audited writes performed
 // entirely on the transaction that holds the user's row lock. A separate
 // connection holding an advisory lease cannot enforce this guarantee: losing
 // that connection releases the lease while another connection can still commit.
@@ -16,7 +16,7 @@ import (
 // Callers must not use a different connection, perform an external side effect,
 // start a goroutine, or report success before this function returns. It is not
 // a general HTTP drain, nor a proof about legacy or third-party writers. This
-// prototype does not authorize enabling withdrawal intake.
+// helper does not authorize enabling withdrawal intake.
 type withdrawalWriteSession interface {
 	ExecContext(context.Context, string, ...any) (sql.Result, error)
 	QueryContext(context.Context, string, ...any) (*sql.Rows, error)

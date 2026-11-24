@@ -45,19 +45,31 @@ void main() {
     for (final code in [301, 307]) {
       adapter.code = code;
       adapter.body = {'status': 'withdrawn'};
-      await expectLater(repository.withdraw(), throwsFormatException);
+      await expectLater(
+        repository.withdraw(generation: 1),
+        throwsFormatException,
+      );
       adapter.body = {'status': 'granted'};
-      await expectLater(repository.grant('v1'), throwsFormatException);
+      await expectLater(
+        repository.grant('v1', generation: 1),
+        throwsFormatException,
+      );
       await expectLater(repository.get(), throwsFormatException);
     }
   });
 
   test('mutation requires the matching explicit success state', () async {
     adapter.body = {'status': 'granted'};
-    await repository.grant('v1');
-    await expectLater(repository.withdraw(), throwsFormatException);
+    await repository.grant('v1', generation: 1);
+    await expectLater(
+      repository.withdraw(generation: 1),
+      throwsFormatException,
+    );
     adapter.body = {'status': 'withdrawn'};
-    await repository.withdraw();
-    await expectLater(repository.grant('v1'), throwsFormatException);
+    await repository.withdraw(generation: 1);
+    await expectLater(
+      repository.grant('v1', generation: 1),
+      throwsFormatException,
+    );
   });
 }

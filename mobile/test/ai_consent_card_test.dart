@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:spendable_today/core/network/api_exception.dart';
 import 'package:spendable_today/features/profile/repository/ai_consent_repository.dart';
 import 'package:spendable_today/features/profile/screens/settings/ai_consent_card.dart';
 
@@ -8,7 +9,9 @@ class FakeConsentRepository implements AiConsentRepository {
   bool failStatus = false;
   bool failWithdraw = false;
   bool failGrantAfterSave = false;
+  bool rejectGrantForWithdrawal = false;
   bool failWithdrawAfterSave = false;
+  bool unknownConflict = false;
   bool granted = false;
   int withdrawals = 0;
   String? grantedVersion;
@@ -25,14 +28,23 @@ class FakeConsentRepository implements AiConsentRepository {
   }
 
   @override
-  Future<void> grant(String version) async {
+  Future<void> grant(String version, {required int generation}) async {
+    if (unknownConflict)
+      throw const ApiException('untrusted', statusCode: 409, code: 'unknown');
+    if (rejectGrantForWithdrawal) {
+      throw const ApiException(
+        'ignored',
+        statusCode: 409,
+        code: 'withdrawal_pending',
+      );
+    }
     grantedVersion = version;
     granted = true;
     if (failGrantAfterSave) throw StateError('response lost');
   }
 
   @override
-  Future<void> withdraw() async {
+  Future<void> withdraw({required int generation}) async {
     withdrawals++;
     if (failWithdraw) throw StateError('unavailable');
     granted = false;
@@ -66,6 +78,24 @@ void main() {
     await tester.pumpAndSettle();
     expect(repository.grantedVersion, 'v1');
     expect(find.text('この説明に同意しています。'), findsOneWidget);
+  });
+
+  testWidgets('reports a definite withdrawal conflict', (tester) async {
+    final repository = FakeConsentRepository()..rejectGrantForWithdrawal = true;
+    await pumpCard(tester, repository);
+    await tester.tap(find.text('説明を確認して同意する'));
+    await tester.pumpAndSettle();
+    expect(find.text('退会申し込みの処理中は新しく同意できません。'), findsOneWidget);
+    expect(find.text('操作結果を確認できません。再取得した状態が後から変わる可能性があります。'), findsNothing);
+  });
+
+  testWidgets('unknown conflict remains uncertain', (tester) async {
+    final repository = FakeConsentRepository()..unknownConflict = true;
+    await pumpCard(tester, repository);
+    await tester.tap(find.text('説明を確認して同意する'));
+    await tester.pumpAndSettle();
+    expect(find.text('操作結果を確認できません。再取得した状態が後から変わる可能性があります。'), findsOneWidget);
+    expect(find.text('untrusted'), findsNothing);
   });
 
   testWidgets('withdrawal remains available when policy cannot be loaded', (

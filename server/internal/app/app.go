@@ -144,6 +144,9 @@ type consentService struct{ gate identity.AIConsentGate }
 func (c consentService) Status(ctx context.Context) (any, error) { return c.gate.Status(ctx) }
 func (c consentService) Grant(ctx context.Context, version string) error {
 	err := c.gate.Grant(ctx, version)
+	if errors.Is(err, identity.ErrWithdrawalPending) {
+		return consultation.ErrWithdrawalPending
+	}
 	if errors.Is(err, identity.ErrConsentRequired) {
 		return consultation.ErrConsentRequired
 	}
@@ -186,7 +189,7 @@ func (s withdrawalRequestService) RequestWithdrawal(ctx context.Context) error {
 
 // RunWithdrawalBatch executes a one-off scheduled run using the runtime DB role.
 func RunWithdrawalBatch(ctx context.Context, cfg config.Config, now time.Time) error {
-	if !cfg.WithdrawalBatchEnabled {
+	if !cfg.WithdrawalBatchEnabled || !withdrawalRuntimeReady {
 		return errors.New("withdrawal batch is disabled")
 	}
 	// docker compose exec exiting does not guarantee that the container-side
@@ -202,7 +205,7 @@ func RunWithdrawalBatch(ctx context.Context, cfg config.Config, now time.Time) e
 }
 
 func RefreshWithdrawalBatchHealth(ctx context.Context, cfg config.Config) error {
-	if !cfg.WithdrawalBatchEnabled {
+	if !cfg.WithdrawalBatchEnabled || !withdrawalRuntimeReady {
 		return errors.New("withdrawal batch is disabled")
 	}
 	repo, err := postgres.Open(ctx, cfg.DatabaseURL, false)

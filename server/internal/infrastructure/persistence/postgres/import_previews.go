@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/shuichirohayafuji/spendable-today/server/internal/domain"
+	"github.com/shuichirohayafuji/spendable-today/server/internal/identity"
 	"time"
 )
 
@@ -98,11 +99,14 @@ func (r *Repository) SaveImportPreview(ctx context.Context, id string, items []d
 	if err != nil {
 		return err
 	}
-	tx, err := r.db.DB.BeginTx(ctx, nil)
+	tx, err := r.db.DB.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
+	if err := lockActiveWithdrawalUser(ctx, tx, identity.UserID(ctx)); err != nil {
+		return err
+	}
 	// Expired uncommitted data is removed on the owner's next preview. Empty
 	// successful receipts are retained, just like normal csv_import_batches.
 	if _, err = tx.ExecContext(ctx, userQuery(ctx, "DELETE FROM csv_import_previews WHERE user_id=:user_id AND expires_at<=? AND result IS NULL"), now.UnixNano()); err != nil {

@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:dio/dio.dart';
 import '../../../core/network/api_client.dart';
 import '../../../shared/utils/json_parsing.dart';
 
@@ -47,10 +48,11 @@ class AiConsentRepository {
     );
   }
 
-  Future<void> grant(String version) async {
+  Future<void> grant(String version, {required int generation}) async {
     final response = await _client.put(
       '/ai-consent',
       data: {'version': version},
+      options: Options(extra: {expectedSessionGenerationKey: generation}),
     );
     if (response.statusCode != 200 ||
         parseMap(response.data)['status'] != 'granted') {
@@ -58,8 +60,11 @@ class AiConsentRepository {
     }
   }
 
-  Future<void> withdraw() async {
-    final response = await _client.delete('/ai-consent');
+  Future<void> withdraw({required int generation}) async {
+    final response = await _client.delete(
+      '/ai-consent',
+      options: Options(extra: {expectedSessionGenerationKey: generation}),
+    );
     if (response.statusCode != 200 ||
         parseMap(response.data)['status'] != 'withdrawn') {
       throw const FormatException('同意の撤回結果を確認できません。');

@@ -38,6 +38,9 @@ var migrations = []struct {
 	{version: 15, file: "015_import_previews.sql"},
 	{version: 16, file: "016_ai_consent.sql"},
 	{version: 17, file: "017_withdrawal_requests.sql"},
+	{version: 18, file: "018_notification_uncertainty.sql"},
+	{version: 19, file: "019_sync_consultation_reservations.sql"},
+	{version: 20, file: "020_usage_operations.sql"},
 }
 
 func openDatabase(ctx context.Context, url string, prepare func(context.Context, *sql.DB) error) (*database, error) {

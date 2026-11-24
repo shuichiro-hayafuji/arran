@@ -7,6 +7,7 @@ import (
 )
 
 var ErrWithdrawalBlocked = errors.New("withdrawal cannot be accepted")
+var ErrWithdrawalPending = errors.New("account withdrawal is pending")
 
 type key struct{}
 

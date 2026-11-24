@@ -32,7 +32,7 @@ def commands(scope):
                 for operation in ("build", "lint", "test")]
     if scope == "postgres":
         return [("server", ["go", "test", "-count=1", "-v", "-run",
-                            "^TestPostgresOwnershipAndSessions$",
+                            "^(TestPostgresOwnershipAndSessions|TestWithdrawalCSVGate|TestWithdrawalLegacyAdmission|TestWithdrawalNotificationFence|TestWithdrawalNotificationRace|TestWithdrawalNotificationNotSent|TestWithdrawalNotificationMigration|TestSyncConsultationReservation|TestSyncConsultationReservationConcurrent|TestSyncConsultationContinuationFence|TestSyncConsultationConflictRollback|TestUsageOperationReceipt|TestUsageOperationNoUsage|TestUsageOperationSendAdmissionRace|TestUsageSendAdapter)$",
                             "./internal/infrastructure/persistence/postgres"]),
                 ("server", ["go", "test", "-count=1", "-v", "-run",
                             "^TestWithdrawalIntakeDisabledInAppComposition$",

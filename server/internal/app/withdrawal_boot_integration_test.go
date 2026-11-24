@@ -107,4 +107,20 @@ func TestWithdrawalIntakeDisabledInAppComposition(t *testing.T) {
 	if err := application.repository.RequestWithdrawal(identity.WithUser(ctx, userID), userID); err != nil {
 		t.Fatalf("healthy repository prerequisites were not actually satisfied: %v", err)
 	}
+	// An already-pending request must not be processed by the scheduled CLI
+	// while the same runtime safety gate keeps new requests closed.
+	if _, err := scoped.ExecContext(ctx, `UPDATE withdrawal_requests SET requested_at=CURRENT_TIMESTAMP-INTERVAL '2 days' WHERE user_id=$1`, userID); err != nil {
+		t.Fatal(err)
+	}
+	if err := RunWithdrawalBatch(ctx, cfg, time.Now()); err == nil {
+		t.Fatal("batch ran while intake safety gate is closed")
+	}
+	var active bool
+	var completed sql.NullTime
+	if err := scoped.QueryRowContext(ctx, `SELECT u.is_active,w.completed_at FROM users u JOIN withdrawal_requests w ON w.user_id=u.id WHERE u.id=$1`, userID).Scan(&active, &completed); err != nil || !active || completed.Valid {
+		t.Fatalf("batch changed a pending user while disabled: active=%v completed=%v err=%v", active, completed.Valid, err)
+	}
+	if err := RefreshWithdrawalBatchHealth(ctx, cfg); err == nil {
+		t.Fatal("disabled batch refreshed scheduler health")
+	}
 }

@@ -57,7 +57,7 @@ func (r *Repository) RequestWithdrawal(ctx context.Context, userID int64) error 
 		return err
 	}
 	var busy bool
-	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM ai_consent_inflight WHERE user_id=$1) OR EXISTS(SELECT 1 FROM chat_requests WHERE user_id=$1 AND status='processing')`, userID).Scan(&busy); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM ai_consent_inflight WHERE user_id=$1) OR EXISTS(SELECT 1 FROM chat_requests WHERE user_id=$1 AND status='processing') OR EXISTS(SELECT 1 FROM admin_notifications WHERE user_id=$1 AND (status = 'sending' OR withdrawal_uncertain)) OR EXISTS(SELECT 1 FROM sync_consultation_reservations WHERE user_id=$1 AND state='active') OR EXISTS(SELECT 1 FROM ai_usage_operations WHERE user_id=$1 AND usage_id IS NULL AND no_usage_reason IS NULL)`, userID).Scan(&busy); err != nil {
 		return err
 	}
 	if busy {
@@ -77,9 +77,13 @@ func withdrawalBatchReady(ctx context.Context, tx *sql.Tx) error {
 		AND has_table_privilege(current_user,'users','UPDATE')
 		AND has_table_privilege(current_user,'auth_sessions','SELECT')
 		AND has_table_privilege(current_user,'auth_sessions','DELETE')
+		AND has_any_column_privilege(current_user,'auth_sessions','UPDATE')
 		AND has_table_privilege(current_user,'withdrawal_requests','SELECT')
 		AND has_column_privilege(current_user,'withdrawal_requests','completed_at','UPDATE')
 		AND has_table_privilege(current_user,'chat_requests','SELECT')
+		AND has_table_privilege(current_user,'admin_notifications','SELECT')
+		AND has_table_privilege(current_user,'sync_consultation_reservations','SELECT')
+		AND has_table_privilege(current_user,'ai_usage_operations','SELECT')
 		AND has_table_privilege(current_user,'ai_consent_inflight','SELECT')`).Scan(&ready)
 	if err != nil {
 		return err
@@ -123,7 +127,7 @@ func lockActiveWithdrawalUser(ctx context.Context, tx *sql.Tx, userID int64) err
 		return err
 	}
 	if pending {
-		return errors.New("withdrawal pending")
+		return identity.ErrWithdrawalPending
 	}
 	return nil
 }
@@ -191,23 +195,45 @@ func (r *Repository) completeWithdrawal(ctx context.Context, userID int64, cutof
 		return err
 	}
 	var active bool
-	if err := tx.QueryRowContext(ctx, `SELECT is_active FROM users WHERE id=$1 FOR NO KEY UPDATE`, userID).Scan(&active); err != nil {
+	// A locked account remains pending for retry; it must not consume the
+	// batch's entire deadline and starve later accounts.
+	if err := tx.QueryRowContext(ctx, `SELECT is_active FROM users WHERE id=$1 FOR NO KEY UPDATE SKIP LOCKED`, userID).Scan(&active); err != nil {
 		return err
 	}
 	var requested time.Time
 	var completed sql.NullTime
-	if err := tx.QueryRowContext(ctx, `SELECT requested_at,completed_at FROM withdrawal_requests WHERE user_id=$1 FOR UPDATE`, userID).Scan(&requested, &completed); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT requested_at,completed_at FROM withdrawal_requests WHERE user_id=$1 FOR UPDATE SKIP LOCKED`, userID).Scan(&requested, &completed); err != nil {
 		return err
 	}
 	if completed.Valid || !requested.Before(cutoff) {
 		return tx.Commit()
 	}
 	var busy bool
-	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM ai_consent_inflight WHERE user_id=$1) OR EXISTS(SELECT 1 FROM chat_requests WHERE user_id=$1 AND status='processing')`, userID).Scan(&busy); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM ai_consent_inflight WHERE user_id=$1) OR EXISTS(SELECT 1 FROM chat_requests WHERE user_id=$1 AND status='processing') OR EXISTS(SELECT 1 FROM admin_notifications WHERE user_id=$1 AND (status = 'sending' OR withdrawal_uncertain)) OR EXISTS(SELECT 1 FROM sync_consultation_reservations WHERE user_id=$1 AND state='active') OR EXISTS(SELECT 1 FROM ai_usage_operations WHERE user_id=$1 AND usage_id IS NULL AND no_usage_reason IS NULL)`, userID).Scan(&busy); err != nil {
 		return err
 	}
 	if busy {
 		return errors.New("withdrawal remains pending: unresolved work")
+	}
+	// Do not wait per session: many independently locked sessions must not
+	// starve later owners. Any contention rolls back this owner for retry.
+	sessions, err := tx.QueryContext(ctx, `SELECT token_hash FROM auth_sessions WHERE user_id=$1 FOR UPDATE NOWAIT`, userID)
+	if err != nil {
+		return err
+	}
+	for sessions.Next() {
+		var hash string
+		if err := sessions.Scan(&hash); err != nil {
+			sessions.Close()
+			return err
+		}
+	}
+	if err := sessions.Err(); err != nil {
+		sessions.Close()
+		return err
+	}
+	if err := sessions.Close(); err != nil {
+		return err
 	}
 	if active {
 		if _, err := tx.ExecContext(ctx, `UPDATE users SET is_active=FALSE WHERE id=$1`, userID); err != nil {
