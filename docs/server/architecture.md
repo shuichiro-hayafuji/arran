@@ -44,6 +44,8 @@ ArranにおけるHexagonal Architectureの具体的な解釈は、[標準構成]
 
 `Application`は複数ユースケースの入口をまとめるため大きいが、永続化境界はプロフィール、取引、相談、記憶、レビューに分割する。機能別Serviceへの分割は呼出し側とトランザクション境界を変えるため、このIssueでは行わない。新しいRepository操作は、用途が一致する小さいinterfaceへ追加する。
 
+退会と復元の独立証跡には未接続の候補として `restoreevidence`（イベントと DynamoDB 読書き）、`evidenceauthority`（権威確認と lease）、`evidenceflow`（再試行契約）、`evidencebridge`（候補の接続）がある。`evidenceflow` は `restoreevidence` のイベントだけを参照し、bridge は3候補を接続する。PostgreSQL は再試行契約とイベントを使う journal を持つ。Application、HTTP、通常の app 構築からこれらの候補は参照しない。この依存登録は本番接続や復元の安全性を意味せず、受理と復元切替は引き続き停止する。残る信頼境界は [復元証跡の設計案](../harness/restore-evidence-proposal.md) に記載する。
+
 公開識別子は、別パッケージが型を指定する境界、DTO、生成関数、またはinterfaceの実装に必要なメソッドに限定する。今回の棚卸しでは、handlerの具象型、agentadapterの具象型、Agentのorchestratorと修正用interface、OpenAIの具象client、同一パッケージの検証helperを非公開にした。domainの業務型、applicationが所有するinterface、Agentと親server間のDTO・Model、各adapterの生成関数はパッケージ境界を越えるため公開を維持する。OpenAIの利用量は技術DTOの`UsageRecord`でcomposition rootへ通知し、そこで認証済み利用者とdomainの記録型へ結び付けるため、OpenAI実装からdomainとidentityを参照しない。
 
 循環依存はGoコンパイラでも失敗するが、コンパイル前に意図しない逆向き依存を説明できるよう、チェッカーは`internal`パッケージごとの許可先を列挙する。新しいパッケージは依存方針を登録しない限り失敗させ、既存パッケージから未許可の`internal`参照も失敗させる。

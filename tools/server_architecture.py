@@ -48,12 +48,17 @@ ALLOWED_INTERNAL = {
     "internal/consultation": set(),
     "internal/csvimport": {"internal/domain"},
     "internal/domain": set(),
+    "internal/restoreevidence": set(),
+    "internal/evidenceauthority": set(),
+    "internal/evidenceflow": {"internal/restoreevidence"},
+    "internal/evidencebridge": {"internal/evidenceauthority", "internal/evidenceflow", "internal/restoreevidence"},
     "internal/handler": {"internal/application", "internal/consultation", "internal/domain"},
 	"internal/identity": set(),
 	"internal/infrastructure/notification": {"internal/domain"},
 	"internal/infrastructure/openai": {"internal/consultation"},
     "internal/infrastructure/persistence/postgres": {
         "internal/auth", "internal/consultation", "internal/domain", "internal/identity",
+        "internal/evidenceflow", "internal/restoreevidence",
     },
 	"internal/infrastructure/persistence/sqlite": {"internal/consultation", "internal/domain", "internal/identity"},
 }
