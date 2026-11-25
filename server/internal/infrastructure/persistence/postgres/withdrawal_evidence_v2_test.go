@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/shuichirohayafuji/spendable-today/server/internal/identity"
+	"github.com/shuichirohayafuji/spendable-today/server/internal/restoreevidence"
 )
 
 func TestWithdrawalEvidenceV2Persistence(t *testing.T) {
@@ -21,7 +22,7 @@ func TestWithdrawalEvidenceV2Persistence(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Reconstruct the real pre-v23 schema, retain a v1 row and migrate in place.
-	for _, q := range []string{`ALTER TABLE evidence_intents DROP COLUMN request_operation_id, DROP COLUMN request_time_utc, DROP COLUMN format_version`, `DELETE FROM schema_migrations WHERE version=23`} {
+	for _, q := range []string{`ALTER TABLE evidence_intents DROP COLUMN request_operation_id, DROP COLUMN request_time_utc, DROP COLUMN format_version`, `DELETE FROM schema_migrations WHERE version IN (23,24)`} {
 		if _, err = r.db.DB.ExecContext(ctx, q); err != nil {
 			t.Fatal(err)
 		}
@@ -97,5 +98,99 @@ func TestWithdrawalEvidenceV2Persistence(t *testing.T) {
 	}
 	if _, err = r.readWithdrawalV2(a, owner, end.OperationID); err == nil {
 		t.Fatal("inconsistent reference accepted")
+	}
+}
+
+func TestWithdrawalV2AttemptPersistence(t *testing.T) {
+	if os.Getenv("ARRAN_TEST_DATABASE_URL") == "" {
+		t.Skip("isolated PostgreSQL required")
+	}
+	r := openReconciliationRepository(t)
+	ctx := context.Background()
+	a := identity.WithUser(ctx, 701)
+	b := identity.WithUser(ctx, 702)
+	owner, err := r.activeEvidenceOwner(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := withdrawalV2Payload{OwnerID: owner, LedgerID: "0123456789abcdef0123456789abcdef", OperationID: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Kind: "withdrawal_requested", RequestedAt: "2026-11-24T15:00:00Z"}
+	if err = r.prepareWithdrawalV2(a, p); err != nil {
+		t.Fatal(err)
+	}
+	end := withdrawalV2Payload{OwnerID: owner, LedgerID: p.LedgerID, OperationID: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", Kind: "withdrawal_completed", RequestedAt: p.RequestedAt, RequestOperationID: p.OperationID}
+	if err = r.prepareWithdrawalV2(a, end); err != nil {
+		t.Fatal(err)
+	}
+	endEvent := restoreevidence.WithdrawalV2{Version: 2, OwnerID: owner, LedgerID: p.LedgerID, OperationID: end.OperationID, Kind: end.Kind, RequestedAt: p.RequestedAt, RequestOperationID: p.OperationID, Generation: 1}
+	endEvent.Digest = restoreevidence.WithdrawalV2Digest(endEvent)
+	if err = r.bindWithdrawalV2Attempt(a, end, endEvent); err == nil {
+		t.Fatal("first-generation completion accepted")
+	}
+	endEvent.Generation = 2
+	endEvent.Previous = "1111111111111111111111111111111111111111111111111111111111111111"
+	endEvent.Digest = restoreevidence.WithdrawalV2Digest(endEvent)
+	if err = r.bindWithdrawalV2Attempt(a, end, endEvent); err == nil {
+		t.Fatal("completion accepted before request attempt fixed")
+	}
+	e := restoreevidence.WithdrawalV2{Version: 2, OwnerID: p.OwnerID, LedgerID: p.LedgerID, OperationID: p.OperationID, Kind: p.Kind, RequestedAt: p.RequestedAt, Generation: 1}
+	e.Digest = restoreevidence.WithdrawalV2Digest(e)
+	e2 := e
+	e2.Generation = 2
+	e2.Previous = "1111111111111111111111111111111111111111111111111111111111111111"
+	e2.Digest = restoreevidence.WithdrawalV2Digest(e2)
+	results := make(chan error, 2)
+	for _, candidate := range []restoreevidence.WithdrawalV2{e, e2} {
+		candidate := candidate
+		go func() { results <- r.bindWithdrawalV2Attempt(a, p, candidate) }()
+	}
+	first, second := <-results, <-results
+	if (first == nil) == (second == nil) {
+		t.Fatalf("conflicting binds: %v %v", first, second)
+	}
+	r.db.DB.SetMaxIdleConns(0)
+	got, attempt, err := readWithdrawalV2Attempt(ctx, r.db.DB, 701, owner, p.OperationID, false)
+	if err != nil || got != p || attempt == nil || (*attempt != e && *attempt != e2) {
+		t.Fatalf("fresh read: %+v %+v %v", got, attempt, err)
+	}
+	// Model response loss by discarding success, then retry the retained event.
+	if err = r.bindWithdrawalV2Attempt(a, p, *attempt); err != nil {
+		t.Fatalf("retry exact attempt: %v", err)
+	}
+	if err = r.bindWithdrawalV2Attempt(b, p, *attempt); err == nil {
+		t.Fatal("other owner bound attempt")
+	}
+	changed := e
+	if *attempt == e {
+		changed = e2
+	}
+	if err = r.bindWithdrawalV2Attempt(a, p, changed); err == nil {
+		t.Fatal("changed attempt accepted after restart")
+	}
+	endEvent.Generation = attempt.Generation
+	endEvent.Previous = attempt.Previous
+	endEvent.Digest = restoreevidence.WithdrawalV2Digest(endEvent)
+	if err = r.bindWithdrawalV2Attempt(a, end, endEvent); err == nil {
+		t.Fatal("completion at request generation accepted")
+	}
+	endEvent.Generation = attempt.Generation + 1
+	endEvent.Previous = "1111111111111111111111111111111111111111111111111111111111111111"
+	if endEvent.Previous == attempt.Digest {
+		endEvent.Previous = "2222222222222222222222222222222222222222222222222222222222222222"
+	}
+	endEvent.Digest = restoreevidence.WithdrawalV2Digest(endEvent)
+	if err = r.bindWithdrawalV2Attempt(a, end, endEvent); err == nil {
+		t.Fatal("adjacent completion with wrong previous accepted")
+	}
+	endEvent.Previous = attempt.Digest
+	endEvent.Digest = restoreevidence.WithdrawalV2Digest(endEvent)
+	if err = r.bindWithdrawalV2Attempt(a, end, endEvent); err != nil {
+		t.Fatalf("valid adjacent completion rejected: %v", err)
+	}
+	_, fixedEnd, err := readWithdrawalV2Attempt(ctx, r.db.DB, 701, owner, end.OperationID, false)
+	if err != nil || fixedEnd == nil || *fixedEnd != endEvent {
+		t.Fatalf("completion fresh read: %+v %v", fixedEnd, err)
+	}
+	if _, err = r.db.DB.ExecContext(ctx, `UPDATE evidence_intents SET state='witnessed',event_generation=attempt_generation,event_digest=attempt_digest WHERE user_id=701 AND operation_id=$1`, p.OperationID); err == nil {
+		t.Fatal("v2 witnessed without a safe lease")
 	}
 }

@@ -13,7 +13,7 @@ func TestEvidenceOwnerMigration(t *testing.T) {
 	r := openReconciliationRepository(t)
 	ctx := context.Background()
 	// Reconstruct the immediately preceding version with existing owners.
-	for _, q := range []string{`DROP TABLE evidence_intents`, `DROP TRIGGER users_evidence_owner_id_immutable ON users`, `ALTER TABLE users DROP COLUMN evidence_owner_id`, `DROP FUNCTION prevent_evidence_owner_id_change()`, `DELETE FROM schema_migrations WHERE version IN (21,22,23)`} {
+	for _, q := range []string{`DROP TABLE evidence_intents`, `DROP TRIGGER users_evidence_owner_id_immutable ON users`, `ALTER TABLE users DROP COLUMN evidence_owner_id`, `DROP FUNCTION prevent_evidence_owner_id_change()`, `DELETE FROM schema_migrations WHERE version IN (21,22,23,24)`} {
 		if _, err := r.db.DB.ExecContext(ctx, q); err != nil {
 			t.Fatal(err)
 		}
@@ -40,6 +40,15 @@ func TestEvidenceOwnerMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	sqlBytes, err = migrationFiles.ReadFile("023_withdrawal_evidence_v2.sql")
+	if err != nil {
+		tx.Rollback()
+		t.Fatal(err)
+	}
+	if _, err = tx.ExecContext(ctx, string(sqlBytes)); err != nil {
+		tx.Rollback()
+		t.Fatal(err)
+	}
+	sqlBytes, err = migrationFiles.ReadFile("024_withdrawal_v2_attempts.sql")
 	if err != nil {
 		tx.Rollback()
 		t.Fatal(err)
