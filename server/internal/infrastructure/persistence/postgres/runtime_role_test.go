@@ -105,7 +105,7 @@ func TestRuntimeRoleChecksMigrationsWithoutDDL(t *testing.T) {
 	exec("DROP TABLE " + schema + ".withdrawal_requests")
 	exec("DROP TABLE " + schema + ".withdrawal_batch_health")
 	exec("ALTER TABLE " + schema + ".admin_notifications DROP COLUMN withdrawal_uncertain")
-	exec("DELETE FROM " + schema + ".schema_migrations WHERE version IN (17,18,19,20,21,22)")
+	exec("DELETE FROM " + schema + ".schema_migrations WHERE version > 16")
 	exec(grant)
 	if err := MigrateURL(ctx, migrationRoleURL); err != nil {
 		t.Fatal(err)

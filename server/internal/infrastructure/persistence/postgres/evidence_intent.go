@@ -56,7 +56,7 @@ func (r *Repository) prepareEvidenceIntent(ctx context.Context, in evidenceInten
 		}
 		if in.Kind == "send_completed" {
 			var kind, policy, ledger, state string
-			if err := tx.QueryRowContext(ctx, `SELECT kind,policy_version,ledger_id,state FROM evidence_intents WHERE user_id=$1 AND operation_id=$2 AND owner_id=$3 FOR SHARE`, user, in.RelatedOperationID, owner).Scan(&kind, &policy, &ledger, &state); err != nil || kind != "send_started" || policy != in.PolicyVersion || ledger != in.LedgerID || state != "witnessed" {
+			if err := tx.QueryRowContext(ctx, `SELECT kind,policy_version,ledger_id,state FROM evidence_intents WHERE format_version=1 AND user_id=$1 AND operation_id=$2 AND owner_id=$3 FOR SHARE`, user, in.RelatedOperationID, owner).Scan(&kind, &policy, &ledger, &state); err != nil || kind != "send_started" || policy != in.PolicyVersion || ledger != in.LedgerID || state != "witnessed" {
 				return errEvidenceIntentUnknown
 			}
 		}
@@ -70,7 +70,7 @@ func (r *Repository) prepareEvidenceIntent(ctx context.Context, in evidenceInten
 		}
 		var related sql.NullString
 		var state string
-		err = tx.QueryRowContext(ctx, `SELECT operation_id,owner_id,ledger_id,kind,policy_version,related_operation_id,state FROM evidence_intents WHERE user_id=$1 AND operation_id=$2`, user, in.OperationID).Scan(&result.OperationID, &result.OwnerID, &result.LedgerID, &result.Kind, &result.PolicyVersion, &related, &state)
+		err = tx.QueryRowContext(ctx, `SELECT operation_id,owner_id,ledger_id,kind,policy_version,related_operation_id,state FROM evidence_intents WHERE format_version=1 AND user_id=$1 AND operation_id=$2`, user, in.OperationID).Scan(&result.OperationID, &result.OwnerID, &result.LedgerID, &result.Kind, &result.PolicyVersion, &related, &state)
 		if err != nil {
 			return err
 		}
@@ -113,7 +113,7 @@ func (r *Repository) readEvidenceIntent(ctx context.Context, expected evidenceIn
 	}
 	var result evidenceIntent
 	var related sql.NullString
-	err := r.db.DB.QueryRowContext(ctx, `SELECT operation_id,owner_id,ledger_id,kind,policy_version,related_operation_id FROM evidence_intents WHERE user_id=$1 AND operation_id=$2 AND owner_id=$3`, user, expected.OperationID, expected.OwnerID).Scan(&result.OperationID, &result.OwnerID, &result.LedgerID, &result.Kind, &result.PolicyVersion, &related)
+	err := r.db.DB.QueryRowContext(ctx, `SELECT operation_id,owner_id,ledger_id,kind,policy_version,related_operation_id FROM evidence_intents WHERE format_version=1 AND user_id=$1 AND operation_id=$2 AND owner_id=$3`, user, expected.OperationID, expected.OwnerID).Scan(&result.OperationID, &result.OwnerID, &result.LedgerID, &result.Kind, &result.PolicyVersion, &related)
 	if related.Valid {
 		result.RelatedOperationID = related.String
 	}

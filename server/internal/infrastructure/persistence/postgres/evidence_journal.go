@@ -29,7 +29,7 @@ func (j evidenceJournal) Load(ctx context.Context, owner, operation string) (evi
 	var state string
 	var gen, attemptGen sql.NullInt64
 	var digest, attemptPrevious, attemptDigest sql.NullString
-	err := j.repo.db.DB.QueryRowContext(ctx, `SELECT ledger_id,owner_id,operation_id,kind,policy_version,related_operation_id,state,event_generation,event_digest,attempt_generation,attempt_previous,attempt_digest FROM evidence_intents WHERE user_id=$1 AND owner_id=$2 AND operation_id=$3`, user, owner, operation).Scan(&e.LedgerID, &e.OwnerID, &e.OperationID, &e.Kind, &e.PolicyVersion, &related, &state, &gen, &digest, &attemptGen, &attemptPrevious, &attemptDigest)
+	err := j.repo.db.DB.QueryRowContext(ctx, `SELECT ledger_id,owner_id,operation_id,kind,policy_version,related_operation_id,state,event_generation,event_digest,attempt_generation,attempt_previous,attempt_digest FROM evidence_intents WHERE format_version=1 AND user_id=$1 AND owner_id=$2 AND operation_id=$3`, user, owner, operation).Scan(&e.LedgerID, &e.OwnerID, &e.OperationID, &e.Kind, &e.PolicyVersion, &related, &state, &gen, &digest, &attemptGen, &attemptPrevious, &attemptDigest)
 	if err != nil {
 		return evidenceflow.Intent{}, errEvidenceIntentUnknown
 	}

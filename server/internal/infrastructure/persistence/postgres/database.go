@@ -43,6 +43,7 @@ var migrations = []struct {
 	{version: 20, file: "020_usage_operations.sql"},
 	{version: 21, file: "021_evidence_owner_id.sql"},
 	{version: 22, file: "022_evidence_intents.sql"},
+	{version: 23, file: "023_withdrawal_evidence_v2.sql"},
 }
 
 func openDatabase(ctx context.Context, url string, prepare func(context.Context, *sql.DB) error) (*database, error) {

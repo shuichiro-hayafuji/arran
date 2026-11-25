@@ -45,7 +45,7 @@ func (r *Repository) witnessEvidenceIntent(ctx context.Context, expected evidenc
 	var digest sql.NullString
 	var attemptGen sql.NullInt64
 	var attemptPrev, attemptDigest sql.NullString
-	err = tx.QueryRowContext(ctx, `SELECT state,event_generation,event_digest,attempt_generation,attempt_previous,attempt_digest FROM evidence_intents WHERE user_id=$1 AND operation_id=$2 AND owner_id=$3 AND ledger_id=$4 AND kind=$5 AND policy_version=$6 AND COALESCE(related_operation_id,'')=$7 FOR UPDATE`, user, expected.OperationID, expected.OwnerID, expected.LedgerID, expected.Kind, expected.PolicyVersion, expected.RelatedOperationID).Scan(&state, &gen, &digest, &attemptGen, &attemptPrev, &attemptDigest)
+	err = tx.QueryRowContext(ctx, `SELECT state,event_generation,event_digest,attempt_generation,attempt_previous,attempt_digest FROM evidence_intents WHERE format_version=1 AND user_id=$1 AND operation_id=$2 AND owner_id=$3 AND ledger_id=$4 AND kind=$5 AND policy_version=$6 AND COALESCE(related_operation_id,'')=$7 FOR UPDATE`, user, expected.OperationID, expected.OwnerID, expected.LedgerID, expected.Kind, expected.PolicyVersion, expected.RelatedOperationID).Scan(&state, &gen, &digest, &attemptGen, &attemptPrev, &attemptDigest)
 	if err != nil {
 		return errEvidenceIntentUnknown
 	}
@@ -64,7 +64,7 @@ func (r *Repository) witnessEvidenceIntent(ctx context.Context, expected evidenc
 	if state != "prepared" || event.Generation > uint64(^uint64(0)>>1) {
 		return errEvidenceIntentUnknown
 	}
-	result, err := tx.ExecContext(ctx, `UPDATE evidence_intents SET state='witnessed',event_generation=$1,event_digest=$2 WHERE user_id=$3 AND operation_id=$4 AND state='prepared'`, int64(event.Generation), event.Digest, user, expected.OperationID)
+	result, err := tx.ExecContext(ctx, `UPDATE evidence_intents SET state='witnessed',event_generation=$1,event_digest=$2 WHERE user_id=$3 AND operation_id=$4 AND format_version=1 AND state='prepared'`, int64(event.Generation), event.Digest, user, expected.OperationID)
 	if err != nil {
 		return errEvidenceIntentUnknown
 	}
@@ -96,7 +96,7 @@ func (r *Repository) bindEvidenceAttempt(ctx context.Context, expected evidenceI
 	}
 	var generation sql.NullInt64
 	var previous, digest sql.NullString
-	err = tx.QueryRowContext(ctx, `SELECT attempt_generation,attempt_previous,attempt_digest FROM evidence_intents WHERE user_id=$1 AND operation_id=$2 AND owner_id=$3 AND ledger_id=$4 AND kind=$5 AND policy_version=$6 AND COALESCE(related_operation_id,'')=$7 FOR UPDATE`, user, expected.OperationID, expected.OwnerID, expected.LedgerID, expected.Kind, expected.PolicyVersion, expected.RelatedOperationID).Scan(&generation, &previous, &digest)
+	err = tx.QueryRowContext(ctx, `SELECT attempt_generation,attempt_previous,attempt_digest FROM evidence_intents WHERE format_version=1 AND user_id=$1 AND operation_id=$2 AND owner_id=$3 AND ledger_id=$4 AND kind=$5 AND policy_version=$6 AND COALESCE(related_operation_id,'')=$7 FOR UPDATE`, user, expected.OperationID, expected.OwnerID, expected.LedgerID, expected.Kind, expected.PolicyVersion, expected.RelatedOperationID).Scan(&generation, &previous, &digest)
 	if err != nil {
 		return errEvidenceIntentUnknown
 	}
@@ -105,7 +105,7 @@ func (r *Repository) bindEvidenceAttempt(ctx context.Context, expected evidenceI
 			return errEvidenceIntentUnknown
 		}
 	} else {
-		result, err := tx.ExecContext(ctx, `UPDATE evidence_intents SET attempt_generation=$1,attempt_previous=$2,attempt_digest=$3 WHERE user_id=$4 AND operation_id=$5 AND state='prepared' AND attempt_generation IS NULL`, int64(event.Generation), event.Previous, event.Digest, user, expected.OperationID)
+		result, err := tx.ExecContext(ctx, `UPDATE evidence_intents SET attempt_generation=$1,attempt_previous=$2,attempt_digest=$3 WHERE user_id=$4 AND operation_id=$5 AND format_version=1 AND state='prepared' AND attempt_generation IS NULL`, int64(event.Generation), event.Previous, event.Digest, user, expected.OperationID)
 		if err != nil {
 			return errEvidenceIntentUnknown
 		}
