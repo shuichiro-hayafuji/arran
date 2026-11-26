@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/network/api_exception.dart';
 import '../../repository/ai_consent_repository.dart';
 import '../../../session/provider/session_provider.dart';
 
@@ -21,16 +22,27 @@ class _AiConsentCardState extends ConsumerState<AiConsentCard> {
     try {
       final repository = ref.read(aiConsentRepositoryProvider);
       if (grant) {
-        await repository.grant(status!.version);
+        await repository.grant(status!.version, generation: generation);
       } else {
-        await repository.withdraw();
+        await repository.withdraw(generation: generation);
       }
       if (!mounted || authSession.generation != generation) return;
       ref.invalidate(aiConsentStatusProvider);
-    } catch (_) {
+    } catch (exception) {
       if (!mounted || authSession.generation != generation) return;
       setState(() {
-        error = '操作結果を確認できません。再取得した状態が後から変わる可能性があります。';
+        error =
+            grant &&
+                exception is ApiException &&
+                exception.statusCode == 409 &&
+                exception.code == 'withdrawal_pending'
+            ? '退会申し込みの処理中は新しく同意できません。'
+            : grant &&
+                  exception is ApiException &&
+                  exception.statusCode == 409 &&
+                  exception.code == 'consent_not_granted'
+            ? '説明を読み直してからお試しください。'
+            : '操作結果を確認できません。再取得した状態が後から変わる可能性があります。';
       });
       ref.invalidate(aiConsentStatusProvider);
     } finally {

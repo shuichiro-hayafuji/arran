@@ -71,6 +71,33 @@ type Transaction struct {
     def test_allowed_dependencies_and_transaction_fields_pass(self):
         self.assertEqual(self.check(self.fixture())[0], "PASS")
 
+    def test_restore_evidence_candidate_dependencies_are_scoped(self):
+        root = self.fixture()
+        for package, imports in {
+            "restoreevidence": [],
+            "evidenceauthority": [],
+            "evidenceflow": ["restoreevidence"],
+            "evidencebridge": ["evidenceauthority", "evidenceflow", "restoreevidence"],
+        }.items():
+            text = f"package {package}\n" + "".join(
+                f'import "{INTERNAL_PREFIX}{item}"\n' for item in imports
+            )
+            self.write(root, f"server/internal/{package}/candidate.go", text)
+        self.write(root, "server/internal/infrastructure/persistence/postgres/receipt.go",
+                   f'package postgres\nimport "{INTERNAL_PREFIX}evidenceflow"\n'
+                   f'import "{INTERNAL_PREFIX}restoreevidence"\n')
+        self.assertEqual(self.check(root)[0], "PASS")
+        for importer, forbidden in (("evidenceflow", "evidenceauthority"),
+                                    ("restoreevidence", "evidencebridge"),
+                                    ("evidenceauthority", "application"),
+                                    ("application", "evidencebridge")):
+            with self.subTest(importer=importer, forbidden=forbidden):
+                path = f"server/internal/{importer}/forbidden.go"
+                self.write(root, path, f'package {importer}\nimport "{INTERNAL_PREFIX}{forbidden}"\n')
+                result, _ = self.check(root)
+                self.assertEqual(result, "FAIL")
+                (root / path).unlink()
+
     def test_consultation_core_cannot_import_adapters(self):
         for imported in ("internal/infrastructure/openai", "internal/infrastructure/persistence/postgres", "internal/handler"):
             with self.subTest(imported=imported):

@@ -32,6 +32,10 @@ type App struct {
 	workerDone   chan struct{}
 }
 
+// Enabling intake is deliberately blocked until all authenticated work is
+// drained by the batch and restored account status is reconciled safely.
+const withdrawalRuntimeReady = false
+
 // Migrate runs the release migration with only the one-off process credentials.
 func Migrate(ctx context.Context, cfg config.Config) error {
 	return postgres.MigrateURL(ctx, cfg.DatabaseURL)
@@ -44,7 +48,7 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 	}
 
 	consentGate := identity.AIConsentGate{Store: repo, Version: cfg.AIConsentVersion}
-	primary, source := modelClient(cfg, usageRecorder(repo), consentGate)
+	primary, source := modelClient(cfg, guardedUsageRecorder(repo), consentGate)
 	fallback := agent.MockClient{}
 	agents := agentadapter.NewWithFailureCheck(primary, fallback, source, func(err error) bool {
 		return errors.Is(err, consultation.ErrConsentRequired) || errors.Is(err, consultation.ErrConsentUnavailable) || errors.Is(err, consultation.ErrAIOutcomeUnknown)
@@ -52,7 +56,7 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 	var chatAgent consultation.Agent
 	if !cfg.UseMockLLM {
 		client := openai.NewOpenAIClient(cfg.OpenAIAPIKey, cfg.OpenAIModel, cfg.OpenAIReasoningEffort)
-		client.SetUsageRecorder(usageRecorder(repo))
+		client.SetUsageRecorder(guardedUsageRecorder(repo))
 		client.SetConsentGate(consentExecutor{consentGate})
 		chatAgent = client
 	}
@@ -76,7 +80,7 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 	return &App{
 		Server: &http.Server{
 			Addr:              cfg.APIAddr,
-			Handler:           auth.New(repo).Wrap(handler.NewWithConsent(apiApplication, consentService{consentGate})),
+			Handler:           auth.New(repo).Wrap(handler.NewWithServices(apiApplication, consentService{consentGate}, withdrawalRequestService{repository: repo, enabled: cfg.WithdrawalBatchEnabled && withdrawalRuntimeReady})),
 			ReadHeaderTimeout: 5 * time.Second,
 			ReadTimeout:       30 * time.Second,
 			WriteTimeout:      30 * time.Second,
@@ -91,6 +95,19 @@ func usageRecorder(repository interface {
 }) openai.UsageRecorder {
 	return func(ctx context.Context, usage openai.UsageRecord) error {
 		return repository.RecordLLMUsage(ctx, domain.LLMUsage{
+			UserID: identity.UserID(ctx), Operation: usage.Operation, Model: usage.Model,
+			InputTokens: usage.InputTokens, CachedInputTokens: usage.CachedInputTokens,
+			OutputTokens: usage.OutputTokens, ReasoningTokens: usage.ReasoningTokens,
+			TotalTokens: usage.TotalTokens, OccurredAt: usage.OccurredAt,
+		})
+	}
+}
+
+func guardedUsageRecorder(repository interface {
+	RecordGuardedLLMUsage(context.Context, domain.LLMUsage) error
+}) openai.UsageRecorder {
+	return func(ctx context.Context, usage openai.UsageRecord) error {
+		return repository.RecordGuardedLLMUsage(ctx, domain.LLMUsage{
 			UserID: identity.UserID(ctx), Operation: usage.Operation, Model: usage.Model,
 			InputTokens: usage.InputTokens, CachedInputTokens: usage.CachedInputTokens,
 			OutputTokens: usage.OutputTokens, ReasoningTokens: usage.ReasoningTokens,
@@ -122,7 +139,7 @@ type consentExecutor struct{ gate identity.AIConsentGate }
 func (c consentExecutor) Execute(ctx context.Context, fn func(context.Context) error) error {
 	called := false
 	var callErr error
-	err := c.gate.Execute(ctx, func(inner context.Context) error { called = true; callErr = fn(inner); return callErr })
+	err := c.gate.Execute(identity.RequireUsageTracking(ctx), func(inner context.Context) error { called = true; callErr = fn(inner); return callErr })
 	if err != nil && called && callErr == nil {
 		return fmt.Errorf("%w: completion record unavailable", consultation.ErrAIOutcomeUnknown)
 	}
@@ -140,9 +157,74 @@ type consentService struct{ gate identity.AIConsentGate }
 func (c consentService) Status(ctx context.Context) (any, error) { return c.gate.Status(ctx) }
 func (c consentService) Grant(ctx context.Context, version string) error {
 	err := c.gate.Grant(ctx, version)
+	if errors.Is(err, identity.ErrWithdrawalPending) {
+		return consultation.ErrWithdrawalPending
+	}
 	if errors.Is(err, identity.ErrConsentRequired) {
 		return consultation.ErrConsentRequired
 	}
 	return err
 }
 func (c consentService) Withdraw(ctx context.Context) error { return c.gate.Withdraw(ctx) }
+
+// withdrawalRequestService binds all operations to the authenticated session.
+type withdrawalRequestService struct {
+	repository interface {
+		WithdrawalRequested(context.Context, int64) (bool, error)
+		RequestWithdrawal(context.Context, int64) error
+	}
+	enabled bool
+}
+
+func (s withdrawalRequestService) WithdrawalAcceptanceEnabled() bool { return s.enabled }
+
+func (s withdrawalRequestService) WithdrawalRequested(ctx context.Context) (bool, error) {
+	userID := identity.UserID(ctx)
+	if userID <= 0 {
+		return false, errors.New("authenticated user required")
+	}
+	return s.repository.WithdrawalRequested(ctx, userID)
+}
+func (s withdrawalRequestService) RequestWithdrawal(ctx context.Context) error {
+	userID := identity.UserID(ctx)
+	if userID <= 0 {
+		return errors.New("authenticated user required")
+	}
+	if !s.enabled {
+		return errors.New("withdrawal batch unavailable")
+	}
+	err := s.repository.RequestWithdrawal(ctx, userID)
+	if errors.Is(err, identity.ErrWithdrawalBlocked) {
+		return consultation.ErrRequestBusy
+	}
+	return err
+}
+
+// RunWithdrawalBatch executes a one-off scheduled run using the runtime DB role.
+func RunWithdrawalBatch(ctx context.Context, cfg config.Config, now time.Time) error {
+	if !cfg.WithdrawalBatchEnabled || !withdrawalRuntimeReady {
+		return errors.New("withdrawal batch is disabled")
+	}
+	// docker compose exec exiting does not guarantee that the container-side
+	// process is killed. Bound DB work independently of the systemd timeout.
+	ctx, cancel := context.WithTimeout(ctx, 4*time.Minute)
+	defer cancel()
+	repo, err := postgres.Open(ctx, cfg.DatabaseURL, false)
+	if err != nil {
+		return err
+	}
+	defer repo.Close()
+	return repo.RunWithdrawalBatch(ctx, now)
+}
+
+func RefreshWithdrawalBatchHealth(ctx context.Context, cfg config.Config) error {
+	if !cfg.WithdrawalBatchEnabled || !withdrawalRuntimeReady {
+		return errors.New("withdrawal batch is disabled")
+	}
+	repo, err := postgres.Open(ctx, cfg.DatabaseURL, false)
+	if err != nil {
+		return err
+	}
+	defer repo.Close()
+	return repo.RefreshWithdrawalBatchHealth(ctx)
+}

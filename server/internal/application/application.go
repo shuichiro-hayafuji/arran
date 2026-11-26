@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log"
 	"slices"
 	"sort"
 	"strings"
@@ -451,7 +452,13 @@ func (s *Application) notifyMonthlyLimit(ctx context.Context, usage domain.Consu
 		return
 	}
 	notifyErr := s.adminNotifier.NotifyMonthlyLimit(ctx, event)
-	_ = s.repository.CompleteMonthlyLimitNotification(ctx, event, notifyErr)
+	// Finish recording after caller cancellation only once delivery is known to
+	// have ended. Unknown outcomes remain sticky in the repository.
+	completion, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	if err := s.repository.CompleteMonthlyLimitNotification(completion, event, notifyErr); err != nil {
+		log.Print("monthly notification completion could not be recorded")
+	}
 }
 
 // ContinueConsultation は元の相談文と今回の追加情報で助言を更新する。

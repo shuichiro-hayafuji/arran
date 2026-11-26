@@ -375,6 +375,62 @@ func TestUsageRecordedAfterCallerCancellationAndMarkerFailure(t *testing.T) {
 	}
 }
 
+// Cancel while consuming the response, before accounting runs. The consent
+// callback may still safely complete from the already received terminal body.
+type cancelOnReadCloser struct {
+	r      io.Reader
+	cancel context.CancelFunc
+}
+
+type consentGateFunc func(context.Context, func(context.Context) error) error
+
+func (f consentGateFunc) Execute(ctx context.Context, fn func(context.Context) error) error {
+	return f(ctx, fn)
+}
+
+func (r *cancelOnReadCloser) Read(p []byte) (int, error) {
+	n, err := r.r.Read(p)
+	if err == io.EOF {
+		r.cancel()
+	}
+	return n, err
+}
+
+func (r *cancelOnReadCloser) Close() error { return nil }
+
+func TestUsageRecorderRunsInsideConsentAfterResponseCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(identity.WithUser(context.Background(), 701))
+	defer cancel()
+	client := NewOpenAIClient("test-key", "model", "medium")
+	inside := false
+	client.SetConsentGate(consentGateFunc(func(ctx context.Context, fn func(context.Context) error) error {
+		inside = true
+		defer func() { inside = false }()
+		return fn(ctx)
+	}))
+	client.client = &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		body := `{"status":"completed","output":[{"content":[{"type":"output_text","text":"{}"}]}],"usage":{"input_tokens":9,"output_tokens":3,"total_tokens":12}}`
+		return &http.Response{StatusCode: 200, Body: &cancelOnReadCloser{r: strings.NewReader(body), cancel: cancel}, Header: make(http.Header)}, nil
+	})}
+	calls := 0
+	client.SetUsageRecorder(func(ctx context.Context, usage UsageRecord) error {
+		calls++
+		if !inside || ctx.Err() != nil || identity.UserID(ctx) != 701 || usage.TotalTokens != 12 {
+			t.Errorf("accounting context or consent boundary lost: inside=%v err=%v owner=%d usage=%+v", inside, ctx.Err(), identity.UserID(ctx), usage)
+		}
+		if _, ok := ctx.Deadline(); !ok {
+			t.Error("accounting context lacks deadline")
+		}
+		return nil
+	})
+	if err := client.structured(ctx, "test", map[string]any{}, "test", map[string]any{}, &map[string]any{}); err != nil {
+		t.Fatalf("terminal response lost: %v", err)
+	}
+	if calls != 1 {
+		t.Fatalf("accounting calls = %d", calls)
+	}
+}
+
 func TestUsageWriteFailureIsLoggedWithoutMaskingMarkerFailure(t *testing.T) {
 	var logs bytes.Buffer
 	previous := log.Writer()
@@ -534,6 +590,49 @@ func TestReviewPayloadNeverUsesLocalLabels(t *testing.T) {
 			}
 			if input.LocalCandidates[0].Label != local[0].Label {
 				t.Fatal("mutated local input")
+			}
+		})
+	}
+}
+
+func TestAccountingUsageRequiresCompleteConsistentCounts(t *testing.T) {
+	tests := []struct {
+		name, usage string
+		valid       bool
+	}{
+		{"absent", ``, false}, {"null usage", `,"usage":null`, false},
+		{"missing input", `,"usage":{"output_tokens":1,"total_tokens":1}`, false},
+		{"null output", `,"usage":{"input_tokens":1,"output_tokens":null,"total_tokens":1}`, false},
+		{"missing total", `,"usage":{"input_tokens":1,"output_tokens":0}`, false},
+		{"string", `,"usage":{"input_tokens":"1","output_tokens":0,"total_tokens":1}`, false},
+		{"negative", `,"usage":{"input_tokens":-1,"output_tokens":1,"total_tokens":0}`, false},
+		{"inconsistent", `,"usage":{"input_tokens":1,"output_tokens":2,"total_tokens":4}`, false},
+		{"cached exceeds input", `,"usage":{"input_tokens":1,"output_tokens":2,"total_tokens":3,"input_tokens_details":{"cached_tokens":2}}`, false},
+		{"cached missing", `,"usage":{"input_tokens":1,"output_tokens":2,"total_tokens":3,"input_tokens_details":{}}`, false},
+		{"cached null", `,"usage":{"input_tokens":1,"output_tokens":2,"total_tokens":3,"input_tokens_details":{"cached_tokens":null}}`, false},
+		{"cached wrong type", `,"usage":{"input_tokens":1,"output_tokens":2,"total_tokens":3,"input_tokens_details":{"cached_tokens":"0"}}`, false},
+		{"reasoning missing", `,"usage":{"input_tokens":1,"output_tokens":2,"total_tokens":3,"output_tokens_details":{}}`, false},
+		{"reasoning null", `,"usage":{"input_tokens":1,"output_tokens":2,"total_tokens":3,"output_tokens_details":{"reasoning_tokens":null}}`, false},
+		{"reasoning wrong type", `,"usage":{"input_tokens":1,"output_tokens":2,"total_tokens":3,"output_tokens_details":{"reasoning_tokens":"0"}}`, false},
+		{"reasoning exceeds output", `,"usage":{"input_tokens":1,"output_tokens":2,"total_tokens":3,"output_tokens_details":{"reasoning_tokens":3}}`, false},
+		{"explicit zero", `,"usage":{"input_tokens":0,"output_tokens":0,"total_tokens":0}`, true},
+		{"valid", `,"usage":{"input_tokens":4,"output_tokens":2,"total_tokens":6,"input_tokens_details":{"cached_tokens":2},"output_tokens_details":{"reasoning_tokens":1}}`, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := NewOpenAIClient("test-key", "model", "medium")
+			client.SetConsentGate(allowConsent{})
+			writes := 0
+			client.SetUsageRecorder(func(context.Context, UsageRecord) error { writes++; return nil })
+			client.client = &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+				body := `{"status":"completed","output":[{"content":[{"type":"output_text","text":"{}"}]}]` + tt.usage + `}`
+				return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
+			})}
+			if err := client.structured(context.Background(), "test", map[string]any{}, "test", map[string]any{}, &map[string]any{}); err != nil {
+				t.Fatalf("answer lost: %v", err)
+			}
+			if (writes == 1) != tt.valid {
+				t.Fatalf("writes=%d valid=%v", writes, tt.valid)
 			}
 		})
 	}

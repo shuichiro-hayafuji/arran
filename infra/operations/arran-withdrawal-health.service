@@ -1,0 +1,11 @@
+[Unit]
+Description=Check Arran withdrawal scheduler and DB availability
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/arran
+ExecStart=/opt/arran/withdrawal-health.sh
+User=root
+UMask=0077

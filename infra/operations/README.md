@@ -92,7 +92,7 @@ S3の `postgres/` は現行objectを作成から7日で論理的に期限切れ�
 
 ### DBの復元
 
-**復元DBへの切替前から外部AI送信を停止し、照合が完了するまで再開しません。** 過去時点のDBには、その後の同意・撤回や未完了・結果不明の送信記録が反映されず、撤回済みの同意や結果不明markerも巻き戻り得ます。復旧点以降の同意・撤回・未完了情報を、復元DBとは独立した信頼できる証跡と照合し、安全な状態を確認してください。照合に必要な証跡や根拠がない場合は送信停止を維持します。旧APIには送信前の同意gateがないため、旧APIの起動や切戻しでこの停止を迂回しません。独立証跡の確保・照合方法は未整備であり、この手順は復元後の外部送信の再開を保証しません。
+**復元DBへの切替前から外部AI送信を停止し、退会・削除と同意の照合が完了するまでAPIを公開しません。** 過去時点のDBには、その後の同意・撤回や未完了・結果不明の送信記録が反映されず、撤回済みの同意や結果不明markerも巻き戻り得ます。退会申し込み、確認記録や削除対象のデータも復元時点に巻き戻ります。復旧点以降の退会・削除、同意・撤回・未完了情報を、復元DBとは独立した信頼できる証跡と照合し、安全な状態を確認してください。照合に必要な証跡や根拠がない場合はAPIを非公開のまま維持します。旧APIには送信前の同意gateがないため、旧APIの起動や切戻しでこの停止を迂回しません。独立証跡の確保・照合方法は未整備であり、この手順は復元後の公開や外部送信の再開を保証しません。
 
 復元は本番DBを直接上書きしません。初回公開前・変更後・定期的に行い、所要時間と復元データ時点を記録します。ホスト喪失時はsnapshot復元で新ホストを用意するか、同じOS/Composeと新しい秘密でホストを再構築します。既存ホスト/IPをCDKで無断置換せず、静的IP切替は復旧確認後に行います。
 
@@ -100,8 +100,8 @@ S3の `postgres/` は現行objectを作成から7日で論理的に期限切れ�
 2. 復元先でPostgreSQL16を起動し、新ホストの場合はdb-initで新しいロールと空のarran DBを作ります。dumpはrole秘密を含まないため、新ホストの秘密とロールを使います。
 3. rootで `./restore.sh /ABSOLUTE/BACKUP_DIR arran_restore_YYYYMMDD`。checksum確認後、存在しないDBのみ作り、single transactionでrestoreします。同名DBがあれば失敗します。失敗した練習用DBの削除も対象を確認して別途行います。
 4. スキーマ履歴・行数/所有者・主要データを本番の期待値と照合します。対応するreleaseのAPIを、復元DB専用runtime URLで検証します。外部AI送信を停止したまま検証します。runtimeで通常起動でき、DDLと移行履歴書込みが拒否されることを確認します。
-5. **ここまででは本番接続先を変更しません。** 公開切替はデータ時点・欠損許容量・利用者影響を確認した管理者が保守時間に行います。API/Caddy/timerを停止し、postgresへ接続中のアプリがないことを確認します。既存 `arran` は削除せず一意な退避名へrenameし、検証済み復元DBを `arran` へrenameします。既存名がある場合は止めます。SQLの対象名を事前レビューし、postgres DBへの管理接続で実行します。通常runtime URLのDB名とbackup対象は `arran` 固定なので、名前を変えたまま起動しません。切替後のDBと対応imageを検証してから、選んだbackupの `release.txt`（BACKUP_UTC行を除く）を `state/applied-release` に保存します。退避DBの古いapplied/pending記録は別途保管し、復元先のDBと混在させません。pendingを解除するのは復旧内容を確認した管理者だけです。
-6. 対応するAPI imageで起動し、外部AI送信の停止を維持したままHTTPSと主要操作、backupを再確認してtimerを再開します。旧DB/旧ホストの削除は保管期間・請求を確認した別作業にします。旧imageへの単純切戻しはschema互換性を確認できる場合だけにします。
+5. **本番接続先を変更せず、API を非公開のままにします。** 実切替の入口は `./restore-cutover.sh` です。現在は独立した退会・同意証跡の取得、真正性・最新性の確認、復元 DB への照合が未実装のため、このコマンドは必ず切替を拒否します。deploy・backup と共通の lock を取得できた場合に `state/restore-cutover-blocked` を記録し、後続の `deploy.sh` を拒否します。lock を取得できない場合は未受付として失敗し、停止記録は作られません。実行中の処理の終了後に必ず再試行してください。すでに起動中の API や Caddy は停止しません。管理者が停止し、外部から非公開であることと復元候補環境の隔離を確認してください。同じ lock の下で停止記録の作成と deploy 全体を直列化します。引数や手元のファイルを証跡として受け付けません。復元訓練の `restore.sh` はこの入口を呼ばず、従来どおり別 DB だけに復元します。
+6. この停止は同じホストの現行スクリプトによるものです。管理者による直接 SQL rename、Docker 起動、旧 image・旧スクリプト、別ホストでの公開を技術的には防げません。これらを実施せず、公開経路と管理権限を別途制御してください。安全な再公開には独立証跡の真正性・鮮度・障害境界、復元後の照合、停止の解除手順と旧 image の制御が必要で、現時点では用意されていません。停止ファイルを削除して再公開しないでください。
 
 全ホストdisk snapshotは補助です。DB整合性を確認したpg_dump restoreを省略しません。ホスト/DB/S3へのアクセスを失った状態、期限切れ後のbackupは復旧を保証できません。
 
@@ -135,3 +135,27 @@ FROM ai_user_consents WHERE withdrawal_pending = TRUE;
 上記の集計は運用上の切り分けであり、未完了記録の解消や外部処理の終了確認ではありません。専用運用権限、監査、解消時の根拠と手順は未整備です。
 
 配備再開・manifestの回帰は通常 `check infra` からPythonで実shellを実行します。Docker/AWSのコマンドは分離したダブルで、初回backup失敗、変更image拒否、予定imageとDB適用imageの差、更新後backup失敗、移行途中失敗、競合lockを確認します。これはS3実通信やDB実移行の代用ではありません。
+
+### 退会の受付と日次バッチ
+
+**公開停止:** 進行中の全API処理を安全に排出する機構と、バックアップ復元後の独立証跡による退会状態の照合が未整備です。現行の API は `WITHDRAWAL_BATCH_ENABLED=true` でも新規受付を拒否します。以下はそれらを実装・検証した後の運用案であり、今は有効化しません。
+
+退会申込は認証済みの本人に限定し、結果不明のAI送信や処理中の相談がある場合は受付を拒否します。受理後は新規相談と外部AI送信を止め、状態確認は可能です。バッチは毎日15:00 UTC（日本時間の翌日0時）に実行し、直近の日本時間0時より前の申込に限り、本人の `users.is_active` を無効化し、全セッションを削除します。相談・取引・履歴は保持します。処理中・結果不明の記録、DB障害、アプリ停止等は未完了を維持し、サービスは5分後に再試行します。受付後に起きる将来の障害を受付時に予測できないため、期限内の処理成功は保証しません。
+
+`WITHDRAWAL_BATCH_ENABLED` の既定は `false` で、無効時はAPIが新規受付を拒否します。運用者は実際の監視・障害対応を整えた後、同じリリースの `withdrawal-batch.sh`、`withdrawal-health.sh` と両方の service・timer を配置し、rootで次を実行します。タイマーを導入しただけでDB権限や実行成功は証明されません。
+
+```bash
+install -m 0644 /opt/arran/arran-withdrawal.service /etc/systemd/system/
+install -m 0644 /opt/arran/arran-withdrawal.timer /etc/systemd/system/
+install -m 0644 /opt/arran/arran-withdrawal-health.service /etc/systemd/system/
+install -m 0644 /opt/arran/arran-withdrawal-health.timer /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now arran-withdrawal.timer arran-withdrawal-health.timer
+systemctl list-timers arran-withdrawal.timer
+```
+
+配置後に `deploy.env` の `WITHDRAWAL_BATCH_ENABLED=true` を設定して同一リリースのAPIを再作成します。APIとバッチは同じ設定・runtime権限を使います。初回の実行確認として `systemctl start arran-withdrawal.service` を行い、成功を確認します。ヘルスチェックはtimerの稼働とserviceの最終実行成功を毎分確認し、実行中・再起動待ち・未実行・失敗中は健康情報を更新しません。受付時は最近3分以内の確認、必要なDB権限と未解決処理の有無を検査しますが、これは過去の観測であり受付後の停止や翌日の実行成功を保証しません。`systemctl status arran-withdrawal.service arran-withdrawal-health.service` と `journalctl -u arran-withdrawal.service`、管理DBの `SELECT count(*) FROM withdrawal_requests WHERE completed_at IS NULL;` を確認し、未完了や失敗を放置しません。結果不明のAI送信が残る場合は安全な完了を判断できないため、自動削除せず管理者へ引き継ぎます。手動の `docker` 実行や停止中の環境、ホスト障害、全APIと古いバージョンの混在はこの説明だけでは制御できません。
+
+**復元注意:** 古いバックアップへの復元で申込・無効化・セッション失効が巻き戻る可能性があります。独立した真正な証跡を用いた照合・再適用は未実装です。照合できるまで復元先を公開しません。退会済みを復元元データから推測したり、古いAPIを混在させたりしないでください。
+
+退会完了後の再入会・再申し込みは未対応です。管理操作で会員を再有効化しても、過去の完了済み申込がある利用者の再申込は拒否し、既存の申込状態は残ります。独立証跡や履歴を消して再申込できる状態にしてはいけません。バッチの DB 処理はコンテナ内で最大4分に制限し、systemd の5分 timeout とは別に取消します。期限内に完了しなかった処理は成功と扱わず、記録を再確認し再試行します。

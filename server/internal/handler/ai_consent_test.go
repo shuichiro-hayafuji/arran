@@ -30,6 +30,16 @@ func TestWithdrawalHasServerDeadline(t *testing.T) {
 	}
 }
 
+func TestGrantDuringAccountWithdrawalIsDefiniteConflict(t *testing.T) {
+	f := &consentFake{err: consultation.ErrWithdrawalPending}
+	h := NewWithConsent(nil, f)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest(http.MethodPut, "/ai-consent", strings.NewReader(`{"version":"v1"}`)))
+	if w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), "withdrawal_pending") {
+		t.Fatalf("expected definite withdrawal conflict: %d %s", w.Code, w.Body.String())
+	}
+}
+
 func (f *consentFake) Status(context.Context) (any, error) {
 	return map[string]any{"version": "v1", "description": "test policy", "granted": f.granted != "", "withdrawal_pending": false}, f.err
 }

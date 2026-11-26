@@ -18,7 +18,7 @@ func (r *Repository) FindUser(ctx context.Context, username string) (auth.User, 
 	return user, err
 }
 func (r *Repository) AllowLogin(ctx context.Context, ip, username string) (bool, error) {
-	tx, err := r.db.DB.BeginTx(ctx, nil)
+	tx, err := r.db.DB.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
 	if err != nil {
 		return false, err
 	}
@@ -42,11 +42,23 @@ func (r *Repository) AllowLogin(ctx context.Context, ip, username string) (bool,
 	return allowed, tx.Commit()
 }
 func (r *Repository) CreateSession(ctx context.Context, hash string, user auth.User, expires time.Time) error {
-	tx, err := r.db.DB.BeginTx(ctx, nil)
+	tx, err := r.db.DB.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
+	// Account deactivation locks the same user before revoking its sessions.
+	// Wait for it before creating a session, then re-check the credential and
+	// active state under READ COMMITTED; a stale login must not survive a later
+	// reactivation of the account.
+	var lockedID int64
+	err = tx.QueryRowContext(ctx, `SELECT id FROM users WHERE id=$1 AND password_hash=$2 AND is_active FOR UPDATE`, user.ID, user.PasswordHash).Scan(&lockedID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return auth.ErrInvalid
+	}
+	if err != nil {
+		return err
+	}
 	if _, err = tx.ExecContext(ctx, `DELETE FROM auth_sessions WHERE expires_at <= CURRENT_TIMESTAMP`); err != nil {
 		return err
 	}

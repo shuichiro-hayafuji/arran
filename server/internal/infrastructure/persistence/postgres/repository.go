@@ -68,33 +68,26 @@ func (r *Repository) ReserveMonthlyConsultation(ctx context.Context, month strin
 	if userID <= 0 {
 		return domain.ConsultationUsage{}, errors.New("authenticated user is required")
 	}
-	tx, err := r.db.DB.BeginTx(ctx, nil)
-	if err != nil {
-		return domain.ConsultationUsage{}, err
-	}
-	defer tx.Rollback()
 	usage := domain.ConsultationUsage{Month: month}
-	err = tx.QueryRowContext(ctx, `
+	err := r.withWithdrawalWriteTx(ctx, userID, func(ctx context.Context, tx withdrawalWriteSession) error {
+		if err := tx.QueryRowContext(ctx, `
 		INSERT INTO monthly_consultation_usage(user_id, month, consultation_count)
 		VALUES($1, $2, 1)
 		ON CONFLICT (user_id, month) DO UPDATE SET
 		  consultation_count = monthly_consultation_usage.consultation_count + 1,
 		  updated_at = CURRENT_TIMESTAMP
 		RETURNING consultation_count
-	`, userID, month).Scan(&usage.Count)
-	if err != nil {
-		return domain.ConsultationUsage{}, err
-	}
-	err = tx.QueryRowContext(ctx, `
+	`, userID, month).Scan(&usage.Count); err != nil {
+			return err
+		}
+		return tx.QueryRowContext(ctx, `
 		SELECT COALESCE(user_limits.monthly_limit, settings.integer_value)
 		FROM service_settings AS settings
 		LEFT JOIN user_consultation_limits AS user_limits ON user_limits.user_id = $1
 		WHERE settings.key = 'default_monthly_consultation_limit'
 	`, userID).Scan(&usage.Limit)
+	})
 	if err != nil {
-		return domain.ConsultationUsage{}, err
-	}
-	if err = tx.Commit(); err != nil {
 		return domain.ConsultationUsage{}, err
 	}
 	return usage, nil
@@ -121,24 +114,37 @@ func (r *Repository) ReleaseMonthlyConsultation(ctx context.Context, month strin
 }
 
 func (r *Repository) ClaimMonthlyLimitNotification(ctx context.Context, event domain.MonthlyLimitEvent) (bool, error) {
+	userID := identity.UserID(ctx)
+	if userID <= 0 || event.UserID != userID {
+		return false, errors.New("authenticated notification owner required")
+	}
+	tx, err := r.db.DB.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+	if err = lockActiveWithdrawalUser(ctx, tx, userID); err != nil {
+		return false, err
+	}
 	var claimed bool
-	err := r.db.QueryRowContext(ctx, `
-		WITH claimed AS (
-		  INSERT INTO admin_notifications(
-		    user_id, month, notification_type, consultation_count,
-		    consultation_limit, status, attempts, occurred_at
-		  ) VALUES(:user_id, ?, 'monthly_consultation_limit', ?, ?, 'sending', 1, ?)
-		  ON CONFLICT (user_id, month, notification_type) DO UPDATE SET
-		    consultation_count = excluded.consultation_count,
-		    consultation_limit = excluded.consultation_limit,
-		    status = 'sending', attempts = admin_notifications.attempts + 1,
-		    last_error = '', updated_at = CURRENT_TIMESTAMP
-		  WHERE admin_notifications.status = 'failed'
-		  RETURNING 1
-		)
-		SELECT EXISTS(SELECT 1 FROM claimed)
-	`, event.Month, event.Count, event.Limit, event.OccurredAt).Scan(&claimed)
-	return claimed, err
+	err = tx.QueryRowContext(ctx, `
+  WITH claimed AS (
+   INSERT INTO admin_notifications(user_id, month, notification_type, consultation_count, consultation_limit, status, attempts, occurred_at)
+   VALUES($1, $2, 'monthly_consultation_limit', $3, $4, 'sending', 1, $5)
+   ON CONFLICT (user_id, month, notification_type) DO UPDATE SET
+    consultation_count = excluded.consultation_count, consultation_limit = excluded.consultation_limit,
+    status = 'sending', attempts = admin_notifications.attempts + 1,
+    last_error = '', updated_at = CURRENT_TIMESTAMP
+   WHERE admin_notifications.status = 'failed'
+   RETURNING 1
+  ) SELECT EXISTS(SELECT 1 FROM claimed)`, userID, event.Month, event.Count, event.Limit, event.OccurredAt).Scan(&claimed)
+	if err != nil {
+		return false, err
+	}
+	if err = tx.Commit(); err != nil {
+		return false, err
+	}
+	return claimed, nil
 }
 
 func (r *Repository) CompleteMonthlyLimitNotification(ctx context.Context, event domain.MonthlyLimitEvent, notifyErr error) error {
@@ -150,13 +156,23 @@ func (r *Repository) CompleteMonthlyLimitNotification(ctx context.Context, event
 		lastError = notifyErr.Error()
 		deliveredAt = nil
 	}
-	_, err := r.db.ExecContext(ctx, `
+	result, err := r.db.ExecContext(ctx, `
 		UPDATE admin_notifications
-		SET status = ?, last_error = ?, delivered_at = ?, updated_at = CURRENT_TIMESTAMP
+		SET status = ?, last_error = ?, delivered_at = ?, withdrawal_uncertain = withdrawal_uncertain OR ?::boolean, updated_at = CURRENT_TIMESTAMP
 		WHERE user_id = :user_id AND month = ?
 		  AND notification_type = 'monthly_consultation_limit'
-	`, status, lastError, deliveredAt, event.Month)
-	return err
+	`, status, lastError, deliveredAt, notifyErr != nil && !errors.Is(notifyErr, domain.ErrNotificationNotSent), event.Month)
+	if err != nil {
+		return err
+	}
+	count, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if count != 1 {
+		return errors.New("notification completion record unavailable")
+	}
+	return nil
 }
 
 func (r *Repository) RecordLLMUsage(ctx context.Context, usage domain.LLMUsage) error {
@@ -208,12 +224,14 @@ func (r *Repository) GetProfile(ctx context.Context) (domain.Profile, error) {
 func (r *Repository) PutProfile(ctx context.Context, profile domain.Profile) error {
 	reduceJSON, _ := json.Marshal(profile.ReduceCategories)
 	allowedJSON, _ := json.Marshal(profile.AllowedCategories)
-	_, err := r.db.ExecContext(ctx, `
+	userID := identity.UserID(ctx)
+	return r.withWithdrawalWriteTx(ctx, userID, func(ctx context.Context, tx withdrawalWriteSession) error {
+		_, err := tx.ExecContext(ctx, `
 		INSERT INTO profiles(
 			user_id, id, monthly_income, current_balance, monthly_fixed_costs,
 			monthly_free_budget, monthly_savings_goal, reduce_categories_json,
 			allowed_categories_json, long_term_goal, advice_strictness, updated_at
-		) VALUES(:user_id, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES($1, 1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 		ON CONFLICT(user_id) DO UPDATE SET
 			monthly_income = excluded.monthly_income,
 			current_balance = excluded.current_balance,
@@ -225,10 +243,11 @@ func (r *Repository) PutProfile(ctx context.Context, profile domain.Profile) err
 			long_term_goal = excluded.long_term_goal,
 			advice_strictness = excluded.advice_strictness,
 			updated_at = excluded.updated_at
-	`, profile.MonthlyIncome, profile.CurrentBalance, profile.MonthlyFixedCosts,
-		profile.MonthlyFreeBudget, profile.MonthlySavingsGoal, string(reduceJSON),
-		string(allowedJSON), profile.LongTermGoal, profile.AdviceStrictness, profile.UpdatedAt)
-	return err
+	`, userID, profile.MonthlyIncome, profile.CurrentBalance, profile.MonthlyFixedCosts,
+			profile.MonthlyFreeBudget, profile.MonthlySavingsGoal, string(reduceJSON),
+			string(allowedJSON), profile.LongTermGoal, profile.AdviceStrictness, profile.UpdatedAt)
+		return err
+	})
 }
 
 // ImportTransactions は全明細を単一トランザクションで登録する。
@@ -388,7 +407,9 @@ func (r *Repository) CreateConsultation(
 	consultation domain.Consultation,
 ) (domain.Consultation, error) {
 	snapshotJSON, _ := json.Marshal(consultation.BudgetSnapshot)
-	err := r.db.QueryRowContext(ctx, `
+	userID := identity.UserID(ctx)
+	err := r.withWithdrawalWriteTx(ctx, userID, func(ctx context.Context, tx withdrawalWriteSession) error {
+		return tx.QueryRowContext(ctx, userQuery(ctx, `
 		INSERT INTO consultations(user_id, 
 			created_at, user_message, planned_amount, inferred_category,
 			ai_recommendation, ai_reasoning_summary, current_situation,
@@ -398,15 +419,16 @@ func (r *Repository) CreateConsultation(
 			follow_up_question
 		) VALUES(:user_id, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		RETURNING id
-	`, consultation.CreatedAt, consultation.UserMessage,
-		nullableInt64(consultation.PlannedAmount), consultation.InferredCategory,
-		consultation.AIRecommendation, consultation.AIReasoningSummary,
-		consultation.CurrentSituation, consultation.Alternative,
-		consultation.FinalQuestion, string(snapshotJSON), consultation.Status,
-		nullableInt64(consultation.ActualAmount), consultation.UserDecisionReason,
-		nullableInt(consultation.SatisfactionScore), nullableInt(consultation.RegretScore),
-		consultation.Note, consultation.ResponseSource, consultation.NeedsFollowUp,
-		consultation.FollowUpQuestion).Scan(&consultation.ID)
+	`), consultation.CreatedAt, consultation.UserMessage,
+			nullableInt64(consultation.PlannedAmount), consultation.InferredCategory,
+			consultation.AIRecommendation, consultation.AIReasoningSummary,
+			consultation.CurrentSituation, consultation.Alternative,
+			consultation.FinalQuestion, string(snapshotJSON), consultation.Status,
+			nullableInt64(consultation.ActualAmount), consultation.UserDecisionReason,
+			nullableInt(consultation.SatisfactionScore), nullableInt(consultation.RegretScore),
+			consultation.Note, consultation.ResponseSource, consultation.NeedsFollowUp,
+			consultation.FollowUpQuestion).Scan(&consultation.ID)
+	})
 	if err != nil {
 		return domain.Consultation{}, err
 	}
@@ -417,25 +439,35 @@ func (r *Repository) UpdateConsultationAdvice(
 	ctx context.Context,
 	consultation domain.Consultation,
 ) (domain.Consultation, error) {
-	result, err := r.db.ExecContext(ctx, `
+	userID := identity.UserID(ctx)
+	err := r.withWithdrawalWriteTx(ctx, userID, func(ctx context.Context, tx withdrawalWriteSession) error {
+		result, err := tx.ExecContext(ctx, userQuery(ctx, `
 		UPDATE consultations SET
 			planned_amount = ?, inferred_category = ?, ai_recommendation = ?,
 			ai_reasoning_summary = ?, current_situation = ?, alternative = ?,
 			final_question = ?, budget_snapshot_json = ?, status = ?,
 			response_source = ?, needs_follow_up = ?, follow_up_question = ?
 		WHERE user_id = :user_id AND id = ?
-	`, nullableInt64(consultation.PlannedAmount), consultation.InferredCategory,
-		consultation.AIRecommendation, consultation.AIReasoningSummary,
-		consultation.CurrentSituation, consultation.Alternative,
-		consultation.FinalQuestion, mustJSON(consultation.BudgetSnapshot),
-		consultation.Status, consultation.ResponseSource, consultation.NeedsFollowUp,
-		consultation.FollowUpQuestion, consultation.ID)
+	`), nullableInt64(consultation.PlannedAmount), consultation.InferredCategory,
+			consultation.AIRecommendation, consultation.AIReasoningSummary,
+			consultation.CurrentSituation, consultation.Alternative,
+			consultation.FinalQuestion, mustJSON(consultation.BudgetSnapshot),
+			consultation.Status, consultation.ResponseSource, consultation.NeedsFollowUp,
+			consultation.FollowUpQuestion, consultation.ID)
+		if err != nil {
+			return err
+		}
+		affected, err := result.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if affected == 0 {
+			return domain.ErrNotFound
+		}
+		return nil
+	})
 	if err != nil {
 		return domain.Consultation{}, err
-	}
-	affected, _ := result.RowsAffected()
-	if affected == 0 {
-		return domain.Consultation{}, domain.ErrNotFound
 	}
 	return r.GetConsultation(ctx, consultation.ID)
 }
@@ -482,20 +514,30 @@ func (r *Repository) UpdateConsultationResult(
 	id int64,
 	update domain.ConsultationResultUpdate,
 ) (domain.Consultation, error) {
-	result, err := r.db.ExecContext(ctx, `
+	userID := identity.UserID(ctx)
+	err := r.withWithdrawalWriteTx(ctx, userID, func(ctx context.Context, tx withdrawalWriteSession) error {
+		result, err := tx.ExecContext(ctx, `
 		UPDATE consultations SET
-			status = ?, actual_amount = ?, user_decision_reason = ?,
-			satisfaction_score = ?, regret_score = ?, note = ?
-		WHERE user_id = :user_id AND id = ?
+			status = $1, actual_amount = $2, user_decision_reason = $3,
+			satisfaction_score = $4, regret_score = $5, note = $6
+		WHERE user_id = $7 AND id = $8
 	`, update.Status, nullableInt64(update.ActualAmount), update.UserDecisionReason,
-		nullableInt(update.SatisfactionScore), nullableInt(update.RegretScore),
-		update.Note, id)
+			nullableInt(update.SatisfactionScore), nullableInt(update.RegretScore),
+			update.Note, userID, id)
+		if err != nil {
+			return err
+		}
+		affected, err := result.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if affected == 0 {
+			return domain.ErrNotFound
+		}
+		return nil
+	})
 	if err != nil {
 		return domain.Consultation{}, err
-	}
-	affected, _ := result.RowsAffected()
-	if affected == 0 {
-		return domain.Consultation{}, domain.ErrNotFound
 	}
 	return r.GetConsultation(ctx, id)
 }
@@ -506,11 +548,14 @@ func (r *Repository) AddMessage(
 	role string,
 	content string,
 ) error {
-	_, err := r.db.ExecContext(ctx, `
+	userID := identity.UserID(ctx)
+	return r.withWithdrawalWriteTx(ctx, userID, func(ctx context.Context, tx withdrawalWriteSession) error {
+		_, err := tx.ExecContext(ctx, userQuery(ctx, `
 		INSERT INTO consultation_messages(user_id, consultation_id, role, content, created_at)
 		VALUES(:user_id, ?, ?, ?, ?)
-	`, consultationID, role, content, time.Now().UTC().Format(time.RFC3339))
-	return err
+	`), consultationID, role, content, time.Now().UTC().Format(time.RFC3339))
+		return err
+	})
 }
 
 func (r *Repository) ListMemories(ctx context.Context) ([]domain.MemoryItem, error) {
@@ -541,45 +586,58 @@ func (r *Repository) SaveMemory(
 	item domain.MemoryItem,
 ) (domain.MemoryItem, error) {
 	now := time.Now().UTC().Format(time.RFC3339)
-	if item.ID == 0 {
-		item.CreatedAt = now
-		item.UpdatedAt = now
-		err := r.db.QueryRowContext(ctx, `
+	userID := identity.UserID(ctx)
+	err := r.withWithdrawalWriteTx(ctx, userID, func(ctx context.Context, tx withdrawalWriteSession) error {
+		if item.ID == 0 {
+			item.CreatedAt = now
+			item.UpdatedAt = now
+			err := tx.QueryRowContext(ctx, `
 			INSERT INTO memories(user_id, type, content, evidence, confidence, created_at, updated_at)
-			VALUES(:user_id, ?, ?, ?, ?, ?, ?)
+			VALUES($1, $2, $3, $4, $5, $6, $7)
 			RETURNING id
-		`, item.Type, item.Content, item.Evidence, item.Confidence,
-			item.CreatedAt, item.UpdatedAt).Scan(&item.ID)
-		if err != nil {
-			return domain.MemoryItem{}, err
+		`, userID, item.Type, item.Content, item.Evidence, item.Confidence,
+				item.CreatedAt, item.UpdatedAt).Scan(&item.ID)
+			return err
 		}
-		return item, nil
-	}
-	item.UpdatedAt = now
-	result, err := r.db.ExecContext(ctx, `
-		UPDATE memories SET type = ?, content = ?, evidence = ?,
-			confidence = ?, updated_at = ? WHERE user_id = :user_id AND id = ?
-	`, item.Type, item.Content, item.Evidence, item.Confidence, item.UpdatedAt, item.ID)
+		item.UpdatedAt = now
+		result, err := tx.ExecContext(ctx, `
+		UPDATE memories SET type = $1, content = $2, evidence = $3,
+			confidence = $4, updated_at = $5 WHERE user_id = $6 AND id = $7
+	`, item.Type, item.Content, item.Evidence, item.Confidence, item.UpdatedAt, userID, item.ID)
+		if err != nil {
+			return err
+		}
+		affected, err := result.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if affected == 0 {
+			return domain.ErrNotFound
+		}
+		return nil
+	})
 	if err != nil {
 		return domain.MemoryItem{}, err
-	}
-	affected, _ := result.RowsAffected()
-	if affected == 0 {
-		return domain.MemoryItem{}, domain.ErrNotFound
 	}
 	return item, nil
 }
 
 func (r *Repository) DeleteMemory(ctx context.Context, id int64) error {
-	result, err := r.db.ExecContext(ctx, `DELETE FROM memories WHERE user_id = :user_id AND id = ?`, id)
-	if err != nil {
-		return err
-	}
-	affected, _ := result.RowsAffected()
-	if affected == 0 {
-		return domain.ErrNotFound
-	}
-	return nil
+	userID := identity.UserID(ctx)
+	return r.withWithdrawalWriteTx(ctx, userID, func(ctx context.Context, tx withdrawalWriteSession) error {
+		result, err := tx.ExecContext(ctx, `DELETE FROM memories WHERE user_id = $1 AND id = $2`, userID, id)
+		if err != nil {
+			return err
+		}
+		affected, err := result.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if affected == 0 {
+			return domain.ErrNotFound
+		}
+		return nil
+	})
 }
 
 func (r *Repository) SaveReview(
@@ -587,11 +645,14 @@ func (r *Repository) SaveReview(
 	review domain.MonthlyReview,
 ) (domain.MonthlyReview, error) {
 	candidatesJSON, _ := json.Marshal(review.Candidates)
-	err := r.db.QueryRowContext(ctx, `
+	userID := identity.UserID(ctx)
+	err := r.withWithdrawalWriteTx(ctx, userID, func(ctx context.Context, tx withdrawalWriteSession) error {
+		return tx.QueryRowContext(ctx, `
 		INSERT INTO monthly_reviews(user_id, month, created_at, summary, candidates_json)
-		VALUES(:user_id, ?, ?, ?, ?)
+		VALUES($1, $2, $3, $4, $5)
 		RETURNING id
-	`, review.Month, review.CreatedAt, review.Summary, string(candidatesJSON)).Scan(&review.ID)
+	`, userID, review.Month, review.CreatedAt, review.Summary, string(candidatesJSON)).Scan(&review.ID)
+	})
 	if err != nil {
 		return domain.MonthlyReview{}, err
 	}

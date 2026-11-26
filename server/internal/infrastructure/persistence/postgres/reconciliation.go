@@ -462,11 +462,14 @@ func (r *Repository) ResolvePurchaseCSV(ctx context.Context, id int64, d domain.
 	if err != nil {
 		return err
 	}
-	tx, err := r.db.BeginTx(ctx, nil)
+	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
+	if err := lockActiveWithdrawalUser(ctx, tx, identity.UserID(ctx)); err != nil {
+		return err
+	}
 	if _, err = tx.ExecContext(ctx, "SELECT pg_advisory_xact_lock($1)", -identity.UserID(ctx)-1); err != nil {
 		return err
 	}

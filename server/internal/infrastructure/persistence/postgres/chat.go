@@ -54,11 +54,16 @@ func (r *Repository) LoadChatThread(ctx context.Context, id int64) (consultation
 // SaveChatTurn commits the thread, summary and remembered facts together. Optimistic
 // versions prevent overlapping model responses from overwriting newer corrections.
 func (r *Repository) SaveChatTurn(ctx context.Context, state consultation.State, thread consultation.Thread) (consultation.Thread, error) {
-	tx, err := r.db.DB.BeginTx(ctx, nil)
+	tx, err := r.db.DB.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
 	if err != nil {
 		return consultation.Thread{}, err
 	}
 	defer tx.Rollback()
+	// Reminder delivery and other chat writes share the owner lock with
+	// withdrawal admission and deactivation, then re-check the account state.
+	if err = lockActiveWithdrawalUser(ctx, tx, identity.UserID(ctx)); err != nil {
+		return consultation.Thread{}, err
+	}
 	query := func(q string) string { return chatQuery(ctx, q) }
 	requestRef, hasRequest := consultation.RequestReferenceFrom(ctx)
 	requestCancelled := false
@@ -92,7 +97,7 @@ func (r *Repository) SaveChatTurn(ctx context.Context, state consultation.State,
 		return consultation.Thread{}, err
 	}
 	if version != state.Version {
-		return consultation.Thread{}, consultation.ErrConflict
+		return consultation.Thread{}, errors.Join(consultation.ErrConflict, consultation.ErrChatSaveRolledBack)
 	}
 	if thread.ID != 0 {
 		var threadVersion int64
@@ -104,7 +109,7 @@ func (r *Repository) SaveChatTurn(ctx context.Context, state consultation.State,
 			return consultation.Thread{}, err
 		}
 		if thread.Version != threadVersion {
-			return consultation.Thread{}, consultation.ErrConflict
+			return consultation.Thread{}, errors.Join(consultation.ErrConflict, consultation.ErrChatSaveRolledBack)
 		}
 	} else {
 		err = tx.QueryRowContext(ctx, query(`INSERT INTO consultations(user_id,created_at,user_message,planned_amount,inferred_category,ai_recommendation,ai_reasoning_summary,current_situation,alternative,final_question,budget_snapshot_json,status,actual_amount,response_source,needs_follow_up,follow_up_question) VALUES(:user_id,? ,? ,NULL,'' ,'','','','','','{}','pending',NULL,'',FALSE,'') RETURNING id`), thread.CreatedAt, thread.Messages[0].Content).Scan(&thread.ID)
@@ -156,7 +161,7 @@ func (r *Repository) SaveChatTurn(ctx context.Context, state consultation.State,
 		return consultation.Thread{}, err
 	}
 	if affected != 1 {
-		return consultation.Thread{}, consultation.ErrConflict
+		return consultation.Thread{}, errors.Join(consultation.ErrConflict, consultation.ErrChatSaveRolledBack)
 	}
 	_, err = tx.ExecContext(ctx, query("INSERT INTO chat_threads(consultation_id,user_id,version,payload) VALUES(?,:user_id,?,?) ON CONFLICT(consultation_id) DO UPDATE SET version=excluded.version,payload=excluded.payload"), thread.ID, thread.Version, string(threadJSON))
 	if err != nil {
@@ -378,7 +383,9 @@ func (r *Repository) DuePurchaseOwners(ctx context.Context, now time.Time) ([]in
  WHERE COALESCE((s.payload::jsonb->>'purchases_migrated')::boolean,false)=false
  AND t.payload::jsonb->'pending_purchase' IS NOT NULL
  AND (t.payload::jsonb->'pending_purchase'->>'recorded_at')::timestamptz <= $1::timestamptz - interval '6 hours'
- ) due ORDER BY user_id LIMIT 100`, now.UTC().Format(time.RFC3339))
+	 ) due JOIN users u ON u.id=due.user_id
+	 WHERE u.is_active AND NOT EXISTS(SELECT 1 FROM withdrawal_requests w WHERE w.user_id=u.id AND w.completed_at IS NULL)
+	 ORDER BY due.user_id LIMIT 100`, now.UTC().Format(time.RFC3339))
 	if err != nil {
 		return nil, err
 	}

@@ -1,0 +1,15 @@
+[Unit]
+Description=Process Arran withdrawal requests
+After=docker.service
+Requires=docker.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/arran
+ExecStart=/opt/arran/withdrawal-batch.sh
+Restart=on-failure
+RestartSec=300
+TimeoutStartSec=300
+User=root
+UMask=0077

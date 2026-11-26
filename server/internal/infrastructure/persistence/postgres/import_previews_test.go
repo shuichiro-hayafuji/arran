@@ -209,8 +209,18 @@ func verifyPreviewMigration(t *testing.T, r *Repository) {
 	if _, err := r.db.Exec("INSERT INTO users(id,username,password_hash) VALUES(712,'preview-owner','synthetic')"); err != nil {
 		t.Fatal(err)
 	}
+	// The current binary refuses an unmigrated schema. This test uses the
+	// current importer only to seed legacy CSV data; its withdrawal gate needs
+	// an empty stand-in for the v17 table, which must be removed before testing
+	// the real v14-to-latest migration and rollback.
+	if _, err := r.db.DB.ExecContext(ctx, `CREATE VIEW withdrawal_requests AS SELECT 0::bigint AS user_id, NULL::timestamptz AS completed_at WHERE FALSE`); err != nil {
+		t.Fatal(err)
+	}
 	original, err := r.ImportTransactions(ctx, previewItems(t, "before-migration"))
 	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.db.DB.ExecContext(ctx, `DROP VIEW withdrawal_requests`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = r.db.Exec("CREATE INDEX idx_csv_preview_expiry ON transactions(user_id)"); err != nil {

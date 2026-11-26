@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/shuichirohayafuji/spendable-today/server/internal/consultation"
+	"github.com/shuichirohayafuji/spendable-today/server/internal/identity"
 	"strings"
 	"time"
 )
@@ -42,11 +43,14 @@ func (r *Repository) ClaimChatRequest(ctx context.Context, in consultation.Reque
 			return consultation.RequestReceipt{}, false, err
 		}
 	}
-	tx, err := r.db.DB.BeginTx(ctx, nil)
+	tx, err := r.db.DB.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
 	if err != nil {
 		return consultation.RequestReceipt{}, false, err
 	}
 	defer tx.Rollback()
+	if err = lockActiveWithdrawalUser(ctx, tx, identity.UserID(ctx)); err != nil {
+		return consultation.RequestReceipt{}, false, err
+	}
 	query := func(q string) string { return chatQuery(ctx, q) }
 	result, err := tx.ExecContext(ctx, query("INSERT INTO chat_requests(user_id,request_id,payload_hash,month,new_consultation,quota_reserved,status,expires_at,cancel_requested,error_code) VALUES(:user_id,?,?,?,?,?,'processing',?,FALSE,'') ON CONFLICT(user_id,request_id) DO NOTHING"), in.ID, in.PayloadHash, in.Month, in.NewConsultation, in.NewConsultation, in.ExpiresAt.UnixMilli())
 	if err != nil {
@@ -90,7 +94,8 @@ func (r *Repository) GetChatRequest(ctx context.Context, id string) (consultatio
 	var receipt consultation.RequestReceipt
 	var expires int64
 	var payload sql.NullString
-	err := r.db.QueryRowContext(ctx, chatQuery(ctx, "SELECT request_id,payload_hash,month,new_consultation,status,expires_at,cancel_requested,error_code,result_json FROM chat_requests WHERE user_id=:user_id AND request_id=?"), id).Scan(&receipt.ID, &receipt.PayloadHash, &receipt.Month, &receipt.NewConsultation, &receipt.Status, &expires, &receipt.CancelRequested, &receipt.ErrorCode, &payload)
+	var reserved bool
+	err := r.db.QueryRowContext(ctx, chatQuery(ctx, "SELECT request_id,payload_hash,month,new_consultation,status,expires_at,cancel_requested,error_code,result_json,quota_reserved FROM chat_requests WHERE user_id=:user_id AND request_id=?"), id).Scan(&receipt.ID, &receipt.PayloadHash, &receipt.Month, &receipt.NewConsultation, &receipt.Status, &expires, &receipt.CancelRequested, &receipt.ErrorCode, &payload, &reserved)
 	if errors.Is(err, sql.ErrNoRows) {
 		return receipt, consultation.ErrNotFound
 	}
@@ -100,6 +105,12 @@ func (r *Repository) GetChatRequest(ctx context.Context, id string) (consultatio
 	receipt.ExpiresAt = time.UnixMilli(expires)
 	if receipt.Status == "processing" && expires <= time.Now().UnixMilli() {
 		if err = r.FailChatRequest(ctx, id, "deadline_exceeded"); err != nil {
+			return receipt, err
+		}
+		return r.GetChatRequest(ctx, id)
+	}
+	if receipt.Status == "failed" && reserved {
+		if err = r.FailChatRequest(ctx, id, receipt.ErrorCode); err != nil {
 			return receipt, err
 		}
 		return r.GetChatRequest(ctx, id)
@@ -114,37 +125,58 @@ func (r *Repository) GetChatRequest(ctx context.Context, id string) (consultatio
 	return receipt, nil
 }
 func (r *Repository) CancelChatRequest(ctx context.Context, id string) (consultation.RequestReceipt, error) {
-	if _, err := r.db.ExecContext(ctx, chatQuery(ctx, "INSERT INTO chat_requests(user_id,request_id,payload_hash,month,new_consultation,quota_reserved,status,expires_at,cancel_requested,error_code) VALUES(:user_id,?,'','',FALSE,FALSE,'cancelled',?,TRUE,'cancelled_before_accept') ON CONFLICT(user_id,request_id) DO NOTHING"), id, time.Now().UnixMilli()); err != nil {
-		return consultation.RequestReceipt{}, err
-	}
-	if _, err := r.db.ExecContext(ctx, chatQuery(ctx, "UPDATE chat_requests SET cancel_requested=TRUE WHERE user_id=:user_id AND request_id=? AND status='processing'"), id); err != nil {
+	userID := identity.UserID(ctx)
+	err := r.withWithdrawalWriteTx(ctx, userID, func(ctx context.Context, tx withdrawalWriteSession) error {
+		if _, err := tx.ExecContext(ctx, chatQuery(ctx, "INSERT INTO chat_requests(user_id,request_id,payload_hash,month,new_consultation,quota_reserved,status,expires_at,cancel_requested,error_code) VALUES(:user_id,?,'','',FALSE,FALSE,'cancelled',?,TRUE,'cancelled_before_accept') ON CONFLICT(user_id,request_id) DO NOTHING"), id, time.Now().UnixMilli()); err != nil {
+			return err
+		}
+		_, err := tx.ExecContext(ctx, chatQuery(ctx, "UPDATE chat_requests SET cancel_requested=TRUE WHERE user_id=:user_id AND request_id=? AND status='processing'"), id)
+		return err
+	})
+	if err != nil {
 		return consultation.RequestReceipt{}, err
 	}
 	return r.GetChatRequest(ctx, id)
 }
 func (r *Repository) FailChatRequest(ctx context.Context, id, code string) error {
-	tx, err := r.db.DB.BeginTx(ctx, nil)
+	tx, err := r.db.DB.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 	query := func(q string) string { return chatQuery(ctx, q) }
-	var status, month string
+	var status, month, originalCode string
 	var reserved bool
-	err = tx.QueryRowContext(ctx, query("SELECT status,month,quota_reserved FROM chat_requests WHERE user_id=:user_id AND request_id=? FOR UPDATE"), id).Scan(&status, &month, &reserved)
+	err = tx.QueryRowContext(ctx, query("SELECT status,month,quota_reserved,error_code FROM chat_requests WHERE user_id=:user_id AND request_id=? FOR UPDATE"), id).Scan(&status, &month, &reserved, &originalCode)
 	if err != nil {
 		return err
 	}
 	if status != "processing" && status != "failed" {
 		return nil
 	}
+	if status == "failed" {
+		if !reserved {
+			return nil
+		}
+		code = originalCode
+	}
 	if reserved {
-		if _, err = tx.ExecContext(ctx, query("UPDATE monthly_consultation_usage SET consultation_count=consultation_count-1,updated_at=CURRENT_TIMESTAMP WHERE user_id=:user_id AND month=? AND consultation_count>0"), month); err != nil {
+		result, err := tx.ExecContext(ctx, query("UPDATE monthly_consultation_usage SET consultation_count=consultation_count-1,updated_at=CURRENT_TIMESTAMP WHERE user_id=:user_id AND month=? AND consultation_count>0"), month)
+		if err != nil {
 			return err
 		}
+		count, err := result.RowsAffected()
+		if err != nil || count != 1 {
+			return errors.New("request quota release unavailable")
+		}
 	}
-	if _, err = tx.ExecContext(ctx, query("UPDATE chat_requests SET status='failed',error_code=?,quota_reserved=FALSE WHERE user_id=:user_id AND request_id=?"), code, id); err != nil {
+	result, err := tx.ExecContext(ctx, query("UPDATE chat_requests SET status='failed',error_code=?,quota_reserved=FALSE WHERE user_id=:user_id AND request_id=?"), code, id)
+	if err != nil {
 		return err
+	}
+	count, err := result.RowsAffected()
+	if err != nil || count != 1 {
+		return errors.New("request completion record unavailable")
 	}
 	return tx.Commit()
 }

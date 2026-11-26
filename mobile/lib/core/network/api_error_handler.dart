@@ -13,7 +13,13 @@ extension ApiErrorHandler on DioException {
     final data = response?.data;
     final serverMessage = data is Map ? data['message'] : null;
     if (serverMessage is String && serverMessage.isNotEmpty) {
-      return ApiException(serverMessage, statusCode: status);
+      return ApiException(
+        serverMessage,
+        statusCode: status,
+        code: data is Map && data['error'] is String
+            ? data['error'] as String
+            : null,
+      );
     }
 
     final message = switch (type) {

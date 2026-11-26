@@ -199,6 +199,14 @@ func (c *client) structured(
 	var rejected error
 	var terminalResponse bool
 	gateErr := c.consentGate.Execute(ctx, func(sendCtx context.Context) error {
+		// Record terminal usage before releasing consent admission. The
+		// accounting context preserves owner and operation ID even after the
+		// caller disconnects. Accounting failures never discard an answer.
+		defer func() {
+			if terminalResponse {
+				c.recordUsage(sendCtx, name, responseBody)
+			}
+		}()
 		response, sendErr := c.client.Do(request.WithContext(sendCtx))
 		if sendErr != nil {
 			return fmt.Errorf("%w: request failed", consultation.ErrAIOutcomeUnknown)
@@ -244,8 +252,25 @@ func (c *client) structured(
 	if gateErr != nil && !terminalResponse {
 		return gateErr
 	}
-	output, usage, err := parseResponse(responseBody)
-	if usage.TotalTokens > 0 || usage.InputTokens > 0 || usage.OutputTokens > 0 {
+	output, _, err := parseResponse(responseBody)
+	if gateErr != nil {
+		return gateErr
+	}
+	if rejected != nil {
+		return rejected
+	}
+	if err != nil {
+		return err
+	}
+	if err := json.Unmarshal([]byte(output), target); err != nil {
+		return fmt.Errorf("OpenAI structured output is invalid: %w", err)
+	}
+	return nil
+}
+
+func (c *client) recordUsage(ctx context.Context, name string, responseBody []byte) {
+	usage, ok := parseAccountingUsage(responseBody)
+	if ok {
 		log.Printf(
 			"OpenAI usage: operation=%s model=%s input_tokens=%d cached_input_tokens=%d output_tokens=%d reasoning_tokens=%d total_tokens=%d",
 			name, c.model, usage.InputTokens, usage.CachedInputTokens,
@@ -267,19 +292,49 @@ func (c *client) structured(
 			}
 		}
 	}
-	if gateErr != nil {
-		return gateErr
+}
+
+// parseAccountingUsage deliberately distinguishes missing/null values from
+// explicitly reported zeros. An incomplete or inconsistent payload must leave
+// the accounting operation unresolved rather than create a false receipt.
+func parseAccountingUsage(data []byte) (Usage, bool) {
+	var envelope struct {
+		Usage *struct {
+			InputTokens  *int `json:"input_tokens"`
+			OutputTokens *int `json:"output_tokens"`
+			TotalTokens  *int `json:"total_tokens"`
+			InputDetails *struct {
+				CachedTokens *int `json:"cached_tokens"`
+			} `json:"input_tokens_details"`
+			OutputDetails *struct {
+				ReasoningTokens *int `json:"reasoning_tokens"`
+			} `json:"output_tokens_details"`
+		} `json:"usage"`
 	}
-	if rejected != nil {
-		return rejected
+	if err := json.Unmarshal(data, &envelope); err != nil || envelope.Usage == nil {
+		return Usage{}, false
 	}
-	if err != nil {
-		return err
+	u := envelope.Usage
+	if u.InputTokens == nil || u.OutputTokens == nil || u.TotalTokens == nil {
+		return Usage{}, false
 	}
-	if err := json.Unmarshal([]byte(output), target); err != nil {
-		return fmt.Errorf("OpenAI structured output is invalid: %w", err)
+	if (u.InputDetails != nil && u.InputDetails.CachedTokens == nil) || (u.OutputDetails != nil && u.OutputDetails.ReasoningTokens == nil) {
+		return Usage{}, false
 	}
-	return nil
+	usage := Usage{InputTokens: *u.InputTokens, OutputTokens: *u.OutputTokens, TotalTokens: *u.TotalTokens}
+	if u.InputDetails != nil && u.InputDetails.CachedTokens != nil {
+		usage.CachedInputTokens = *u.InputDetails.CachedTokens
+	}
+	if u.OutputDetails != nil && u.OutputDetails.ReasoningTokens != nil {
+		usage.ReasoningTokens = *u.OutputDetails.ReasoningTokens
+	}
+	if usage.InputTokens < 0 || usage.OutputTokens < 0 || usage.TotalTokens < 0 ||
+		usage.CachedInputTokens < 0 || usage.CachedInputTokens > usage.InputTokens ||
+		usage.ReasoningTokens < 0 || usage.ReasoningTokens > usage.OutputTokens ||
+		usage.InputTokens > usage.TotalTokens || usage.OutputTokens != usage.TotalTokens-usage.InputTokens {
+		return Usage{}, false
+	}
+	return usage, true
 }
 
 func parseResponseOutput(data []byte) (string, error) {
@@ -310,27 +365,31 @@ func parseResponse(data []byte) (string, Usage, error) {
 				Text string `json:"text"`
 			} `json:"content"`
 		} `json:"output"`
-		Usage struct {
-			InputTokens       int `json:"input_tokens"`
-			OutputTokens      int `json:"output_tokens"`
-			TotalTokens       int `json:"total_tokens"`
-			InputTokenDetails struct {
-				CachedTokens int `json:"cached_tokens"`
-			} `json:"input_tokens_details"`
-			OutputTokenDetails struct {
-				ReasoningTokens int `json:"reasoning_tokens"`
-			} `json:"output_tokens_details"`
-		} `json:"usage"`
+		Usage json.RawMessage `json:"usage"`
 	}
 	if err := json.Unmarshal(data, &response); err != nil {
 		return "", Usage{}, fmt.Errorf("OpenAI response JSON is invalid: %w", err)
 	}
+	var rawUsage struct {
+		InputTokens       int `json:"input_tokens"`
+		OutputTokens      int `json:"output_tokens"`
+		TotalTokens       int `json:"total_tokens"`
+		InputTokenDetails struct {
+			CachedTokens int `json:"cached_tokens"`
+		} `json:"input_tokens_details"`
+		OutputTokenDetails struct {
+			ReasoningTokens int `json:"reasoning_tokens"`
+		} `json:"output_tokens_details"`
+	}
+	// Usage can be malformed independently of a valid answer. Accounting is
+	// validated separately; never discard the answer because of usage metadata.
+	_ = json.Unmarshal(response.Usage, &rawUsage)
 	usage := Usage{
-		InputTokens:       response.Usage.InputTokens,
-		CachedInputTokens: response.Usage.InputTokenDetails.CachedTokens,
-		OutputTokens:      response.Usage.OutputTokens,
-		ReasoningTokens:   response.Usage.OutputTokenDetails.ReasoningTokens,
-		TotalTokens:       response.Usage.TotalTokens,
+		InputTokens:       rawUsage.InputTokens,
+		CachedInputTokens: rawUsage.InputTokenDetails.CachedTokens,
+		OutputTokens:      rawUsage.OutputTokens,
+		ReasoningTokens:   rawUsage.OutputTokenDetails.ReasoningTokens,
+		TotalTokens:       rawUsage.TotalTokens,
 	}
 	for _, output := range response.Output {
 		for _, content := range output.Content {

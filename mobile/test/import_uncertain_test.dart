@@ -13,6 +13,7 @@ import 'package:spendable_today/features/dashboard/screens/dashboard/dashboard_v
 import 'package:spendable_today/features/dashboard/repository/dashboard_repository.dart';
 import 'package:spendable_today/features/transactions/domain/transaction_item.dart';
 import 'package:spendable_today/features/session/domain/session.dart';
+import 'package:spendable_today/features/profile/repository/ai_consent_repository.dart';
 import 'package:spendable_today/features/session/provider/session_provider.dart';
 import 'package:spendable_today/core/network/interceptor/request_interceptor.dart';
 import 'package:spendable_today/features/transactions/domain/csv_mapping.dart';
@@ -600,6 +601,57 @@ void main() {
       expect(adapter.calls, 0);
     },
   );
+
+  test('session switch prevents cross-user consent mutations', () async {
+    final session = testSession();
+    addTearDown(session.dispose);
+    await login(session, 'token-a');
+    final container = ProviderContainer(
+      overrides: [sessionControllerProvider.overrideWithValue(session)],
+    );
+    addTearDown(container.dispose);
+    final ref = container.read(Provider<Ref>((ref) => ref));
+    final started = Completer<void>();
+    final resume = Completer<void>();
+    final adapter = CommitAdapter();
+    final dio = Dio(
+      BaseOptions(
+        baseUrl: 'https://example.invalid',
+        validateStatus: (status) => status != null && status < 400,
+      ),
+    );
+    dio.httpClientAdapter = adapter;
+    dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) async {
+          if (!started.isCompleted) started.complete();
+          await resume.future;
+          handler.next(options);
+        },
+      ),
+    );
+    dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) {
+          requestInterceptor(options, handler, true, ref);
+        },
+      ),
+    );
+    final repository = AiConsentRepository(ApiClient(dio));
+    final generation = session.generation;
+    final pending = repository.grant('v1', generation: generation);
+    final rejected = expectLater(pending, throwsA(isA<ApiException>()));
+    await started.future;
+    await login(session, 'token-b');
+    resume.complete();
+    await rejected;
+    expect(adapter.calls, 0);
+    await expectLater(
+      repository.withdraw(generation: generation),
+      throwsA(isA<ApiException>()),
+    );
+    expect(adapter.calls, 0);
+  });
 
   test(
     'session switch before preview interceptor prevents cross-user CSV submission',

@@ -30,7 +30,7 @@ func NewPagerDuty(routingKey string) *PagerDuty {
 
 func (p *PagerDuty) NotifyMonthlyLimit(ctx context.Context, event domain.MonthlyLimitEvent) error {
 	if p.routingKey == "" {
-		return fmt.Errorf("PagerDuty routing key is not configured")
+		return fmt.Errorf("%w: PagerDuty routing key is not configured", domain.ErrNotificationNotSent)
 	}
 	body, err := json.Marshal(map[string]any{
 		"routing_key":  p.routingKey,
@@ -51,11 +51,11 @@ func (p *PagerDuty) NotifyMonthlyLimit(ctx context.Context, event domain.Monthly
 		},
 	})
 	if err != nil {
-		return err
+		return fmt.Errorf("%w: %v", domain.ErrNotificationNotSent, err)
 	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, p.endpoint, bytes.NewReader(body))
 	if err != nil {
-		return err
+		return fmt.Errorf("%w: %v", domain.ErrNotificationNotSent, err)
 	}
 	request.Header.Set("Content-Type", "application/json")
 	response, err := p.client.Do(request)

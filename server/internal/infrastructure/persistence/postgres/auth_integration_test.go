@@ -316,7 +316,6 @@ func TestPostgresOwnershipAndSessions(t *testing.T) {
 			emptyMeasuredCost,
 		)
 	}
-	t.Cleanup(func() { verifyPostgresChat(t, r, ca, cb); verifyReconciliationIntegration(t) })
 	if _, err = r.GetProfile(ca); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("legacy data exposed: %v", err)
 	}
@@ -428,6 +427,7 @@ func TestPostgresOwnershipAndSessions(t *testing.T) {
 	if _, err = r.ResolveSession(ctx, "test-token-hash"); !errors.Is(err, auth.ErrInvalid) {
 		t.Fatal("reset password left session usable", err)
 	}
+	verifySessionCreationDuringDeactivation(t, r, b)
 	if err = r.CreateSession(ctx, "expired", b, time.Now().Add(-time.Hour)); err != nil {
 		t.Fatal(err)
 	}
@@ -439,6 +439,58 @@ func TestPostgresOwnershipAndSessions(t *testing.T) {
 		if err != nil || allowed != (i < 5) {
 			t.Fatalf("rate limit %d: %v %v", i, allowed, err)
 		}
+	}
+	// Run integration guarantees in the test body, while t.Run remains legal.
+	// t.Cleanup is reserved for releasing resources, not running assertions.
+	verifyPostgresChat(t, r, ca, cb)
+	verifyReconciliationIntegration(t)
+}
+
+func verifySessionCreationDuringDeactivation(t *testing.T, r *Repository, user auth.User) {
+	t.Helper()
+	ctx := context.Background()
+	tx, err := r.db.DB.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	var blocker int
+	if err := tx.QueryRowContext(ctx, `SELECT pg_backend_pid()`).Scan(&blocker); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE users SET is_active=FALSE WHERE id=$1`, user.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM auth_sessions WHERE user_id=$1`, user.ID); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- r.CreateSession(ctx, "deactivation-race", user, time.Now().Add(time.Hour)) }()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		var waiting bool
+		if err := r.db.DB.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE $1=ANY(pg_blocking_pids(pid)) AND query LIKE 'SELECT id FROM users WHERE id=%FOR UPDATE')`, blocker).Scan(&waiting); err != nil {
+			t.Fatal(err)
+		}
+		if waiting {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("session creation did not wait for deactivation")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; !errors.Is(err, auth.ErrInvalid) {
+		t.Fatalf("stale login was accepted: %v", err)
+	}
+	if _, err := r.db.DB.ExecContext(ctx, `UPDATE users SET is_active=TRUE WHERE id=$1`, user.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.ResolveSession(ctx, "deactivation-race"); !errors.Is(err, auth.ErrInvalid) {
+		t.Fatalf("stale session revived: %v", err)
 	}
 }
 

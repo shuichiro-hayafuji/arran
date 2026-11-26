@@ -19,9 +19,10 @@ import (
 const maxBodySize = 20 << 20
 
 type handler struct {
-	application       *application.Application
-	consent           ConsentService
-	withdrawalTimeout time.Duration
+	application        *application.Application
+	consent            ConsentService
+	withdrawalTimeout  time.Duration
+	withdrawalRequests WithdrawalRequestStore
 }
 
 type ConsentService interface {
@@ -38,11 +39,22 @@ func NewWithConsent(apiApplication *application.Application, gate ConsentService
 	return newHandler(apiApplication, gate)
 }
 
+func NewWithServices(apiApplication *application.Application, gate ConsentService, requests WithdrawalRequestStore) http.Handler {
+	h := newHandlerConfig(apiApplication, gate, requests)
+	return h
+}
+
 func newHandler(apiApplication *application.Application, gate ConsentService) http.Handler {
-	handler := &handler{application: apiApplication, consent: gate, withdrawalTimeout: 20 * time.Second}
+	return newHandlerConfig(apiApplication, gate, nil)
+}
+
+func newHandlerConfig(apiApplication *application.Application, gate ConsentService, requests WithdrawalRequestStore) http.Handler {
+	handler := &handler{application: apiApplication, consent: gate, withdrawalTimeout: 20 * time.Second, withdrawalRequests: requests}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", handler.health)
 	mux.HandleFunc("GET /healthz", handler.health)
+	mux.HandleFunc("GET /withdrawal-request", handler.getWithdrawalRequest)
+	mux.HandleFunc("PUT /withdrawal-request", handler.putWithdrawalRequest)
 	mux.HandleFunc("GET /ai-consent", handler.getAIConsent)
 	mux.HandleFunc("PUT /ai-consent", handler.grantAIConsent)
 	mux.HandleFunc("DELETE /ai-consent", handler.withdrawAIConsent)

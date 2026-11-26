@@ -10,10 +10,29 @@ import (
 )
 
 var ErrConsentRequired = errors.New("external AI consent required")
+var ErrWithdrawalPending = errors.New("account withdrawal is pending")
 var ErrConsentUnavailable = errors.New("external AI consent unavailable")
 var ErrAIOutcomeUnknown = errors.New("external AI send outcome unknown")
 var ErrConflict = errors.New("conversation changed; retry the request")
 var ErrNotFound = errors.New("conversation not found")
+
+// ErrChatSaveRolledBack is emitted only when persistence knows no commit occurred.
+var ErrChatSaveRolledBack = errors.New("chat save rolled back before commit")
+
+// BeforeChatSideEffects marks a failure in read-only preparation, before any
+// model invocation or chat save. Unmarked errors have an unknown outcome.
+type BeforeChatSideEffects struct{ Err error }
+
+func (e *BeforeChatSideEffects) Error() string { return e.Err.Error() }
+func (e *BeforeChatSideEffects) Unwrap() error { return e.Err }
+func beforeChatSideEffects(err error) error    { return &BeforeChatSideEffects{Err: err} }
+
+// saveOutcomeError retains sentinel matching but does not expose an inner
+// before-side-effects type from a lower layer after the save was attempted.
+type saveOutcomeError struct{ err error }
+
+func (e *saveOutcomeError) Error() string        { return e.err.Error() }
+func (e *saveOutcomeError) Is(target error) bool { return errors.Is(e.err, target) }
 
 // Fact retains provenance and history; only the latest active value enters model context.
 type Fact struct {
@@ -146,14 +165,14 @@ type Service struct {
 func (s Service) Send(ctx context.Context, id int64, message string) (Thread, error) {
 	message = strings.TrimSpace(message)
 	if message == "" {
-		return Thread{}, fmt.Errorf("メッセージを入力してください")
+		return Thread{}, beforeChatSideEffects(fmt.Errorf("メッセージを入力してください"))
 	}
 	if len(message) > 16000 {
-		return Thread{}, fmt.Errorf("メッセージは16000バイト以内で入力してください")
+		return Thread{}, beforeChatSideEffects(fmt.Errorf("メッセージは16000バイト以内で入力してください"))
 	}
 	state, err := s.Repository.LoadChatState(ctx)
 	if err != nil {
-		return Thread{}, err
+		return Thread{}, beforeChatSideEffects(err)
 	}
 	if state.Strictness == 0 {
 		state.Strictness = 5
@@ -162,7 +181,7 @@ func (s Service) Send(ctx context.Context, id int64, message string) (Thread, er
 	if id != 0 {
 		thread, err = s.Repository.LoadChatThread(ctx, id)
 		if err != nil {
-			return Thread{}, err
+			return Thread{}, beforeChatSideEffects(err)
 		}
 	}
 	now := time.Now()
@@ -180,18 +199,18 @@ func (s Service) Send(ctx context.Context, id int64, message string) (Thread, er
 	input.Facts = relevantFacts(state.Facts, input.Message, input.History)
 	input.Transactions, input.TransactionCoverage, err = s.Repository.LoadChatTransactions(ctx, 100, latestForgetAt(state.Facts))
 	if err != nil {
-		return Thread{}, err
+		return Thread{}, beforeChatSideEffects(err)
 	}
 	pastThreads, err := s.Repository.ListRecentChatThreads(ctx, id, 20)
 	if err != nil {
-		return Thread{}, err
+		return Thread{}, beforeChatSideEffects(err)
 	}
 	input.RelatedHistory = relatedHistory(pastThreads, input.Message, state.Facts)
 	var forced []string
 	if s.Reconciliation != nil {
 		input.ReconciliationContext, err = s.Reconciliation.LoadReconciliations(ctx, latestForgetAt(state.Facts))
 		if err != nil {
-			return Thread{}, err
+			return Thread{}, beforeChatSideEffects(err)
 		}
 		for _, c := range input.ReconciliationContext {
 			forced = append(forced, c.PurchaseID)
@@ -200,7 +219,7 @@ func (s Service) Send(ctx context.Context, id int64, message string) (Thread, er
 	if s.DataChanges != nil {
 		input.DataChangeContext, err = s.DataChanges.LoadDataChanges(ctx, latestForgetAt(state.Facts))
 		if err != nil {
-			return Thread{}, err
+			return Thread{}, beforeChatSideEffects(err)
 		}
 		for _, c := range input.DataChangeContext {
 			forced = append(forced, c.RelatedPurchaseIDs...)
@@ -221,7 +240,7 @@ func (s Service) Send(ctx context.Context, id int64, message string) (Thread, er
 			selected[p.ID] = true
 			needs, e := s.Reconciliation.RequiresCSVReconciliation(ctx, p.ID)
 			if e != nil {
-				return Thread{}, e
+				return Thread{}, beforeChatSideEffects(e)
 			}
 			if needs {
 				input.ReconciliationRequiredIDs = append(input.ReconciliationRequiredIDs, p.ID)
@@ -249,6 +268,7 @@ func (s Service) Send(ctx context.Context, id int64, message string) (Thread, er
 		input.PendingPurchase = &pending
 	}
 	var reply Reply
+	modelCalled := false
 	agentErr := errors.New("chat model unavailable")
 	modelCtx, cancelModel := context.WithTimeout(ctx, 22*time.Second)
 	defer cancelModel()
@@ -257,6 +277,7 @@ func (s Service) Send(ctx context.Context, id int64, message string) (Thread, er
 			if modelCtx.Err() != nil {
 				break
 			}
+			modelCalled = true
 			reply, agentErr = s.Agent.Advise(modelCtx, input)
 			if errors.Is(agentErr, ErrConsentRequired) || errors.Is(agentErr, ErrConsentUnavailable) || errors.Is(agentErr, ErrAIOutcomeUnknown) {
 				break
@@ -355,7 +376,14 @@ func (s Service) Send(ctx context.Context, id int64, message string) (Thread, er
 	}
 	saveCtx, cancel := context.WithDeadline(context.WithoutCancel(ctx), saveDeadline)
 	defer cancel()
-	return s.Repository.SaveChatTurn(saveCtx, state, thread)
+	saved, err := s.Repository.SaveChatTurn(saveCtx, state, thread)
+	if err != nil {
+		if !modelCalled && errors.Is(err, ErrChatSaveRolledBack) {
+			return Thread{}, beforeChatSideEffects(err)
+		}
+		return Thread{}, &saveOutcomeError{err: err}
+	}
+	return saved, nil
 }
 func Validate(r Reply) error {
 	switch r.Status {
